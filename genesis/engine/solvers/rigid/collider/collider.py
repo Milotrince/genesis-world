@@ -19,7 +19,6 @@ import quadrants as qd
 import genesis as gs
 import genesis.utils.array_class as array_class
 import genesis.utils.geom as gu
-from genesis.engine.solvers.kinematic_solver import _balanced_variant_mapping
 from genesis.engine.solvers.rigid.abd.forward_kinematics import func_update_geom_aabbs
 from genesis.utils.misc import (
     assign_indexed_tensor,
@@ -442,15 +441,18 @@ class Collider:
         geoms_variant_key = np.zeros((n_geoms,), dtype=gs.np_int)
         entities_envs_variant_key = [np.zeros((self._solver._B,), dtype=gs.np_int)]
         n_variant_keys = 1
+        if self._solver.variants_info is not None:
+            envs_variant_idx = qd_to_numpy(self._solver.variants_state.envs_variant, transpose=True)
         for entity in self._solver.entities:
-            if not entity.desc.variants:
+            if not entity.is_heterogeneous:
                 continue
             for link in entity.links:
                 for i_variant, (geom_start, geom_end) in enumerate(link._variant_geom_ranges):
                     geoms_variant_key[geom_start:geom_end] = n_variant_keys + i_variant
-            n_variants = len(entity.desc.variants)
-            entities_envs_variant_key.append(n_variant_keys + _balanced_variant_mapping(n_variants, self._solver._B))
-            n_variant_keys += n_variants
+            entities_envs_variant_key.append(
+                n_variant_keys + envs_variant_idx[:, entity._variants_data.heterogeneous_idx]
+            )
+            n_variant_keys += entity._variants_data.n_variants
         envs_variant_key = np.stack(entities_envs_variant_key)
         variant_keys_is_co_carried = np.zeros((n_variant_keys, n_variant_keys), dtype=bool)
         variant_keys_is_co_carried[envs_variant_key[:, None], envs_variant_key[None, :]] = True

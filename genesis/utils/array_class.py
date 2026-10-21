@@ -2981,6 +2981,126 @@ def get_entities_state(description, is_active=True):
     )
 
 
+# =========================================== VariantsInfo and VariantsState ===========================================
+
+
+@dataclasses.dataclass(eq=True, kw_only=False, frozen=True)
+class VariantsInfo:
+    """The model of every variant of the heterogeneous entities of a solver, which 'kernel_set_morph_variant' gathers
+    into the batched link, joint and dof info of the environments carrying it.
+
+    The 'entities_*' tables hold one entry per heterogeneous entity: its first variant and the solver ranges of its
+    links, joints, dofs and qs. The 'variants_*' tables hold one entry per variant, entity after entity: the entity it
+    belongs to, the first row of each of its tables below, and the pose offset of its base link. A variant gives one
+    row per link, joint, dof and q of its entity, in solver order.
+    """
+
+    kind: ClassVar[DataKind] = DataKind.CONSTANT
+
+    entities_variant_start: qd.Tensor
+    entities_link_start: qd.Tensor
+    entities_link_end: qd.Tensor
+    entities_joint_start: qd.Tensor
+    entities_joint_end: qd.Tensor
+    entities_dof_start: qd.Tensor
+    entities_dof_end: qd.Tensor
+    entities_q_start: qd.Tensor
+    entities_q_end: qd.Tensor
+    variants_entity_idx: qd.Tensor
+    variants_link_start: qd.Tensor
+    variants_joint_start: qd.Tensor
+    variants_dof_start: qd.Tensor
+    variants_q_start: qd.Tensor
+    variants_offset_pos: qd.Tensor
+    variants_offset_quat: qd.Tensor
+    links_pos: qd.Tensor
+    links_quat: qd.Tensor
+    links_geom_start: qd.Tensor
+    links_geom_end: qd.Tensor
+    links_vgeom_start: qd.Tensor
+    links_vgeom_end: qd.Tensor
+    links_inertial_pos: qd.Tensor
+    links_inertial_quat: qd.Tensor
+    links_inertial_i: qd.Tensor
+    links_inertial_mass: qd.Tensor
+    joints_pos: qd.Tensor
+    joints_sol_params: qd.Tensor
+    dofs_motion_ang: qd.Tensor
+    dofs_motion_vel: qd.Tensor
+    dofs_limit: qd.Tensor
+    dofs_stiffness: qd.Tensor
+    dofs_damping: qd.Tensor
+    dofs_frictionloss: qd.Tensor
+    dofs_armature: qd.Tensor
+    dofs_act_gain: qd.Tensor
+    dofs_act_bias: qd.Tensor
+    dofs_force_range: qd.Tensor
+    qpos0: qd.Tensor
+
+
+def get_variants_info(description):
+    entities_shape = (description.n_entities_,)
+    variants_shape = (description.n_variants_,)
+    links_shape = (description.n_links_,)
+    joints_shape = (description.n_joints_,)
+    dofs_shape = (description.n_dofs_,)
+
+    return VariantsInfo(
+        entities_variant_start=V(dtype=gs.qd_int, shape=entities_shape),
+        entities_link_start=V(dtype=gs.qd_int, shape=entities_shape),
+        entities_link_end=V(dtype=gs.qd_int, shape=entities_shape),
+        entities_joint_start=V(dtype=gs.qd_int, shape=entities_shape),
+        entities_joint_end=V(dtype=gs.qd_int, shape=entities_shape),
+        entities_dof_start=V(dtype=gs.qd_int, shape=entities_shape),
+        entities_dof_end=V(dtype=gs.qd_int, shape=entities_shape),
+        entities_q_start=V(dtype=gs.qd_int, shape=entities_shape),
+        entities_q_end=V(dtype=gs.qd_int, shape=entities_shape),
+        variants_entity_idx=V(dtype=gs.qd_int, shape=variants_shape),
+        variants_link_start=V(dtype=gs.qd_int, shape=variants_shape),
+        variants_joint_start=V(dtype=gs.qd_int, shape=variants_shape),
+        variants_dof_start=V(dtype=gs.qd_int, shape=variants_shape),
+        variants_q_start=V(dtype=gs.qd_int, shape=variants_shape),
+        variants_offset_pos=V(dtype=gs.qd_vec3, shape=variants_shape),
+        variants_offset_quat=V(dtype=gs.qd_vec4, shape=variants_shape),
+        links_pos=V(dtype=gs.qd_vec3, shape=links_shape),
+        links_quat=V(dtype=gs.qd_vec4, shape=links_shape),
+        links_geom_start=V(dtype=gs.qd_int, shape=links_shape),
+        links_geom_end=V(dtype=gs.qd_int, shape=links_shape),
+        links_vgeom_start=V(dtype=gs.qd_int, shape=links_shape),
+        links_vgeom_end=V(dtype=gs.qd_int, shape=links_shape),
+        links_inertial_pos=V(dtype=gs.qd_vec3, shape=links_shape),
+        links_inertial_quat=V(dtype=gs.qd_vec4, shape=links_shape),
+        links_inertial_i=V(dtype=gs.qd_mat3, shape=links_shape),
+        links_inertial_mass=V(dtype=gs.qd_float, shape=links_shape),
+        joints_pos=V(dtype=gs.qd_vec3, shape=joints_shape),
+        joints_sol_params=V(dtype=gs.qd_vec7, shape=joints_shape),
+        dofs_motion_ang=V(dtype=gs.qd_vec3, shape=dofs_shape),
+        dofs_motion_vel=V(dtype=gs.qd_vec3, shape=dofs_shape),
+        dofs_limit=V(dtype=gs.qd_vec2, shape=dofs_shape),
+        dofs_stiffness=V(dtype=gs.qd_float, shape=dofs_shape),
+        dofs_damping=V(dtype=gs.qd_float, shape=dofs_shape),
+        dofs_frictionloss=V(dtype=gs.qd_float, shape=dofs_shape),
+        dofs_armature=V(dtype=gs.qd_float, shape=dofs_shape),
+        dofs_act_gain=V(dtype=gs.qd_float, shape=dofs_shape),
+        dofs_act_bias=V(dtype=gs.qd_vec3, shape=dofs_shape),
+        dofs_force_range=V(dtype=gs.qd_vec2, shape=dofs_shape),
+        qpos0=V(dtype=gs.qd_float, shape=(description.n_qs_,)),
+    )
+
+
+@dataclasses.dataclass(eq=True, kw_only=False, frozen=True)
+class VariantsState:
+    """The variant each environment carries of each heterogeneous entity, counted from the first of that entity."""
+
+    kind: ClassVar[DataKind] = DataKind.INFO
+
+    envs_variant: qd.Tensor
+
+
+def get_variants_state(description):
+    return VariantsState(envs_variant=V(dtype=gs.qd_int, shape=(description.n_entities_, description._B)))
+
+
 # =========================================== RigidAdjointCache ===========================================
 @dataclasses.dataclass(eq=True, kw_only=False, frozen=True)
 class RigidAdjointCache:

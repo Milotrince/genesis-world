@@ -10,7 +10,6 @@ from genesis.typing import LaxPositiveFArrayType
 from genesis.utils.misc import DeprecationError, qd_to_torch
 
 from .description import KinematicLinkDescription, RigidGeomDescription, RigidLinkDescription, RigidVisGeomDescription
-from .inertial import LinkInertial
 from .rigid_geom import RigidGeom, RigidVisGeom
 
 if TYPE_CHECKING:
@@ -468,17 +467,6 @@ class RigidLink(KinematicLink):
 
         for geom in self._geoms:
             geom._build()
-
-        # Compute per-variant inertial for heterogeneous links
-        if self._variant_geom_ranges is not None:
-            self._variant_inertial = [
-                LinkInertial(self.desc.mass, self.desc.inertial_pos, self.desc.inertial_quat, self.desc.inertia)
-            ]
-            for variant in self.entity._desc.variants[1:]:
-                v_l_desc = variant.links[self.idx - self.entity._link_start]
-                self._variant_inertial.append(
-                    LinkInertial(v_l_desc.mass, v_l_desc.inertial_pos, v_l_desc.inertial_quat, v_l_desc.inertia)
-                )
 
     def _add_geom(self, desc: RigidGeomDescription, needs_coup=False):
         geom = RigidGeom(
