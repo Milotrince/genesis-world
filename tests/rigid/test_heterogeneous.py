@@ -6,7 +6,7 @@ import genesis as gs
 import genesis.utils.geom as gu
 from genesis.utils.misc import tensor_to_array
 
-from ..utils.assertions import assert_allclose
+from ..utils.assertions import assert_allclose, assert_equal
 from ..utils.assets import get_hf_dataset
 
 
@@ -196,12 +196,15 @@ def test_variant_inertia_matches_standalone(undefined_inertia, implicit_inertial
 
 
 @pytest.mark.required
-def test_fewer_envs_than_variants():
+@pytest.mark.parametrize("n_envs", [0, 2])
+def test_fewer_envs_than_variants(n_envs, tol):
     # With n_envs < n_variants, environment i gets variant i and the variants beyond n_envs stay unused.
+    RHO = 500.0
+
     scene = gs.Scene(show_viewer=False)
     scene.add_entity(gs.morphs.Plane())
 
-    # 4 variants with different positions but only 2 environments
+    # 4 variants with different positions but at most 2 environments
     morphs_heterogeneous = [
         gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=(0.0, 0.0, 0.1)),
         gs.morphs.Box(size=(0.03, 0.03, 0.03), pos=(0.1, 0.0, 0.15)),
@@ -210,16 +213,21 @@ def test_fewer_envs_than_variants():
     ]
     het_obj = scene.add_entity(
         morph=morphs_heterogeneous,
+        material=gs.materials.Material(
+            density=RHO,
+        ),
     )
 
-    # Building with only 2 environments should work - each env gets a unique variant
-    scene.build(n_envs=2)
+    scene.build(n_envs=n_envs)
 
-    # Verify mass - env 0 gets variant 0 (0.04 box), env 1 gets variant 1 (0.03 box)
+    variants_idx = het_obj.get_morph_variant()
+    assert_equal(variants_idx, np.arange(n_envs) if n_envs > 0 else 0)
+
+    # Each environment simulates the box of the variant it carries
     mass = het_obj.get_mass()
-    assert mass.shape == (scene.n_envs,)
-    # Different box sizes should have different masses
-    assert mass[0] != mass[1]
+    assert mass.shape == variants_idx.shape == het_obj.get_pos().shape[:-1]
+    variants_mass = RHO * np.array((0.04, 0.03)) ** 3
+    assert_allclose(mass, variants_mass[tensor_to_array(variants_idx)], tol=tol)
 
 
 @pytest.mark.slow  # ~200s

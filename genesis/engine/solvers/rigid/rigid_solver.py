@@ -33,7 +33,6 @@ from genesis.utils.misc import (
 from ..base_solver import GravityMixin, MutatedLinks, StateChange, TimeBasedMixin, mutates
 from ..kinematic_solver import (
     KinematicSolver,
-    _balanced_variant_mapping,
     _fill_base_link_geom_offsets,
     _offset_world_shift,
     _select_links_offset,
@@ -138,7 +137,6 @@ from .abd.misc import (
     kernel_init_vert_fields,
     kernel_reset_hibernation,
     kernel_set_zero,
-    kernel_update_heterogeneous_link_info,
     kernel_wakeup_coupled_links,
 )
 from .collider import Collider
@@ -405,6 +403,8 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         # recomputes the ones it changes: those of every degree of freedom and link of the kinematic trees holding a
         # defaulted joint. The parsed inverse weights stand everywhere else.
         dofs_idx, dofs_default, dofs_link = [], [], []
+        if self.variants_info is not None:
+            envs_variant_idx = qd_to_numpy(self.variants_state.envs_variant, transpose=True)
         for entity in self._entities:
             rotor_links = [
                 link
@@ -414,11 +414,11 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
             if not rotor_links:
                 continue
             # Only a scene or robot description file yields a rotor link, and those morphs state a default armature.
-            if entity.desc.variants:
+            if entity.is_heterogeneous:
                 variants_default = np.array([variant.default_armature or 0.0 for variant in entity.desc.variants])
+                envs_default = variants_default[envs_variant_idx[:, entity._variants_data.heterogeneous_idx]]
             else:
-                variants_default = np.array([entity.main_morph.default_armature or 0.0])
-            envs_default = variants_default[_balanced_variant_mapping(variants_default.size, self._B)]
+                envs_default = np.full(self._B, entity.main_morph.default_armature or 0.0)
             if (envs_default <= 0.0).all():
                 continue
             dofs_idx.extend(link.dof_start for link in rotor_links)
@@ -1043,60 +1043,35 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         self.rigid_info.dofs_mass_block_start.from_numpy(dofs_mass_block_start)
         self.rigid_info.dofs_mass_block_end.from_numpy(dofs_mass_block_end)
 
-    def _dispatch_heterogeneous_vgeoms(self):
-        """
-        Dispatch per-environment geom/vgeom ranges and inertial properties for heterogeneous links.
+    def _init_variant_fields(self):
+        entities, links_desc = super()._init_variant_fields()
+        if not entities:
+            return [], []
 
-        Extends the base class (which handles vgeom-only dispatch) to also dispatch collision geom
-        ranges and per-variant inertial properties. Per-variant inertial is pre-computed during
-        link._build() from actual geom objects, using analytic formulas for primitives.
-        """
-        for link in self.links:
-            if link._variant_vgeom_ranges is None:
-                continue
-
-            n_variants = len(link._variant_vgeom_ranges)
-            variant_idx = _balanced_variant_mapping(n_variants, self._B)
-
-            # Build per-env arrays from link's variant data
-            geom_starts = np.array([link._variant_geom_ranges[v][0] for v in variant_idx], dtype=gs.np_int)
-            geom_ends = np.array([link._variant_geom_ranges[v][1] for v in variant_idx], dtype=gs.np_int)
-            vgeom_starts = np.array([link._variant_vgeom_ranges[v][0] for v in variant_idx], dtype=gs.np_int)
-            vgeom_ends = np.array([link._variant_vgeom_ranges[v][1] for v in variant_idx], dtype=gs.np_int)
-
-            # Build per-env inertial arrays from pre-computed per-variant inertial
-            links_inertial_mass = np.array([link._variant_inertial[v][0] for v in variant_idx], dtype=gs.np_float)
-            links_inertial_pos = np.array([link._variant_inertial[v][1] for v in variant_idx], dtype=gs.np_float)
-            links_inertial_quat = np.array([link._variant_inertial[v][2] for v in variant_idx], dtype=gs.np_float)
-            links_inertial_i = np.array([link._variant_inertial[v][3] for v in variant_idx], dtype=gs.np_float)
-
-            # Update links_info with per-environment values
-            # Note: when batch_links_info is True, the shape is (n_links, B)
-            kernel_update_heterogeneous_link_info(
-                link.idx,
-                geom_starts,
-                geom_ends,
-                vgeom_starts,
-                vgeom_ends,
-                links_inertial_mass,
-                links_inertial_pos,
-                links_inertial_quat,
-                links_inertial_i,
-                self.dyn_info,
-                self.rigid_config,
-            )
-
-            # Set active_envs on geoms — indicates which environments each geom is active in
-            for geom in link.geoms:
-                active_envs_mask = (geom_starts <= geom.idx) & (geom.idx < geom_ends)
-                geom.active_envs_mask = torch.tensor(active_envs_mask, device=gs.device)
-                (geom.active_envs_idx,) = np.where(active_envs_mask)
-
-            # Set active_envs on vgeoms
-            for vgeom in link.vgeoms:
-                active_envs_mask = (vgeom_starts <= vgeom.idx) & (vgeom.idx < vgeom_ends)
-                vgeom.active_envs_mask = torch.tensor(active_envs_mask, device=gs.device)
-                (vgeom.active_envs_idx,) = np.where(active_envs_mask)
+        links_geom_range = np.array(
+            [
+                link._variant_geom_ranges[i_v]
+                for entity in entities
+                for i_v in range(entity._variants_data.n_variants)
+                for link in entity.links
+            ],
+            dtype=gs.np_int,
+        )
+        self.variants_info.links_geom_start.from_numpy(links_geom_range[:, 0])
+        self.variants_info.links_geom_end.from_numpy(links_geom_range[:, 1])
+        self.variants_info.links_inertial_pos.from_numpy(
+            np.array([l_desc.inertial_pos for l_desc in links_desc], dtype=gs.np_float)
+        )
+        self.variants_info.links_inertial_quat.from_numpy(
+            np.array([l_desc.inertial_quat for l_desc in links_desc], dtype=gs.np_float)
+        )
+        self.variants_info.links_inertial_i.from_numpy(
+            np.array([l_desc.inertia for l_desc in links_desc], dtype=gs.np_float)
+        )
+        self.variants_info.links_inertial_mass.from_numpy(
+            np.array([l_desc.mass for l_desc in links_desc], dtype=gs.np_float)
+        )
+        return entities, links_desc
 
     def _init_link_fields(self):
         # The base initialization ends by dispatching each heterogeneous variant's inertial per environment, which

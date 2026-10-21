@@ -25,7 +25,42 @@ if TYPE_CHECKING:
 NUM_VERTS_VISUAL_GEOM_AABB = 200
 
 
-class RigidGeom(RBC):
+class VariantGeomMixin:
+    """The morph variant of its entity that a geom or a visual geom belongs to, and the environments carrying it."""
+
+    _entity: "RigidEntity"
+    _variant_idx: int
+
+    @property
+    def variant_idx(self) -> int:
+        """The index of the morph variant of its entity that this geom belongs to, 0 for a homogeneous entity."""
+        return self._variant_idx
+
+    @property
+    def active_envs_mask(self) -> torch.Tensor | None:
+        """
+        The mask of the environments carrying this geom, None for a homogeneous entity, which every environment carries.
+        """
+        if not self._entity.is_heterogeneous:
+            return None
+        variants_data = self._entity._variants_data
+        envs_variant = variants_data.data.state.envs_variant
+        return (
+            qd_to_torch(envs_variant, None, variants_data.heterogeneous_idx, keepdim=False, transpose=True)
+            == self._variant_idx
+        )
+
+    @property
+    def active_envs_idx(self) -> np.ndarray | None:
+        """
+        The indices of the environments carrying this geom, None for a homogeneous entity, which every environment
+        carries.
+        """
+        active_envs_mask = self.active_envs_mask
+        return None if active_envs_mask is None else np.flatnonzero(tensor_to_array(active_envs_mask))
+
+
+class RigidGeom(VariantGeomMixin, RBC):
     """
     A `RigidGeom` is the basic building block of a `RigidEntity` for collision checking. It is usually constructed
     from a single mesh. This can be accessed via `link.geoms`.
@@ -56,15 +91,13 @@ class RigidGeom(RBC):
         self._face_start: int = face_start
         self._edge_start: int = edge_start
         self._verts_state_start: int = verts_state_start
+        # The morph variant of its entity this geom belongs to, set at build (see 'VariantGeomMixin')
+        self._variant_idx: int = 0
 
         solver_options = link.entity.desc.options.solver_options
         self._coup_softness: float = solver_options.coup_softness
         self._coup_friction: float = solver_options.coup_friction
         self._coup_restitution: float = solver_options.coup_restitution
-
-        # For heterogeneous simulation: which environments this geom is active in (None = all envs)
-        self.active_envs_mask: torch.Tensor | None = None
-        self.active_envs_idx: np.ndarray | None = None
 
         self._init_verts = mesh.verts
         self._init_faces = mesh.faces
@@ -88,7 +121,10 @@ class RigidGeom(RBC):
         assert self.n_verts == len(self.vert_n_neighbors)
 
     def _build(self):
-        pass
+        if self._link._variant_geom_ranges is not None:
+            self._variant_idx = next(
+                i_v for i_v, (start, end) in enumerate(self._link._variant_geom_ranges) if start <= self._idx < end
+            )
 
     @property
     def trimesh(self):
@@ -591,7 +627,7 @@ class RigidGeom(RBC):
         return f"{self.__repr_name__()}: {self._uid}, idx: {self._idx} (from entity {self._entity.uid}, link {self._link.uid})"
 
 
-class RigidVisGeom(RBC):
+class RigidVisGeom(VariantGeomMixin, RBC):
     """
     A `RigidVisGeom` is a counterpart of `RigidGeom`, but for visualization purposes. This can be accessed via `link.vis_geoms`.
     """
@@ -612,13 +648,14 @@ class RigidVisGeom(RBC):
 
         self._vvert_start = vvert_start
         self._vface_start = vface_start
-
-        # For heterogeneous simulation: which environments this vgeom is active in (None = all envs)
-        self.active_envs_mask: torch.Tensor | None = None
-        self.active_envs_idx: np.ndarray | None = None
+        # The morph variant of its entity this visual geom belongs to, set at build (see 'VariantGeomMixin')
+        self._variant_idx: int = 0
 
     def _build(self):
-        pass
+        if self._link._variant_vgeom_ranges is not None:
+            self._variant_idx = next(
+                i_v for i_v, (start, end) in enumerate(self._link._variant_vgeom_ranges) if start <= self._idx < end
+            )
 
     @property
     def trimesh(self):
