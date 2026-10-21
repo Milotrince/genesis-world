@@ -33,6 +33,7 @@ from .system_data import SystemDataArray
 if TYPE_CHECKING:
     from genesis.engine.entities.base_entity import Entity, EntityDescription
     from genesis.engine.scene import Scene
+    from genesis.options.entities import EntityOptions
     from genesis.options.scene import SceneOptions
 
     from .solvers.base_solver import Solver
@@ -134,17 +135,29 @@ class Simulator(RBC):
         surface=None,
         visualize_contact=False,
         name: str | None = None,
+        options: "EntityOptions | None" = None,
         desc: "EntityDescription | None" = None,
     ):
         if desc is not None:
             material = desc.material
+            options = desc.options
         # Only a kinematic or rigid entity takes several morphs, one per variant. The other solvers resolve their
         # description from the morph before the entity exists, so the check runs here.
         elif not isinstance(morph, Morph) and not isinstance(material, gs.materials.Kinematic):
             gs.raise_exception(f"An entity is created from one morph, got {type(morph).__name__}.")
         if visualize_contact and not isinstance(material, gs.materials.Rigid):
             gs.raise_exception("'visualize_contact' only applies to rigid entities.")
-        if isinstance(material, gs.materials.Hybrid):
+        if options is not None:
+            # The options decide the solver, by naming the class of the options configuring it
+            for solver in self._solvers:
+                if type(solver._options) is options.scene_solver_options_cls:
+                    break
+            else:
+                gs.raise_exception(f"No solver simulates entities of options {type(options).__name__}.")
+            entity = solver.add_entity(
+                self.n_entities, material, morph, surface, visualize_contact, name=name, options=options, desc=desc
+            )
+        elif isinstance(material, gs.materials.Hybrid):
             # Resolution adds both parts to the scene first, so the hybrid entity comes after them, authored or loaded
             if desc is None:
                 desc = HybridEntityDescription.resolve(self.scene, material, morph, surface, name)
