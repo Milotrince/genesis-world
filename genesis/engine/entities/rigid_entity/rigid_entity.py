@@ -3435,6 +3435,13 @@ class RigidEntity(KinematicEntity):
         and restoring it switches them back. A restored checkpoint or trajectory frame brings the variants it records,
         which a reset keeps likewise.
 
+        A switch waits for the device to read the configuration back, and recomputes the inertial quantities of these
+        environments. It wakes up their entities and forgets their contacts of the last step, so switch between
+        episodes, together with a reset, rather than within one. Cameras rendered by the rasterizer, raycasting sensors
+        and trajectory recordings follow a switch. A switch raises while the scene holds a feature that cannot follow
+        it: the batch renderer, the ray tracer, the SAP coupler, a tactile or surface distance sensor tracking the
+        entity, a differentiable simulation or a morph with custom visual vertices.
+
         Parameters
         ----------
         variants_idx : int | array_like, shape (n_envs,)
