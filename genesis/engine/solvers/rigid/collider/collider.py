@@ -289,7 +289,6 @@ class Collider:
             contact_pruning_tolerance=self._solver._options.contact_pruning_tolerance or 0.0,
             prune_deep_penetration_ratio=self._prune_deep_penetration_ratio,
         )
-        self._init_collision_pair_idx(self._collision_pair_idx)
         self.collider_info.link_pair_idx.from_numpy(link_pair_idx)
 
         # The box of every link in its own frame, bounding the boxes of its geoms, whose pose in the link is fixed
@@ -309,15 +308,18 @@ class Collider:
             self.collider_info.valid_link_pairs.from_numpy(valid_link_pairs)
         self._init_verts_connectivity(vert_neighbors, vert_neighbor_start, vert_n_neighbors)
         self._init_verts_spatial_grid()
-        self._init_max_contacts(self._n_possible_pairs, self._large_contact_pair_mask)
+        pairs_slot, n_pair_slots = self._init_pair_budgets_and_slots(
+            self._n_possible_pairs, self._large_contact_pair_mask
+        )
+        self._collision_pair_idx[tuple(self._valid_collision_pairs.T)] = pairs_slot
+        self._init_collision_pair_idx(self._collision_pair_idx)
         self._init_terrain_state()
 
         # Initialize [state], which stores every data that are may be updated at every single simulation step
-        n_possible_pairs_ = max(self._n_possible_pairs, 1)
         self.collider_state = array_class.get_collider_state(
             self._solver,
             self._solver.rigid_config,
-            n_possible_pairs_,
+            n_pair_slots,
             self._n_terrain_threads,
             self.collider_info,
             self.collider_config,
@@ -505,6 +507,7 @@ class Collider:
                         self._solver.rigid_info,
                         self._solver.variants_info,
                         self._solver.rigid_config,
+                        is_dynamic=True,
                     )
                     self._solver.rigid_info.qpos.from_numpy(qd_to_numpy(self._solver.rigid_info.qpos0, transpose=False))
                     kernel_forward_kinematics_links_geoms(
@@ -750,7 +753,11 @@ class Collider:
             self.collider_info.vert_neighbor_start.from_numpy(vert_neighbor_start)
             self.collider_info.vert_n_neighbors.from_numpy(vert_n_neighbors)
 
-    def _init_max_contacts(self, n_possible_pairs, large_contact_pair_mask):
+    def _init_pair_budgets_and_slots(self, n_possible_pairs, large_contact_pair_mask):
+        """Size the per-environment pair and contact budgets, and give every pair its slot in the contact cache.
+
+        Return the slot of every valid pair and the number of slots, one per pair an environment carries at most.
+        """
         cap_nonconvex = self.collider_config.n_contacts_per_nonconvex_pair
         cap_convex = self.collider_config.n_contacts_per_convex_pair
 
@@ -800,6 +807,19 @@ class Collider:
             axis=0
         ).astype(gs.np_int)
 
+        # The contact cache holds one slot per pair that an environment carries. The pairs of every combination of
+        # variants of a pair of entities share the slots of that pair of entities, the rank of a pair among those of its
+        # combination giving its slot, since an environment carries one combination of each pair of entities.
+        combinations_n_pairs = np.bincount(pairs_combination_idx, minlength=n_combinations)
+        pairs_combination_order = np.argsort(pairs_combination_idx, kind="stable")
+        pairs_rank = np.empty_like(pairs_combination_idx)
+        pairs_rank[pairs_combination_order] = np.arange(len(pairs_rank)) - np.repeat(
+            np.cumsum(combinations_n_pairs) - combinations_n_pairs, combinations_n_pairs
+        )
+        entities_pairs_n_slots = entities_counts[:, 0].astype(gs.np_int)
+        entities_pairs_slot_start = np.cumsum(entities_pairs_n_slots) - entities_pairs_n_slots
+        pairs_slot = entities_pairs_slot_start[combinations_entities_idx[pairs_combination_idx]] + pairs_rank
+
         max_collision_pairs = min(self._solver.max_collision_pairs, n_env_pairs)
         # Size the contact buffer per regime: nonconvex pairs each emit up to n_contacts_per_nonconvex_pair, convex and
         # terrain pairs up to n_contacts_per_convex_pair. The worst case fills the capped pair budget with as many
@@ -837,6 +857,7 @@ class Collider:
         self.collider_info.max_collision_pairs_broad[None] = max_collision_pairs_broad
         self.collider_info.max_candidate_contacts[None] = max_candidate_contacts
         self.collider_info.max_contacts[None] = max_contacts
+        return pairs_slot, n_env_pairs
 
     def _init_terrain_state(self):
         if self.collider_config.has_terrain:

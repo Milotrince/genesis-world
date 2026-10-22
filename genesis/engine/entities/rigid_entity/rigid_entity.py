@@ -3424,6 +3424,28 @@ class RigidEntity(KinematicEntity):
         return tensor[0, 0] if self._solver.n_envs == 0 else tensor[..., 0]
 
     @gs.assert_built
+    def set_morph_variant(self, variants_idx, envs_idx=None):
+        """
+        Switch the morph variant that some environments carry, the primary morph being variant 0.
+
+        The switch takes effect at the next step. The configuration, the velocities and the controls of the entity are
+        kept, which requires the configuration to lie within the joint limits of the incoming variant. The pose of a
+        fixed base and the neutral configuration become those of the incoming variant, and a reset of these
+        environments starts from that neutral configuration. A state taken with 'scene.get_state' records the variants,
+        and restoring it switches them back. A restored checkpoint or trajectory frame brings the variants it records,
+        which a reset keeps likewise.
+
+        Parameters
+        ----------
+        variants_idx : int | array_like, shape (n_envs,)
+            The index of the variant in the morphs of the entity, one for every selected environment, or one per
+            environment of 'envs_idx'.
+        envs_idx : None | array_like, optional
+            The indices of the environments. If None, all environments will be considered. Defaults to None.
+        """
+        self._solver.set_morph_variant(variants_idx, self._idx_in_solver, envs_idx)
+
+    @gs.assert_built
     def get_mass(self, envs_idx=None):
         """
         Get the total mass of the entity, in kg.

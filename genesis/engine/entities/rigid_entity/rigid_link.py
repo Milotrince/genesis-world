@@ -256,6 +256,11 @@ class KinematicLink(RBC):
         return sum(joint.n_dofs for joint in self.joints)
 
     @property
+    def is_rotor(self) -> bool:
+        """Whether a motor could drive the link, which moves on its own through a single revolute or prismatic joint."""
+        return self.n_dofs == 1 and self.joints[0].type in (gs.JOINT_TYPE.REVOLUTE, gs.JOINT_TYPE.PRISMATIC)
+
+    @property
     def dof_start(self):
         """The index of the link's first degree of freedom (DOF) in the scene."""
         if not self.joints:
