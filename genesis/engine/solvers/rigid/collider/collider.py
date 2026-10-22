@@ -19,7 +19,11 @@ import quadrants as qd
 import genesis as gs
 import genesis.utils.array_class as array_class
 import genesis.utils.geom as gu
-from genesis.engine.solvers.rigid.abd.forward_kinematics import func_update_geom_aabbs
+from genesis.engine.solvers.rigid.abd.forward_kinematics import (
+    func_update_geom_aabbs,
+    kernel_forward_kinematics_links_geoms,
+)
+from genesis.engine.solvers.rigid.abd.misc import kernel_set_morph_variant
 from genesis.utils.misc import (
     assign_indexed_tensor,
     get_gpu_core_count,
@@ -197,6 +201,7 @@ class Collider:
             has_convex_specialization,
             has_nonconvex_nonterrain,
             self._large_contact_pair_mask,
+            self._geoms_variant_idx,
         ) = self._compute_collision_pair_idx()
 
         # The hull prune drops a contact only from a (link_a, link_b) bucket of at least 3 contacts, the middle one of 3
@@ -343,7 +348,9 @@ class Collider:
         if n_geoms == 0:
             empty_pairs = np.empty((0, 2), dtype=gs.np_int)
             empty_mask = np.zeros((0,), dtype=bool)
-            return 0, np.full((0, 0), -1, dtype=gs.np_int), empty_pairs, False, False, False, False, empty_mask
+            empty_idx = np.zeros((0,), dtype=gs.np_int)
+            empty_pair_idx = np.full((0, 0), -1, dtype=gs.np_int)
+            return 0, empty_pair_idx, empty_pairs, False, False, False, False, empty_mask, empty_idx
 
         # Links delegated to IPC coupler (skip pair only when BOTH are IPC-handled)
         ipc_delegated_link_idxs = set()
@@ -423,29 +430,11 @@ class Collider:
             is_weld = np.array([(link_min[i], link_max[i]) in weld_pairs for i in range(len(row))], dtype=bool)
             valid &= ~is_weld
 
-        # Heterogeneous variants that no environment carries together never collide, and keeping their pairs would
-        # grow the pair count quadratically with the pool size. An entity dispatches the same variant to all of its
-        # links in a given environment, so a pair is kept only if some environment carries the variant of both geoms.
-        # Each variant of every heterogeneous entity gets its own key, and the key 0 stands for every homogeneous geom.
-        geoms_variant_key = np.zeros((n_geoms,), dtype=gs.np_int)
-        entities_envs_variant_key = [np.zeros((self._solver._B,), dtype=gs.np_int)]
-        n_variant_keys = 1
-        if self._solver.variants_info is not None:
-            envs_variant_idx = qd_to_numpy(self._solver.variants_state.envs_variant, transpose=True)
-        for entity in self._solver.entities:
-            if not entity.is_heterogeneous:
-                continue
-            for link in entity.links:
-                for i_variant, (geom_start, geom_end) in enumerate(link._variant_geom_ranges):
-                    geoms_variant_key[geom_start:geom_end] = n_variant_keys + i_variant
-            entities_envs_variant_key.append(
-                n_variant_keys + envs_variant_idx[:, entity._variants_data.heterogeneous_idx]
-            )
-            n_variant_keys += entity._variants_data.n_variants
-        envs_variant_key = np.stack(entities_envs_variant_key)
-        variant_keys_is_co_carried = np.zeros((n_variant_keys, n_variant_keys), dtype=bool)
-        variant_keys_is_co_carried[envs_variant_key[:, None], envs_variant_key[None, :]] = True
-        valid &= variant_keys_is_co_carried[geoms_variant_key[row], geoms_variant_key[col]]
+        # An environment carries one variant of each heterogeneous entity, and a switch can change which one at runtime,
+        # so the pairs between variants of different entities are all kept. Only the pairs between two variants of the
+        # same entity are dropped, since no environment ever carries both.
+        geoms_variant_idx = np.array([geom.variant_idx for geom in geoms], dtype=gs.np_int)
+        valid &= ~same_entity | (geoms_variant_idx[row] == geoms_variant_idx[col])
 
         # --- Self-collision: adjacent and neutral overlap checks (Python loop, only same-root pairs) ---
         # These checks only apply when self_collision is enabled and the pair passed all vectorized filters
@@ -463,21 +452,68 @@ class Collider:
         if needs_neutral_check:
             self_root_indices = np.where(valid & same_root)[0]
             self_root_geom_idxs = np.unique(np.concatenate([row[self_root_indices], col[self_root_indices]]))
-            # Compute vertices only for geoms involved in self-collision pairs, shrunk by 0.1% to avoid false positive
-            # when detecting self-collision. The pose of a heterogeneous geom is only meaningful in the environments
-            # carrying its variant. The pair filter above leaves only variants that some environment carries, and every
+            # The pose of a heterogeneous geom is only meaningful in the environments carrying its variant. Every
             # same-root pair left belongs to a single variant of one entity, so the first environment carrying a geom
-            # carries the other geom of its pair as well.
+            # carries the other geom of its pair as well. Each variant that no environment carries at build is gathered
+            # alone into the first environment, in its neutral configuration, so that its pairs overlapping there are
+            # filtered out before a switch brings it in. The variants that environment carries are gathered back last.
+            geoms_env_idx = {}
+            variants_geoms_idx = {}
+            if self._solver.variants_info is not None:
+                envs_variant_idx = qd_to_numpy(self._solver.variants_state.envs_variant, transpose=True)
             for i_g in self_root_geom_idxs:
                 geom = geoms[i_g]
-                i_b = geom.active_envs_idx[0] if geom.active_envs_idx is not None else 0
-                env_idx = i_b if self._solver.n_envs > 0 else None
-                geom_pos = tensor_to_array(geom.get_pos(env_idx, relative=False).reshape((3,)))
-                geom_quat = tensor_to_array(geom.get_quat(env_idx, relative=False).reshape((4,)))
-                verts = gu.transform_by_trans_quat(geom.init_verts, geom_pos, geom_quat)
-                centroid = verts.mean(axis=0, keepdims=True)
-                verts = centroid + (1.0 - 1e-3) * (verts - centroid)
-                geoms_verts[i_g] = verts
+                geom_envs_idx = [0]
+                if geom.entity.is_heterogeneous:
+                    i_e = geom.entity._variants_data.heterogeneous_idx
+                    geom_envs_idx = np.flatnonzero(envs_variant_idx[:, i_e] == geom.variant_idx)
+                if len(geom_envs_idx) > 0:
+                    geoms_env_idx[i_g] = geom_envs_idx[0]
+                else:
+                    variants_geoms_idx.setdefault((geom.entity, geom.variant_idx), []).append(i_g)
+            rounds = [(None, list(geoms_env_idx))]
+            for (entity, i_v), geoms_idx in variants_geoms_idx.items():
+                rounds.append(([entity._variants_data.variant_start + i_v], geoms_idx))
+            if variants_geoms_idx:
+                entities = {entity for entity, _ in variants_geoms_idx}
+                variants_row = [
+                    entity._variants_data.variant_start + envs_variant_idx[0, entity._variants_data.heterogeneous_idx]
+                    for entity in entities
+                ]
+                rounds.append((variants_row, []))
+            envs_idx = self._solver._scene._envs_idx[:1]
+            for variants_row, geoms_idx in rounds:
+                # A gathered variant takes its neutral configuration, which every environment stands in at build
+                if variants_row is not None:
+                    kernel_set_morph_variant(
+                        envs_idx,
+                        np.array([variants_row], dtype=gs.np_int),
+                        self._solver.dyn_state,
+                        self._solver.variants_state,
+                        self._solver.dyn_info,
+                        self._solver.rigid_info,
+                        self._solver.variants_info,
+                        self._solver.rigid_config,
+                    )
+                    self._solver.rigid_info.qpos.from_numpy(qd_to_numpy(self._solver.rigid_info.qpos0, transpose=False))
+                    kernel_forward_kinematics_links_geoms(
+                        envs_idx,
+                        self._solver.dyn_state,
+                        self._solver.dyn_info,
+                        self._solver.rigid_info,
+                        self._solver.rigid_config,
+                    )
+                # Compute vertices only for geoms involved in self-collision pairs, shrunk by 0.1% to avoid false
+                # positive when detecting self-collision
+                for i_g in geoms_idx:
+                    geom = geoms[i_g]
+                    env_idx = geoms_env_idx.get(i_g, 0) if self._solver.n_envs > 0 else None
+                    geom_pos = tensor_to_array(geom.get_pos(env_idx, relative=False).reshape((3,)))
+                    geom_quat = tensor_to_array(geom.get_quat(env_idx, relative=False).reshape((4,)))
+                    verts = gu.transform_by_trans_quat(geom.init_verts, geom_pos, geom_quat)
+                    centroid = verts.mean(axis=0, keepdims=True)
+                    verts = centroid + (1.0 - 1e-3) * (verts - centroid)
+                    geoms_verts[i_g] = verts
 
         if needs_self_check:
             self_root_indices = np.where(valid & same_root)[0]
@@ -617,6 +653,7 @@ class Collider:
             has_convex_specialization,
             has_nonconvex_vs_nonterrain,
             large_contact_mask,
+            geoms_variant_idx,
         )
 
     def _compute_verts_connectivity(self):
@@ -701,21 +738,67 @@ class Collider:
             self.collider_info.vert_n_neighbors.from_numpy(vert_n_neighbors)
 
     def _init_max_contacts(self, n_possible_pairs, large_contact_pair_mask):
-        n_possible_nonconvex_pairs = int(np.count_nonzero(large_contact_pair_mask))
-        max_collision_pairs = min(self._solver.max_collision_pairs, n_possible_pairs)
+        cap_nonconvex = self.collider_config.n_contacts_per_nonconvex_pair
+        cap_convex = self.collider_config.n_contacts_per_convex_pair
+
+        # Every budget below is per environment, while the pair table is the union over the variants of the
+        # heterogeneous entities. An environment carries exactly one variant of each entity, and a switch can change
+        # which one, so the pairs it carries between two entities (or within one) are those of a single combination of
+        # their variants. A count summed over the carried pairs is therefore bounded by the sum, over the pairs of
+        # entities, of its largest value among their combinations of variants. The bound is attained by an environment
+        # whenever one variant of each entity maximizes all of its pairs of entities at once (for instance its variant
+        # with the most geoms), and it never grows with the number of variants. Without heterogeneous entities, each
+        # pair of entities has a single combination and the bound is the exact count.
+        geoms_entity_idx = np.array([geom.entity.idx for geom in self._solver.geoms], dtype=gs.np_int)
+        pairs_entity_idx = geoms_entity_idx[self._valid_collision_pairs]
+        pairs_order = np.argsort(pairs_entity_idx, axis=1)
+        pairs_combination = np.concatenate(
+            (
+                np.take_along_axis(pairs_entity_idx, pairs_order, axis=1),
+                np.take_along_axis(self._geoms_variant_idx[self._valid_collision_pairs], pairs_order, axis=1),
+            ),
+            axis=1,
+        )
+        combinations, pairs_combination_idx = np.unique(pairs_combination, axis=0, return_inverse=True)
+        entities_pairs, combinations_entities_idx = np.unique(combinations[:, :2], axis=0, return_inverse=True)
+        n_combinations = len(combinations)
+
+        # Contacts surviving link-pair pruning, counted per (link_a, link_b) pair for each combination of variants: see
+        # 'max_contacts' below
+        pairs_link_idx = np.sort(self._geoms_link_idx[self._valid_collision_pairs], axis=1)
+        pairs_link_pair = np.column_stack((pairs_combination_idx, pairs_link_idx))
+        link_pairs, pairs_link_pair_idx = np.unique(pairs_link_pair, axis=0, return_inverse=True)
+        pairs_n_contacts = np.where(large_contact_pair_mask, cap_nonconvex, cap_convex)
+        link_pairs_n_contacts = np.bincount(pairs_link_pair_idx, weights=pairs_n_contacts, minlength=len(link_pairs))
+        link_pairs_n_contacts_pruned = np.minimum(link_pairs_n_contacts, self._prune_max_contacts_per_link_pair)
+
+        combinations_counts = np.stack(
+            (
+                np.bincount(pairs_combination_idx, minlength=n_combinations),
+                np.bincount(pairs_combination_idx, weights=large_contact_pair_mask, minlength=n_combinations),
+                np.bincount(pairs_combination_idx, weights=~large_contact_pair_mask, minlength=n_combinations),
+                np.bincount(link_pairs[:, 0], weights=link_pairs_n_contacts_pruned, minlength=n_combinations),
+            ),
+            axis=1,
+        )
+        entities_counts = np.zeros((len(entities_pairs), 4), dtype=gs.np_float)
+        np.maximum.at(entities_counts, combinations_entities_idx, combinations_counts)
+        n_env_pairs, n_env_nonconvex_pairs, n_env_convex_pairs, n_env_contacts_pruned = entities_counts.sum(
+            axis=0
+        ).astype(gs.np_int)
+
+        max_collision_pairs = min(self._solver.max_collision_pairs, n_env_pairs)
         # Size the contact buffer per regime: nonconvex pairs each emit up to n_contacts_per_nonconvex_pair, convex and
         # terrain pairs up to n_contacts_per_convex_pair. The worst case fills the capped pair budget with as many
         # (larger-cap) nonconvex pairs as exist, then the rest with convex pairs. The budget of a nonconvex pair is
         # shared between its two vertex scans: the verification scan appends while the pair is under its cap and then
         # only displaces the pair's least-penetrating contact, so the cap holds regardless of the number of scans.
-        cap_nonconvex = self.collider_config.n_contacts_per_nonconvex_pair
-        cap_convex = self.collider_config.n_contacts_per_convex_pair
-        n_nonconvex = min(n_possible_nonconvex_pairs, max_collision_pairs)
-        n_convex = min(n_possible_pairs - n_possible_nonconvex_pairs, max_collision_pairs - n_nonconvex)
+        n_nonconvex = min(n_env_nonconvex_pairs, max_collision_pairs)
+        n_convex = min(n_env_convex_pairs, max_collision_pairs - n_nonconvex)
         max_candidate_contacts = n_nonconvex * cap_nonconvex + n_convex * cap_convex
-        # The broad phase reports each possible pair at most once per environment
+        # The broad phase reports each pair an environment carries at most once
         max_collision_pairs_broad = min(
-            max_collision_pairs * self._solver._options.multiplier_collision_broad_phase, n_possible_pairs
+            max_collision_pairs * self._solver._options.multiplier_collision_broad_phase, n_env_pairs
         )
 
         # Post-pruning contact budget for sizing the contact constraint buffers. The physical contact buffer must hold
@@ -734,15 +817,7 @@ class Collider:
             and not self._solver._requires_grad
             and self._solver._options.contact_pruning_tolerance is not None
         ):
-            geoms_link_idx = np.array([geom.link.idx for geom in self._solver.geoms], dtype=np.int64)
-            pairs_link_idx = geoms_link_idx[self._valid_collision_pairs]
-            pairs_key = self._solver.n_links * pairs_link_idx.min(axis=1) + pairs_link_idx.max(axis=1)
-            _, pairs_group_idx = np.unique(pairs_key, return_inverse=True)
-            pairs_n_contacts = np.where(large_contact_pair_mask, cap_nonconvex, cap_convex)
-            link_pairs_n_contacts = np.bincount(pairs_group_idx, weights=pairs_n_contacts)
-            max_contacts_pruned = np.minimum(link_pairs_n_contacts, self._prune_max_contacts_per_link_pair)
-            max_contacts_pruned_total = max(int(max_contacts_pruned.sum()), self._prune_max_contacts_floor)
-            max_contacts = min(max_contacts, max_contacts_pruned_total)
+            max_contacts = min(max_contacts, max(n_env_contacts_pruned, self._prune_max_contacts_floor))
 
         self.collider_info.max_possible_pairs[None] = n_possible_pairs
         self.collider_info.max_collision_pairs[None] = max_collision_pairs
