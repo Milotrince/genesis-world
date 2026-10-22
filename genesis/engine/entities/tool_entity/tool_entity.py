@@ -41,11 +41,12 @@ class ToolEntityDescription(VerticesDescription, EntityDescription):
     T_mesh_to_sdf: np.ndarray | None
 
     @classmethod
-    def resolve(cls, material, morph, surface, name):
+    def resolve(cls, material, morph, surface, name, options=None):
         """Load the mesh of a tool from its morph, fit it in a unit box centered at the origin, and scale it.
 
         The signed distance field is sampled on the normalized mesh at the resolution of the material, and its
-        transform from the mesh frame accounts for the scale of the morph.
+        transform from the mesh frame accounts for the scale of the morph. 'options' are the entity options the other
+        arguments were taken from, if any, kept as authored in the description.
         """
         mesh_orig = load_mesh(morph.file)
         scale = np.linalg.norm(mesh_orig.extents, ord=np.inf)
@@ -81,6 +82,7 @@ class ToolEntityDescription(VerticesDescription, EntityDescription):
             faces=mesh.faces.astype(gs.np_int, order="C", copy=False),
             sdf_voxels=sdf_voxels,
             T_mesh_to_sdf=T_mesh_to_sdf,
+            options=options,
         )
 
 

@@ -202,14 +202,21 @@ class PBDSolver(GravityMixin, TimeBasedMixin, Solver):
         return self.n_particles > 0
 
     def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, desc=None
+        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, options=None, desc=None
     ) -> PBD2DEntity | PBD3DEntity | PBDParticleEntity | PBDFreeParticleEntity:
         if desc is None:
             if isinstance(material, (PBD.Cloth, PBD.Elastic)):
-                desc = PBDMeshDescription.resolve(material, morph, surface, self._particle_size, name)
+                desc = PBDMeshDescription.resolve(material, morph, surface, self._particle_size, name, options)
             else:
                 desc = PBDEntityDescription.resolve(
-                    material, morph, surface, self._particle_size, name, self.boundary, has_skinning=False
+                    material,
+                    morph,
+                    surface,
+                    self._particle_size,
+                    name,
+                    self.boundary,
+                    has_skinning=False,
+                    options=options,
                 )
         assert isinstance(desc, PBDEntityDescription)
 

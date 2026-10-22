@@ -36,8 +36,12 @@ class PBDMeshDescription(PBDEntityDescription):
     elems_vol_rest: np.ndarray
 
     @classmethod
-    def resolve(cls, material, morph, surface, particle_size, name):
-        """Remesh the visual mesh of a cloth or an elastic entity placed at the morph pose, and build its topology."""
+    def resolve(cls, material, morph, surface, particle_size, name, options=None):
+        """Remesh the visual mesh of a cloth or an elastic entity placed at the morph pose, and build its topology.
+
+        'options' are the entity options the other arguments were taken from, if any, kept as authored in the
+        description.
+        """
         vmesh = cls.resolve_mesh(morph, surface)
         # The morph pose offset (e.g. an up-axis conversion) is composed onto the morph pose
         pos, quat = gu.transform_pos_quat_by_trans_quat(
@@ -99,6 +103,7 @@ class PBDMeshDescription(PBDEntityDescription):
             inner_edges_len_rest=inner_edges_len_rest,
             elems=elems,
             elems_vol_rest=elems_vol_rest,
+            options=options,
         )
 
 

@@ -144,11 +144,11 @@ class SPHSolver(GravityMixin, TimeBasedMixin, Solver):
         return self.n_particles > 0
 
     def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, desc=None
+        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, options=None, desc=None
     ) -> SPHEntity:
         if desc is None:
             desc = SPHEntityDescription.resolve(
-                material, morph, surface, self._particle_size, name, self.boundary, has_skinning=False
+                material, morph, surface, self._particle_size, name, self.boundary, has_skinning=False, options=options
             )
         assert isinstance(desc, SPHEntityDescription)
         entity = SPHEntity(scene=self.scene, solver=self, desc=desc, idx=idx, particle_start=self.n_particles)

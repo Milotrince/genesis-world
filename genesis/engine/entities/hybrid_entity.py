@@ -63,10 +63,11 @@ class HybridEntityDescription(EntityDescription):
     association: HybridAssociationDescription | None
 
     @classmethod
-    def resolve(cls, scene, material, morph, surface, name):
+    def resolve(cls, scene, material, morph, surface, name, options=None):
         """Add both parts of a hybrid entity to the scene and associate the soft particles with the rigid links.
 
-        The instantiation callbacks of the material run here, so the description holds what they returned.
+        The instantiation callbacks of the material run here, so the description holds what they returned. 'options'
+        are the entity options the other arguments were taken from, if any, kept as authored in the description.
         """
         material_rigid = material.material_rigid
         # The association sets the muscle groups of the soft material, so each hybrid entity takes its own copy
@@ -159,6 +160,7 @@ class HybridEntityDescription(EntityDescription):
             rigid_entity_idx=part_rigid.idx,
             soft_entity_idx=part_soft.idx,
             association=association,
+            options=options,
         )
 
 

@@ -245,7 +245,7 @@ class MPMSolver(GravityMixin, TimeBasedMixin, Solver):
         return self.n_particles > 0
 
     def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, desc=None
+        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, options=None, desc=None
     ) -> MPMEntity:
         if desc is None:
             desc = MPMEntityDescription.resolve(
@@ -256,6 +256,7 @@ class MPMSolver(GravityMixin, TimeBasedMixin, Solver):
                 name,
                 self.boundary,
                 has_skinning=not isinstance(material, (MPM.Liquid, MPM.Sand, MPM.Snow)),
+                options=options,
             )
         assert isinstance(desc, MPMEntityDescription)
         self.add_material(desc.material)

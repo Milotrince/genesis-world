@@ -52,11 +52,12 @@ class ParticleEntityDescription(VerticesDescription, EntityDescription):
         return None
 
     @classmethod
-    def resolve(cls, material, morph, surface, particle_size, name, boundary, *, has_skinning):
+    def resolve(cls, material, morph, surface, particle_size, name, boundary, *, has_skinning, options=None):
         """Sample the particles of an entity from its morph, and place them and its visual mesh at the morph pose.
 
         The particles must lie inside 'boundary', and the visual vertices and faces are kept for skinning when
-        'has_skinning' is set.
+        'has_skinning' is set. 'options' are the entity options the other arguments were taken from, if any, kept as
+        authored in the description.
         """
         sampler = material.sampler
         match sampler.split("-"):
@@ -143,6 +144,7 @@ class ParticleEntityDescription(VerticesDescription, EntityDescription):
             vverts=vverts,
             vfaces=vfaces,
             mesh_set_group_ids=mesh_set_group_ids,
+            options=options,
         )
 
 

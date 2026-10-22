@@ -303,11 +303,11 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
         return self.n_elements > 0
 
     def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, desc=None
+        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, options=None, desc=None
     ) -> "FEMEntity":
         if desc is None:
             desc = FEMEntityDescription.resolve(
-                material, morph, surface, name, has_pressure=isinstance(self.sim.coupler, SAPCoupler)
+                material, morph, surface, name, has_pressure=isinstance(self.sim.coupler, SAPCoupler), options=options
             )
         assert isinstance(desc, FEMEntityDescription)
 
