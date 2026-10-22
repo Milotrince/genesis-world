@@ -17,7 +17,7 @@ Genesis/
 │   │   │   ├── fem_solver.py  # Finite Element Method
 │   │   │   ├── pbd_solver.py  # Position Based Dynamics
 │   │   │   └── sf_solver.py   # Stable Fluid
-│   │   ├── materials/         # Material definitions per solver
+│   │   ├── materials/         # Physical laws, independent of the solver
 │   │   └── couplers/          # Inter-solver coupling
 │   ├── options/               # Configuration classes (Pydantic models)
 │   │   ├── morphs.py          # Shape definitions (Box, Mesh, URDF, MJCF)
@@ -83,25 +83,28 @@ Location: `genesis/options/morphs.py`
 
 ## Materials
 
-Materials define physical properties. Each entity options class admits the materials of its own family.
+A material states a physical law and its parameters, whichever solver simulates it. Each entity options class admits the materials its solver simulates, and the numerical choices of that solver for the entity go in its `solver_options`. A material field left to None takes the default of the solver, which each entity options class states once (such as `FEMEntityOptions.material_params`), and the entity options raise on a field their solver cannot honour.
 
 ```python
-gs.materials.Rigid(rho=1000)
-gs.materials.MPM.Elastic(E=1e5, nu=0.3)
-gs.materials.SPH.Liquid(sampler="pbs")
-gs.materials.PBD.Cloth(stretch_compliance=0.0)
+gs.materials.Material(density=1000)
+gs.materials.Elastic(youngs_modulus=1e5, poisson_ratio=0.3)
+gs.materials.Liquid(viscosity=0.01)
+gs.materials.Cloth(thickness=0.001)
 ```
+
+The FEM and MPM solvers bind one constitutive law per distinct law key, made of the material class and the parameters of its law (`genesis/engine/constitutive/`).
 
 Location: `genesis/engine/materials/`
 
 ## Entity options
 
-An entity is constructed from typed options, whose class decides the kind of entity and the solver simulating it: each class names the options class of its solver (`EntityOptions.scene_solver_options_cls`). The flattened arguments of `Scene.add_entity` are a shorthand for `RigidEntityOptions`, so the material never changes the kind of entity.
+An entity is constructed from typed options, whose class decides the kind of entity and the solver simulating it: each class names the scene options class of its solver (`EntityOptions.scene_solver_options_cls`), and holds the options of that solver specific to the entity (`solver_options`, such as `gs.options.MPMEntitySolverOptions`). The flattened arguments of `Scene.add_entity` are a shorthand for `RigidEntityOptions`, so the material never changes the kind of entity.
 
 ```python
 scene.add_entity(gs.morphs.Box(size=(0.1, 0.1, 0.1)))  # rigid
 scene.add_entity(options=gs.options.KinematicEntityOptions(morph=gs.morphs.Box(size=(0.1, 0.1, 0.1))))
-scene.add_entity(options=gs.options.MPMEntityOptions(morph=gs.morphs.Box(size=(0.1, 0.1, 0.1)), material=gs.materials.MPM.Elastic()))
+scene.add_entity(options=gs.options.MPMEntityOptions(morph=gs.morphs.Box(size=(0.1, 0.1, 0.1)), material=gs.materials.Elastic()))
+scene.add_entity(options=gs.options.SPHEntityOptions(morph=gs.morphs.Box(size=(0.1, 0.1, 0.1)), solver_options=gs.options.SPHEntitySolverOptions(sampler="pbs")))
 ```
 
 Location: `genesis/options/entities.py`
@@ -143,7 +146,7 @@ The build phases are:
 
 A range record holds the aggregate record it indexes and its ranges into it. A tool entity holds fields of its own, so its `ToolEntityData` holds them in place of ranges. Checkpoint iteration includes each shared allocation once. A visual geometry pose is refreshed by `update_vgeoms()` before reading its state directly.
 
-Every entity is created from its `EntityDescription`: the solver resolves the description in `add_entity` when the caller passes none, and `Scene.export` writes it. A description declares its material as the base material of its solver, such as `FEM.Base`, so a material name read from a scene file resolves among the materials of that solver.
+Every entity is created from its `EntityDescription`: the solver resolves the description in `add_entity` when the caller passes none, and `Scene.export` writes it. A description declares the materials its family admits, such as `Elastic | Cloth | Muscle`, and the name of every material class is unique, so a material name read from a scene file names exactly one class.
 
 ## Key Files Reference
 

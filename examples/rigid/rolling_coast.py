@@ -67,7 +67,7 @@ def main():
     # at its own rate.
     scene.add_entity(
         gs.morphs.Plane(),
-        material=gs.materials.Rigid(
+        material=gs.materials.Material(
             friction_torsional=0.0,
             friction_rolling=0.0,
         ),
@@ -78,7 +78,7 @@ def main():
                 file=checkered_ball_mjcf(),
                 pos=(0.0, 0.6 * i_ball, RADIUS),
             ),
-            material=gs.materials.Rigid(
+            material=gs.materials.Material(
                 friction_rolling=friction_rolling,
             ),
         )

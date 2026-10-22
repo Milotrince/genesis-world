@@ -32,8 +32,8 @@ def main():
         gs.morphs.URDF(file="urdf/plane/plane.urdf", fixed=True),
     )
     bottle = scene.add_entity(
-        material=gs.materials.Rigid(
-            rho=300,
+        material=gs.materials.Material(
+            density=300,
         ),
         morph=gs.morphs.URDF(
             file="urdf/3763/mobility_vhacd.urdf",
