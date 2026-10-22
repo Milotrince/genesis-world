@@ -400,6 +400,7 @@ class KinematicSolver(Solver):
                     n_joints_=max(1, n_joints),
                     n_dofs_=max(1, n_dofs),
                     n_qs_=max(1, n_qs),
+                    is_dynamic=self._data_description.is_dynamic,
                 ),
             )
             self.variants_info = variants_data.info
@@ -732,6 +733,7 @@ class KinematicSolver(Solver):
                 self.rigid_info,
                 self.variants_info,
                 self.rigid_config,
+                is_dynamic=self._data_description.is_dynamic,
             )
 
         if self.n_qs > 0:
@@ -773,15 +775,12 @@ class KinematicSolver(Solver):
         vgeoms_offset_pos = np.zeros((self.n_vgeoms, 3), dtype=gs.np_float)
         vgeoms_offset_quat = np.tile(gu.identity_quat(), (self.n_vgeoms, 1))
         if links_offset_per_env:
-            envs_variant_idx = qd_to_numpy(self.variants_state.envs_variant, transpose=True)
             variants_offset_pos = qd_to_numpy(self.variants_info.variants_offset_pos)
             variants_offset_quat = qd_to_numpy(self.variants_info.variants_offset_quat)
         for entity in self._entities:
+            # The base link of a heterogeneous entity takes the offset of the variant each environment carries once the
+            # tensors are allocated (see '_update_links_offset')
             if links_offset_per_env and entity.is_heterogeneous:
-                i_e = entity._variants_data.heterogeneous_idx
-                envs_variant_row = entity._variants_data.variant_start + envs_variant_idx[:, i_e]
-                links_offset_pos[:, entity.base_link_idx] = variants_offset_pos[envs_variant_row]
-                links_offset_quat[:, entity.base_link_idx] = variants_offset_quat[envs_variant_row]
                 vgeoms_ranges = entity.base_link._variant_vgeom_ranges
             else:
                 # Each root link carries its own offset; children inherit it through the kinematic chain and stay
@@ -801,6 +800,17 @@ class KinematicSolver(Solver):
         if links_offset_per_env:
             self._links_offset_quat_is_identity = self._links_offset_quat_is_identity.all(axis=0)
             self._links_offset_pos_is_identity = self._links_offset_pos_is_identity.all(axis=0)
+            # A switch of variant can bring the offset of any variant to a base link (see '_update_links_offset')
+            for entity in self._entities:
+                if entity.is_heterogeneous:
+                    variant_start = entity._variants_data.variant_start
+                    variants_slice = slice(variant_start, variant_start + entity._variants_data.n_variants)
+                    self._links_offset_quat_is_identity[entity.base_link_idx] &= np.isclose(
+                        gu.quat_to_xyz(variants_offset_quat[variants_slice]), 0.0, atol=gs.EPS
+                    ).all()
+                    self._links_offset_pos_is_identity[entity.base_link_idx] &= np.isclose(
+                        variants_offset_pos[variants_slice], 0.0, atol=gs.EPS
+                    ).all()
         # The link offset tensors are allocated even when every link is identity, so the getter kernels can take them
         # unconditionally.
         self._links_offset_pos = torch.from_numpy(links_offset_pos).to(device=gs.device, dtype=gs.tc_float)
@@ -812,6 +822,19 @@ class KinematicSolver(Solver):
         ):
             self._vgeoms_offset_pos = torch.from_numpy(vgeoms_offset_pos).to(device=gs.device, dtype=gs.tc_float)
             self._vgeoms_offset_quat = torch.from_numpy(vgeoms_offset_quat).to(device=gs.device, dtype=gs.tc_float)
+        self._update_links_offset(self._scene._envs_idx)
+
+    def _update_links_offset(self, envs_idx):
+        """Gather the base-link offsets of the variants that some environments carry into the per-env link offsets."""
+        if self._links_offset_pos.ndim < 3:
+            return
+        entities = [entity for entity in self._entities if entity.is_heterogeneous]
+        base_links_idx = torch.tensor([entity.base_link_idx for entity in entities], device=gs.device)
+        variants_start = qd_to_torch(self.variants_info.entities_variant_start)
+        variants_row = variants_start + qd_to_torch(self.variants_state.envs_variant, envs_idx, transpose=True)
+        links_mask = (envs_idx[:, None], base_links_idx)
+        self._links_offset_pos[links_mask] = qd_to_torch(self.variants_info.variants_offset_pos)[variants_row]
+        self._links_offset_quat[links_mask] = qd_to_torch(self.variants_info.variants_offset_quat)[variants_row]
 
     def _init_variant_fields(self):
         """Fill the model of every variant of the heterogeneous entities (see VariantsInfo).
@@ -903,6 +926,17 @@ class KinematicSolver(Solver):
             )
             self.variants_info.joints_sol_params.from_numpy(self._sanitize_joint_sol_params(joints_sol_params))
         if variants_n_rows[:, 2].any():
+            # The variants of a dynamic solver carry the default rotor inertia their morph states (see
+            # 'KinematicVariantDescription') in place of a missing armature, so that a switch of variant brings it along
+            dofs_armature = []
+            for entity in entities:
+                for variant, links in zip(entity.desc.variants, entity.desc.variants_links):
+                    for link, l_desc in zip(entity.links, links):
+                        for j_desc in l_desc.joints:
+                            joint_dofs_armature = np.array(j_desc.dofs_armature, dtype=gs.np_float)
+                            if self._data_description.is_dynamic and link.is_rotor:
+                                joint_dofs_armature[joint_dofs_armature <= 0.0] = variant.default_armature or 0.0
+                            dofs_armature.append(joint_dofs_armature)
             for field, dofs_value in (
                 (self.variants_info.dofs_motion_ang, [j_desc.dofs_motion_ang for j_desc in joints_desc]),
                 (self.variants_info.dofs_motion_vel, [j_desc.dofs_motion_vel for j_desc in joints_desc]),
@@ -910,7 +944,7 @@ class KinematicSolver(Solver):
                 (self.variants_info.dofs_stiffness, [j_desc.dofs_stiffness for j_desc in joints_desc]),
                 (self.variants_info.dofs_damping, [j_desc.dofs_damping for j_desc in joints_desc]),
                 (self.variants_info.dofs_frictionloss, [j_desc.dofs_frictionloss for j_desc in joints_desc]),
-                (self.variants_info.dofs_armature, [j_desc.dofs_armature for j_desc in joints_desc]),
+                (self.variants_info.dofs_armature, dofs_armature),
                 (self.variants_info.dofs_act_gain, [j_desc.dofs_act_gain for j_desc in joints_desc]),
                 (self.variants_info.dofs_act_bias, [j_desc.dofs_act_bias for j_desc in joints_desc]),
                 (self.variants_info.dofs_force_range, [j_desc.dofs_force_range for j_desc in joints_desc]),

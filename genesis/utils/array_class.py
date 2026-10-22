@@ -1346,6 +1346,9 @@ def get_sort_buffer(solver):
 
 @dataclasses.dataclass(eq=True, kw_only=False, frozen=True)
 class ContactCache:
+    """The contact of the last step of every geom pair an environment carries, at the slot that 'collision_pair_idx'
+    gives the pair (see Collider._init_pair_budgets_and_slots)."""
+
     kind: ClassVar[DataKind] = DataKind.STATE
 
     normal: qd.Tensor
@@ -1353,9 +1356,9 @@ class ContactCache:
     penetration: qd.Tensor
 
 
-def get_contact_cache(solver, n_possible_pairs, active):
+def get_contact_cache(solver, n_pair_slots, active):
     # Only the convex-convex detection reads the cache, so the other scenes keep it empty
-    shape = maybe_shape((max(n_possible_pairs, 1), solver._B), active)
+    shape = maybe_shape((max(n_pair_slots, 1), solver._B), active)
     return ContactCache(
         normal=V_VEC(3, dtype=gs.qd_float, shape=shape),
         penetration=V(dtype=gs.qd_float, shape=shape),
@@ -1452,14 +1455,12 @@ class ColliderState:
     contact_lex_idx: qd.Tensor
 
 
-def get_collider_state(
-    solver, rigid_config, n_possible_pairs, collider_info, collider_static_config, split_narrowphase
-):
+def get_collider_state(solver, rigid_config, n_pair_slots, collider_info, collider_static_config, split_narrowphase):
     _B = solver._B
     n_links = solver.n_links_
     n_valid_link_pairs = collider_info.n_valid_link_pairs[None]
-    # Collider._init_max_contacts, which runs before this, sizes the contacts per regime (convex vs nonconvex) and the
-    # broad phase candidates within the possible pairs.
+    # Collider._init_pair_budgets_and_slots, which runs before this, sizes the contacts per regime (convex vs
+    # nonconvex) and the broad phase candidates within the possible pairs.
     max_collision_pairs_broad = collider_info.max_collision_pairs_broad[None]
     max_candidate_contacts = max(collider_info.max_candidate_contacts[None], 1)
     requires_grad = rigid_config.requires_grad
@@ -1502,9 +1503,7 @@ def get_collider_state(
         n_contacts=V(dtype=gs.qd_int, shape=(_B,)),
         n_contacts_hibernated=V(dtype=gs.qd_int, shape=(_B,)),
         first_time=V(dtype=gs.qd_bool, shape=(_B,)),
-        contact_cache=get_contact_cache(
-            solver, n_possible_pairs, collider_static_config.has_non_box_plane_convex_convex
-        ),
+        contact_cache=get_contact_cache(solver, n_pair_slots, collider_static_config.has_non_box_plane_convex_convex),
         broad_collision_pairs=V_VEC(2, dtype=gs.qd_int, shape=(max(max_collision_pairs_broad, 1), _B)),
         contact_data=get_contact_data(solver, max_candidate_contacts, requires_grad),
         diff_contact_input=get_diff_contact_input(_B, max(max_candidate_contacts, 1), True, requires_grad),
@@ -2165,7 +2164,7 @@ class ColliderInfo:
     vert_neighbor_start: qd.Tensor
     vert_n_neighbors: qd.Tensor
     verts_spatial_grid: VertsSpatialGrid
-    # (i_ga, i_gb) -> dense pair index, or -1 if invalid. Used by the broadphase, the narrowphase and the contact cache.
+    # (i_ga, i_gb) -> slot of the pair in the contact cache (see ContactCache), or -1 if invalid.
     collision_pair_idx: qd.Tensor
     # (i_la, i_lb) -> index into valid_link_pairs, or -1 if no geom pair between the two links is valid
     link_pair_idx: qd.Tensor
@@ -3028,6 +3027,7 @@ def get_variants_info(description):
     entities_shape = (description.n_entities_,)
     variants_shape = (description.n_variants_,)
     links_shape = (description.n_links_,)
+    dynamic_links_shape = (description.n_links_ if description.is_dynamic else 1,)
     joints_shape = (description.n_joints_,)
     dofs_shape = (description.n_dofs_,)
 
@@ -3050,14 +3050,14 @@ def get_variants_info(description):
         variants_offset_quat=V(dtype=gs.qd_vec4, shape=variants_shape),
         links_pos=V(dtype=gs.qd_vec3, shape=links_shape),
         links_quat=V(dtype=gs.qd_vec4, shape=links_shape),
-        links_geom_start=V(dtype=gs.qd_int, shape=links_shape),
-        links_geom_end=V(dtype=gs.qd_int, shape=links_shape),
+        links_geom_start=V(dtype=gs.qd_int, shape=dynamic_links_shape),
+        links_geom_end=V(dtype=gs.qd_int, shape=dynamic_links_shape),
         links_vgeom_start=V(dtype=gs.qd_int, shape=links_shape),
         links_vgeom_end=V(dtype=gs.qd_int, shape=links_shape),
-        links_inertial_pos=V(dtype=gs.qd_vec3, shape=links_shape),
-        links_inertial_quat=V(dtype=gs.qd_vec4, shape=links_shape),
-        links_inertial_i=V(dtype=gs.qd_mat3, shape=links_shape),
-        links_inertial_mass=V(dtype=gs.qd_float, shape=links_shape),
+        links_inertial_pos=V(dtype=gs.qd_vec3, shape=dynamic_links_shape),
+        links_inertial_quat=V(dtype=gs.qd_vec4, shape=dynamic_links_shape),
+        links_inertial_i=V(dtype=gs.qd_mat3, shape=dynamic_links_shape),
+        links_inertial_mass=V(dtype=gs.qd_float, shape=dynamic_links_shape),
         joints_pos=V(dtype=gs.qd_vec3, shape=joints_shape),
         joints_sol_params=V(dtype=gs.qd_vec7, shape=joints_shape),
         dofs_motion_ang=V(dtype=gs.qd_vec3, shape=dofs_shape),

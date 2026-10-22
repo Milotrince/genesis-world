@@ -26,7 +26,10 @@ class VariantsEntityData(SystemData):
 @dataclass(frozen=True, kw_only=True)
 class VariantsDescription(SystemDataDescription[VariantsData]):
     """Counts summed over every variant of every heterogeneous entity, a zero count of joints, dofs or qs padded to
-    one entry."""
+    one entry.
+
+    A kinematic solver has neither collision geoms nor inertial values, so their tables hold one padding entry.
+    """
 
     _B: int
     n_entities_: int
@@ -35,6 +38,7 @@ class VariantsDescription(SystemDataDescription[VariantsData]):
     n_joints_: int
     n_dofs_: int
     n_qs_: int
+    is_dynamic: bool
 
     def allocate(self, owner) -> VariantsData:
         return VariantsData(
