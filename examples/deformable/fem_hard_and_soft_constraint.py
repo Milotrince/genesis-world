@@ -47,10 +47,12 @@ def main():
                 pos=SCENE_POS + np.array([-0.3, -0.3, 0]),
                 radius=0.1,
             ),
-            material=gs.materials.FEM.Elastic(
-                E=1.0e4,
-                nu=0.45,
-                rho=1000.0,
+            material=gs.materials.Elastic(
+                density=1000.0,
+                youngs_modulus=1.0e4,
+                poisson_ratio=0.45,
+            ),
+            solver_options=gs.options.FEMEntitySolverOptions(
                 model="linear_corotated",
             ),
         ),
@@ -62,10 +64,12 @@ def main():
                 pos=SCENE_POS + np.array([0.3, 0.3, 0]),
                 size=(0.2, 0.2, 0.2),
             ),
-            material=gs.materials.FEM.Elastic(
-                E=1.0e6,
-                nu=0.45,
-                rho=1000.0,
+            material=gs.materials.Elastic(
+                density=1000.0,
+                youngs_modulus=1.0e6,
+                poisson_ratio=0.45,
+            ),
+            solver_options=gs.options.FEMEntitySolverOptions(
                 model="linear_corotated",
             ),
         ),

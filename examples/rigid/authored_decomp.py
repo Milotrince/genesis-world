@@ -55,8 +55,8 @@ def main():
             pos=(0.0, 0.0, BASE_HEIGHT / 2),
             file_meshes_are_zup=True,
         ),
-        material=gs.materials.Rigid(
-            rho=600.0,
+        material=gs.materials.Material(
+            density=600.0,
         ),
         vis_mode="collision" if args.debug else "visual",
         visualize_contact=False,
@@ -74,8 +74,8 @@ def main():
             surface=gs.surfaces.Default(
                 color=RING_COLORS[ring_idx],
             ),
-            material=gs.materials.Rigid(
-                rho=600.0,
+            material=gs.materials.Material(
+                density=600.0,
             ),
             vis_mode="collision" if args.debug else "visual",
             visualize_contact=args.debug,
@@ -89,8 +89,8 @@ def main():
             pos=(0.0, 0.0, height + BALL_HEIGHT),
             file_meshes_are_zup=True,
         ),
-        material=gs.materials.Rigid(
-            rho=600.0,
+        material=gs.materials.Material(
+            density=600.0,
         ),
         vis_mode="collision" if args.debug else "visual",
         visualize_contact=False,

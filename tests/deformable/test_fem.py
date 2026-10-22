@@ -31,7 +31,7 @@ def test_interior_tetrahedralized_vertex(cube_verts_and_faces, box_obj_path, sho
                 verbose=1,
                 maxvolume=0.01,
             ),
-            material=gs.materials.FEM.Muscle(),
+            material=gs.materials.Muscle(),
         ),
     )
     scene.build()
@@ -108,7 +108,7 @@ def test_multi_submesh_render_decoupling(n_envs, show_viewer):
                 file="meshes/trashbag_rope.glb",
                 group_by_material=True,
             ),
-            material=gs.materials.FEM.Cloth(),
+            material=gs.materials.Cloth(),
         ),
     )
     scene.build(n_envs=n_envs)
@@ -142,7 +142,7 @@ def test_maxvolume(box_obj_path, show_viewer):
                 nobisect=False,
                 verbose=1,
             ),
-            material=gs.materials.FEM.Muscle(),
+            material=gs.materials.Muscle(),
         ),
     )
 
@@ -155,7 +155,7 @@ def test_maxvolume(box_obj_path, show_viewer):
                 maxvolume=0.01,
                 verbose=1,
             ),
-            material=gs.materials.FEM.Muscle(),
+            material=gs.materials.Muscle(),
         ),
     )
 
@@ -178,7 +178,7 @@ def test_offset_pos(box_obj_path, tmp_path, show_viewer):
                 pos=POS,
                 offset_pos=OFFSET_POS,
             ),
-            material=gs.materials.FEM.Elastic(),
+            material=gs.materials.Elastic(),
         ),
     )
     scene.add_entity(
@@ -187,7 +187,7 @@ def test_offset_pos(box_obj_path, tmp_path, show_viewer):
                 file=box_obj_path,
                 pos=POS,
             ),
-            material=gs.materials.FEM.Elastic(),
+            material=gs.materials.Elastic(),
         ),
     )
     # The offset is resolved into the simulation mesh that the scene file holds
@@ -195,7 +195,7 @@ def test_offset_pos(box_obj_path, tmp_path, show_viewer):
     scene.export(exported)
     scene = gs.Scene.load(exported, show_viewer=show_viewer)
     box, box_no_offset = scene.entities
-    assert isinstance(box.material, gs.materials.FEM.Elastic)
+    assert isinstance(box.material, gs.materials.Elastic)
     scene.build()
 
     offset = box.get_state().pos - box_no_offset.get_state().pos
@@ -241,9 +241,11 @@ def test_implicit_falling_sphere_box(coupler_type, material_model, show_viewer):
                 pos=(0.4, -0.1, 0.10),
                 radius=SPHERE_RADIUS,
             ),
-            material=gs.materials.FEM.Elastic(
-                E=1e5,
-                rho=SPHERE_RHO,
+            material=gs.materials.Elastic(
+                density=SPHERE_RHO,
+                youngs_modulus=1e5,
+            ),
+            solver_options=gs.options.FEMEntitySolverOptions(
                 model=material_model,
             ),
         ),
@@ -254,7 +256,7 @@ def test_implicit_falling_sphere_box(coupler_type, material_model, show_viewer):
                 size=(BOX_SIZE * 2, BOX_SIZE * 2, BOX_SIZE * 2),
                 pos=BOX_POS,
             ),
-            material=gs.materials.FEM.Elastic(),
+            material=gs.materials.Elastic(),
         ),
     )
 
@@ -339,10 +341,12 @@ def test_hard_constraint(use_implicit_solver, show_viewer):
                 pos=(-0.5, 0.0, HEIGHT + BOX_SIZE / 2),
                 size=(BOX_SIZE, BOX_SIZE, BOX_SIZE),
             ),
-            material=gs.materials.FEM.Elastic(
-                E=1e5,
-                nu=0.45,
-                rho=1000.0,
+            material=gs.materials.Elastic(
+                density=1000.0,
+                youngs_modulus=1e5,
+                poisson_ratio=0.45,
+            ),
+            solver_options=gs.options.FEMEntitySolverOptions(
                 model="linear_corotated" if use_implicit_solver else "stable_neohookean",
             ),
         ),
@@ -353,10 +357,12 @@ def test_hard_constraint(use_implicit_solver, show_viewer):
                 pos=(-BOX_SIZE / 2, BOX_SIZE / 2 + MOTION_RADIUS, HEIGHT + BOX_SIZE / 2),
                 size=(BOX_SIZE, BOX_SIZE, BOX_SIZE),
             ),
-            material=gs.materials.FEM.Elastic(
-                E=1e5,
-                nu=0.45,
-                rho=1000.0,
+            material=gs.materials.Elastic(
+                density=1000.0,
+                youngs_modulus=1e5,
+                poisson_ratio=0.45,
+            ),
+            solver_options=gs.options.FEMEntitySolverOptions(
                 model="linear_corotated" if use_implicit_solver else "stable_neohookean",
             ),
         ),
@@ -367,7 +373,6 @@ def test_hard_constraint(use_implicit_solver, show_viewer):
             size=(BOX_SIZE, BOX_SIZE, BOX_SIZE),
             fixed=True,
         ),
-        material=gs.materials.Rigid(),
     )
     scene.build(n_envs=2)
 
@@ -495,11 +500,12 @@ def test_explicit_legacy_coupler_soft_constraint_box(show_viewer):
                 size=(BOX_SIZE, BOX_SIZE, BOX_SIZE),
                 pos=(0.0, 0.0, 0.0),
             ),
-            material=gs.materials.FEM.Elastic(
-                rho=1.0 / BOX_SIZE**3,  # Unit mass
-            ),
             surface=gs.surfaces.Default(
                 color=(1, 1, 1, 0.5),
+            ),
+            material=gs.materials.Elastic(
+                # Unit mass
+                density=1.0 / BOX_SIZE**3,
             ),
         ),
     )
@@ -552,8 +558,10 @@ def test_implicit_sap_coupler_collide_sphere_box(show_viewer):
                 pos=(0.0, 0.0, SPHERE_RADIUS),
                 radius=SPHERE_RADIUS,
             ),
-            material=gs.materials.FEM.Elastic(
-                friction_mu=1.0,
+            material=gs.materials.Elastic(
+                friction=1.0,
+            ),
+            solver_options=gs.options.FEMEntitySolverOptions(
                 model="linear_corotated",
             ),
         ),
@@ -566,10 +574,12 @@ def test_implicit_sap_coupler_collide_sphere_box(show_viewer):
                 pos=(0.0, 0.0, 2 * SPHERE_RADIUS + BOX_SIZE),
                 scale=BOX_SIZE,
             ),
-            material=gs.materials.FEM.Elastic(
-                E=1e4,
-                rho=50.0,
-                friction_mu=1.0,
+            material=gs.materials.Elastic(
+                density=50.0,
+                friction=1.0,
+                youngs_modulus=1e4,
+            ),
+            solver_options=gs.options.FEMEntitySolverOptions(
                 model="linear_corotated",
             ),
         ),
@@ -629,10 +639,12 @@ def test_implicit_sap_coupler_hard_constraint_and_collision(show_viewer):
                 pos=(-BOX_SIZE / 2, BOX_SIZE / 2 + MOTION_RADIUS, HEIGHT + BOX_SIZE / 2),
                 size=(BOX_SIZE, BOX_SIZE, BOX_SIZE),
             ),
-            material=gs.materials.FEM.Elastic(
-                E=1e5,
-                nu=0.45,
-                rho=1000.0,
+            material=gs.materials.Elastic(
+                density=1000.0,
+                youngs_modulus=1e5,
+                poisson_ratio=0.45,
+            ),
+            solver_options=gs.options.FEMEntitySolverOptions(
                 model="linear_corotated",
             ),
         ),
@@ -643,7 +655,8 @@ def test_implicit_sap_coupler_hard_constraint_and_collision(show_viewer):
                 pos=(MOTION_RADIUS + BOX_SIZE, -SPHERE_RADIUS, HEIGHT - BOX_SIZE / 2),
                 radius=SPHERE_RADIUS,
             ),
-            material=gs.materials.FEM.Elastic(
+            material=gs.materials.Elastic(),
+            solver_options=gs.options.FEMEntitySolverOptions(
                 model="linear_corotated",
             ),
         ),
