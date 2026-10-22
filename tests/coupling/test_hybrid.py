@@ -168,6 +168,63 @@ def test_rigid_mpm_legacy_coupling(substeps, tol, show_viewer):
     assert_allclose(obj_rigid.get_pos(), pos, tol=tol)
 
 
+@pytest.mark.required
+def test_particles_collide_with_carried_variant_alone(show_viewer):
+    DT = 2e-3
+    N_STEPS = 60
+    BOX_HEIGHT = 0.2
+
+    scene = gs.Scene(
+        sim_options=gs.options.SimOptions(
+            dt=DT,
+            substeps=10,
+            gravity=(0.0, 0.0, -9.81),
+        ),
+        mpm_options=gs.options.MPMOptions(
+            lower_bound=(-0.5, -0.5, 0.0),
+            upper_bound=(0.5, 0.5, 1.0),
+        ),
+        viewer_options=gs.options.ViewerOptions(
+            camera_pos=(0.0, -1.5, 0.6),
+            camera_lookat=(0.0, 0.0, 0.2),
+        ),
+        show_viewer=show_viewer,
+    )
+    scene.add_entity(gs.morphs.Plane())
+    # Environment 0 carries the narrow box, which the blob misses, and environment 1 the wide box, which stops it
+    scene.add_entity(
+        morph=(
+            gs.morphs.Box(
+                size=(0.05, 0.05, BOX_HEIGHT),
+                pos=(0.0, 0.0, 0.5 * BOX_HEIGHT),
+                fixed=True,
+            ),
+            gs.morphs.Box(
+                size=(0.6, 0.6, BOX_HEIGHT),
+                pos=(0.0, 0.0, 0.5 * BOX_HEIGHT),
+                fixed=True,
+            ),
+        ),
+    )
+    blob = scene.add_entity(
+        options=gs.options.MPMEntityOptions(
+            morph=gs.morphs.Box(
+                pos=(0.2, 0.0, 0.26),
+                size=(0.1, 0.1, 0.1),
+            ),
+            material=gs.materials.Elastic(),
+        ),
+    )
+    scene.build(n_envs=2)
+
+    blob_z0 = blob.get_particles_pos()[..., 2].min(dim=-1).values
+    for _ in range(N_STEPS):
+        scene.step()
+    blob_z = blob.get_particles_pos()[..., 2].min(dim=-1).values
+    assert_allclose(blob_z[0], blob_z0[0] - 0.5 * 9.81 * (N_STEPS * DT) ** 2, atol=1e-2)
+    assert_allclose(blob_z[1], BOX_HEIGHT, atol=1e-2)
+
+
 @pytest.mark.slow  # ~250s
 @pytest.mark.required
 @pytest.mark.skipif(

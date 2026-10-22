@@ -252,6 +252,8 @@ class SAPCoupler(RBC):
             self._fem_data = self.sim._system_data.get(FEMData, self.fem_solver)
         self._B = self.sim._B
         self.contact_handlers = []
+        # The tetrahedral volumes of the rigid geoms and the contact tables are computed once, at build
+        self.rigid_solver.add_morph_variant_switch_blocker("the SAP coupler")
         self._enable_rigid_fem_contact &= self.rigid_solver.is_active and self.fem_solver.is_active
         self._enable_fem_self_tet_contact &= self.fem_solver.is_active
 

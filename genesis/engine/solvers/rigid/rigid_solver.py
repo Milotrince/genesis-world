@@ -2557,14 +2557,15 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         if any(morph.enable_custom_vverts for morph in entity.morphs):
             gs.raise_exception("Switching the morph variant of an entity with 'enable_custom_vverts' is not supported.")
 
-    @mutates(StateChange.GEOMETRY, StateChange.MODEL)
-    def _apply_morph_variant(self, envs_idx, variants_idx, entities: list[RigidEntity]):
+    @mutates(StateChange.GEOMETRY, StateChange.MODEL, links="links_idx")
+    def _apply_morph_variant(self, envs_idx, variants_idx, entities: list[RigidEntity], links_idx=None):
         """Make some environments carry some variants of some entities, keeping their configuration.
 
         'variants_idx' holds one row per environment of 'envs_idx', each entry being a variant of 'variants_info' of one
         of 'entities'. The quantities the model of a variant determines are recomputed in those environments: the
         inverse weights and the mean inertia (which wakes up their hibernated islands), the pose of every geom, the
-        contact caches, the characteristic length of the dofs and the base-link offsets.
+        contact caches, the characteristic length of the dofs and the base-link offsets. 'links_idx' holds the links of
+        'entities', which the notification reports, None standing for any link.
         """
         kernel_set_morph_variant(
             envs_idx,
@@ -2621,7 +2622,12 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         envs_is_switched = variants_idx != envs_variant_idx
         if not envs_is_switched.any():
             return
-        self._apply_morph_variant(envs_idx[envs_is_switched], variants_row[envs_is_switched, None], [entity])
+        self._apply_morph_variant(
+            envs_idx[envs_is_switched],
+            variants_row[envs_is_switched, None],
+            [entity],
+            range(entity.link_start, entity.link_end),
+        )
 
         # A reset keeps the variant, like any other change of the model, and starts from its neutral configuration
         self._scene._refresh_init_state(entity, envs_idx[envs_is_switched])

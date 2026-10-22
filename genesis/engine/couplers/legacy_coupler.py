@@ -6,6 +6,7 @@ import quadrants as qd
 
 import genesis as gs
 import genesis.utils.sdf as sdf
+from genesis.engine.solvers.rigid.abd.forward_kinematics import func_is_geom_carried
 from genesis.engine.system_data.fem import FEMData
 from genesis.engine.system_data.mpm import MPMData
 from genesis.engine.system_data.pbd import PBDData
@@ -146,12 +147,14 @@ class LegacyCoupler(RBC):
         geoms_state: array_class.GeomsState,
         geoms_info: array_class.GeomsInfo,
         links_state: array_class.LinksState,
+        dyn_info: array_class.DynInfo,
         rigid_info: array_class.RigidInfo,
         sdf_info: array_class.SDFInfo,
+        rigid_config: qd.template(),
         collider_static_config: qd.template(),
     ):
         for i_g in range(self.rigid_solver.n_geoms):
-            if geoms_info.needs_coup[i_g]:
+            if geoms_info.needs_coup[i_g] and func_is_geom_carried(i_g, i_b, dyn_info, rigid_config):
                 vel = self._func_collide_with_rigid_geom(
                     pos_world,
                     vel,
@@ -335,8 +338,10 @@ class LegacyCoupler(RBC):
         geoms_state: array_class.GeomsState,
         geoms_info: array_class.GeomsInfo,
         links_state: array_class.LinksState,
+        dyn_info: array_class.DynInfo,
         rigid_info: array_class.RigidInfo,
         sdf_info: array_class.SDFInfo,
+        rigid_config: qd.template(),
         collider_static_config: qd.template(),
     ):
         for ii, jj, kk, i_b in qd.ndrange(*self.mpm_solver.grid_res, self.mpm_solver._B):
@@ -371,8 +376,10 @@ class LegacyCoupler(RBC):
                         geoms_state=geoms_state,
                         geoms_info=geoms_info,
                         links_state=links_state,
+                        dyn_info=dyn_info,
                         rigid_info=rigid_info,
                         sdf_info=sdf_info,
+                        rigid_config=rigid_config,
                         collider_static_config=collider_static_config,
                     )
 
@@ -480,14 +487,16 @@ class LegacyCoupler(RBC):
         f: qd.i32,
         geoms_state: array_class.GeomsState,
         geoms_info: array_class.GeomsInfo,
+        dyn_info: array_class.DynInfo,
         sdf_info: array_class.SDFInfo,
         rigid_info: array_class.RigidInfo,
+        rigid_config: qd.template(),
         collider_static_config: qd.template(),
     ):
         for i_p, i_b in qd.ndrange(self.mpm_solver.n_particles, self.mpm_solver._B):
             if self._mpm_data.particles_ng[f, i_p, i_b].active:
                 for i_g in range(self.rigid_solver.n_geoms):
-                    if geoms_info.needs_coup[i_g]:
+                    if geoms_info.needs_coup[i_g] and func_is_geom_carried(i_g, i_b, dyn_info, rigid_config):
                         sdf_normal = sdf.sdf_func_normal_world(
                             i_g,
                             i_b,
@@ -513,8 +522,10 @@ class LegacyCoupler(RBC):
         geoms_state: array_class.GeomsState,
         geoms_info: array_class.GeomsInfo,
         links_state: array_class.LinksState,
+        dyn_info: array_class.DynInfo,
         rigid_info: array_class.RigidInfo,
         sdf_info: array_class.SDFInfo,
+        rigid_config: qd.template(),
         collider_static_config: qd.template(),
     ):
         # TODO: all collisions are on vertices instead of surface and edge
@@ -543,12 +554,14 @@ class LegacyCoupler(RBC):
                             self._fem_data.elements_v[f + 1, iv, i_b].vel,
                             mass / 3.0,  # assume element mass uniformly distributed to vertices
                             i_b,
-                            geoms_state,
-                            geoms_info,
-                            links_state,
-                            rigid_info,
-                            sdf_info,
-                            collider_static_config,
+                            geoms_state=geoms_state,
+                            geoms_info=geoms_info,
+                            links_state=links_state,
+                            dyn_info=dyn_info,
+                            rigid_info=rigid_info,
+                            sdf_info=sdf_info,
+                            rigid_config=rigid_config,
+                            collider_static_config=collider_static_config,
                         )
                         self._fem_data.elements_v[f + 1, iv, i_b].vel = vel_fem_sv
 
@@ -681,14 +694,16 @@ class LegacyCoupler(RBC):
         geoms_info: array_class.GeomsInfo,
         links_state: array_class.LinksState,
         links_info: array_class.LinksInfo,
+        dyn_info: array_class.DynInfo,
         rigid_info: array_class.RigidInfo,
         sdf_info: array_class.SDFInfo,
+        rigid_config: qd.template(),
         collider_static_config: qd.template(),
     ):
         for i_p, i_b in qd.ndrange(self.sph_solver._n_particles, self.sph_solver._B):
             if self._sph_data.particles_ng_reordered[i_p, i_b].active:
                 for i_g in range(self.rigid_solver.n_geoms):
-                    if geoms_info.needs_coup[i_g]:
+                    if geoms_info.needs_coup[i_g] and func_is_geom_carried(i_g, i_b, dyn_info, rigid_config):
                         (
                             self._sph_data.particles_reordered[i_p, i_b].vel,
                             self.sph_rigid_normal_reordered[i_p, i_g, i_b],
@@ -715,15 +730,17 @@ class LegacyCoupler(RBC):
         geoms_state: array_class.GeomsState,
         geoms_info: array_class.GeomsInfo,
         links_state: array_class.LinksState,
+        dyn_info: array_class.DynInfo,
         sdf_info: array_class.SDFInfo,
         rigid_info: array_class.RigidInfo,
+        rigid_config: qd.template(),
         collider_static_config: qd.template(),
     ):
         for i_p, i_b in qd.ndrange(self.pbd_solver._n_particles, self.sph_solver._B):
             if self._pbd_data.particles_ng_reordered[i_p, i_b].active:
                 # NOTE: Couldn't figure out a good way to handle collision with non-free particle. Such collision is not phsically plausible anyway.
                 for i_g in range(self.rigid_solver.n_geoms):
-                    if geoms_info.needs_coup[i_g]:
+                    if geoms_info.needs_coup[i_g] and func_is_geom_carried(i_g, i_b, dyn_info, rigid_config):
                         (
                             self._pbd_data.particles_reordered[i_p, i_b].pos,
                             self._pbd_data.particles_reordered[i_p, i_b].vel,
@@ -885,8 +902,10 @@ class LegacyCoupler(RBC):
                 f,
                 self.rigid_solver.dyn_state.geoms,
                 self.rigid_solver.dyn_info.geoms,
+                self.rigid_solver.dyn_info,
                 self.rigid_solver.collider.sdf.sdf_info,
                 self.rigid_solver.rigid_info,
+                self.rigid_solver.rigid_config,
                 self.rigid_solver.collider.collider_config,
             )
 
@@ -899,8 +918,10 @@ class LegacyCoupler(RBC):
                 geoms_state=self.rigid_solver.dyn_state.geoms,
                 geoms_info=self.rigid_solver.dyn_info.geoms,
                 links_state=self.rigid_solver.dyn_state.links,
+                dyn_info=self.rigid_solver.dyn_info,
                 rigid_info=self.rigid_solver.rigid_info,
                 sdf_info=self.rigid_solver.collider.sdf.sdf_info,
+                rigid_config=self.rigid_solver.rigid_config,
                 collider_static_config=self.rigid_solver.collider.collider_config,
             )
 
@@ -912,8 +933,10 @@ class LegacyCoupler(RBC):
                 self.rigid_solver.dyn_info.geoms,
                 self.rigid_solver.dyn_state.links,
                 self.rigid_solver.dyn_info.links,
+                self.rigid_solver.dyn_info,
                 self.rigid_solver.rigid_info,
                 self.rigid_solver.collider.sdf.sdf_info,
+                self.rigid_solver.rigid_config,
                 self.rigid_solver.collider.collider_config,
             )
 
@@ -923,8 +946,10 @@ class LegacyCoupler(RBC):
                 geoms_state=self.rigid_solver.dyn_state.geoms,
                 geoms_info=self.rigid_solver.dyn_info.geoms,
                 links_state=self.rigid_solver.dyn_state.links,
+                dyn_info=self.rigid_solver.dyn_info,
                 sdf_info=self.rigid_solver.collider.sdf.sdf_info,
                 rigid_info=self.rigid_solver.rigid_info,
+                rigid_config=self.rigid_solver.rigid_config,
                 collider_static_config=self.rigid_solver.collider.collider_config,
             )
 
@@ -939,8 +964,10 @@ class LegacyCoupler(RBC):
                 self.rigid_solver.dyn_state.geoms,
                 self.rigid_solver.dyn_info.geoms,
                 self.rigid_solver.dyn_state.links,
+                self.rigid_solver.dyn_info,
                 self.rigid_solver.rigid_info,
                 self.rigid_solver.collider.sdf.sdf_info,
+                self.rigid_solver.rigid_config,
                 self.rigid_solver.collider.collider_config,
             )
             self.fem_rigid_link_constraints()
@@ -952,8 +979,10 @@ class LegacyCoupler(RBC):
                 self.rigid_solver.dyn_state.geoms,
                 self.rigid_solver.dyn_info.geoms,
                 self.rigid_solver.dyn_state.links,
+                self.rigid_solver.dyn_info,
                 self.rigid_solver.rigid_info,
                 self.rigid_solver.collider.sdf.sdf_info,
+                self.rigid_solver.rigid_config,
                 self.rigid_solver.collider.collider_config,
             )
         if self.mpm_solver.is_active:
@@ -963,8 +992,10 @@ class LegacyCoupler(RBC):
                 geoms_state=self.rigid_solver.dyn_state.geoms,
                 geoms_info=self.rigid_solver.dyn_info.geoms,
                 links_state=self.rigid_solver.dyn_state.links,
+                dyn_info=self.rigid_solver.dyn_info,
                 rigid_info=self.rigid_solver.rigid_info,
                 sdf_info=self.rigid_solver.collider.sdf.sdf_info,
+                rigid_config=self.rigid_solver.rigid_config,
                 collider_static_config=self.rigid_solver.collider.collider_config,
             )
 

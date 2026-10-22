@@ -684,6 +684,7 @@ def test_renders_heterogeneous_entities(n_envs, show_viewer, png_snapshot, rende
     scene = gs.Scene(
         vis_options=gs.options.VisOptions(
             shadow=False,
+            segmentation_level="geom",
             split_envs=False,
         ),
         renderer=renderer,
@@ -799,6 +800,29 @@ def test_renders_heterogeneous_entities(n_envs, show_viewer, png_snapshot, rende
 
     for frame in frames:
         assert rgb_array_to_png_bytes(frame) == png_snapshot
+
+    if IS_BATCHRENDER:
+        with pytest.raises(gs.GenesisException, match="the batch renderer"):
+            heterogeneous.set_morph_variant(0)
+    else:
+        # Every environment switches to the other variant, which takes the side of the image the outgoing one held,
+        # even where no environment carried it at build. The sphere is the first visual geom, the duck the others.
+        seg_idx = {seg_key: idx for idx, seg_key in scene.segmentation_idx_dict.items()}
+        vgeoms_seg_idx = [seg_idx[(heterogeneous.idx, vgeom.link.idx, vgeom.idx)] for vgeom in heterogeneous.vgeoms]
+        variants_seg_idx = (vgeoms_seg_idx[:1], vgeoms_seg_idx[1:])
+
+        _, _, seg_before, _ = camera.render(rgb=False, segmentation=True)
+        heterogeneous.set_morph_variant(1 - heterogeneous.get_morph_variant())
+        _, _, seg_after, _ = camera.render(rgb=False, segmentation=True, force_render=True)
+        seg_before, seg_after = tensor_to_array(seg_before), tensor_to_array(seg_after)
+        half = seg_before.shape[1] // 2
+        variants_halves_is_shown_before, variants_halves_is_shown_after = (
+            np.array(
+                [[np.isin(seg[:, :half], idx).any(), np.isin(seg[:, half:], idx).any()] for idx in variants_seg_idx]
+            )
+            for seg in (seg_before, seg_after)
+        )
+        assert_equal(variants_halves_is_shown_after, variants_halves_is_shown_before[::-1])
 
 
 @pytest.mark.parametrize(

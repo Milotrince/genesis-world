@@ -212,6 +212,9 @@ class RasterizerContext:
         self.tracked_nodes: dict["Solver | Sensor", TrackedNodeList] = {}
         self.seg_node_map = dict()
         self.seg_color_map = SegmentationColorMap()
+        # Pending on a change of the model of a heterogeneous entity, such as a switch of morph variant, which moves
+        # the environments its geoms are drawn in (see 'update_rigid'). None without heterogeneous entity.
+        self._variants_subscriber: Subscriber | None = None
 
         self.init_meshes()
 
@@ -261,6 +264,16 @@ class RasterizerContext:
             self.on_link_frame()
         if self.show_cameras:
             self.on_camera_frustum()
+
+        rigid_solver = self.sim.rigid_solver
+        heterogeneous_links_idx = [
+            link.idx for entity in rigid_solver.entities if entity.is_heterogeneous for link in entity.links
+        ]
+        if rigid_solver.is_active and heterogeneous_links_idx:
+            self._variants_subscriber = Subscriber(
+                to=frozenset((StateChange.MODEL,)), links_filter=heterogeneous_links_idx
+            )
+            rigid_solver.subscribe(self._variants_subscriber)
 
         self.on_tool()
         self.on_rigid()
@@ -345,15 +358,17 @@ class RasterizerContext:
 
     def add_geom_node(self, geom, geoms_T, material=None):
         """Add the node drawing a rigid geom, one instance per rendered environment and present in the environments
-        holding the geom, and return its mesh (None when no rendered environment holds it). 'geoms_T' holds the
-        transforms of every geom of its solver in its visual mode, as 'rigid_geoms_T' returns them.
+        holding the geom, and return its mesh. 'geoms_T' holds the transforms of every geom of its solver in its visual
+        mode, as 'rigid_geoms_T' returns them. A geom of a homogeneous entity that no rendered environment holds gets no
+        node and None is returned, while the one of a heterogeneous entity gets a node drawn in no environment, which a
+        switch of morph variant reveals (see 'update_rigid').
 
         A horizontal plane wider than the environment spacing is one shared floor: one instance where the plane stands,
         in place of one copy per environment fighting over the same depth once laid out on the grid. Drawn where it
         stands, it lies under every environment in a pass drawing one environment as well.
         """
         geom_envs_idx = self._get_geom_active_envs_idx(geom, self.rendered_envs_idx)
-        if len(geom_envs_idx) == 0:
+        if len(geom_envs_idx) == 0 and geom.active_envs_idx is None:
             return None
 
         entity = geom.entity
@@ -640,6 +655,20 @@ class RasterizerContext:
             )
 
     def update_rigid(self):
+        if self._variants_subscriber is not None and self._variants_subscriber.pending:
+            self._variants_subscriber.clear()
+            rigid_nodes = []
+            for entity in self.sim.rigid_solver.entities:
+                if entity.is_heterogeneous:
+                    envs_variant_idx = np.atleast_1d(tensor_to_array(entity.get_morph_variant()))
+                    rendered_envs_variant_idx = envs_variant_idx[self.rendered_envs_idx]
+                    for geom in entity.vgeoms if entity.surface.vis_mode == "visual" else entity.geoms:
+                        rigid_node = self.rigid_nodes.get(geom.uid)
+                        if rigid_node is not None and rigid_node.mesh.primitives[0].is_env_instanced:
+                            rigid_node.mesh.primitives[0].envs = rendered_envs_variant_idx == geom.variant_idx
+                            rigid_nodes.append(rigid_node)
+            self.jit.update_envs(rigid_nodes)
+
         for solver in self._rigid_solvers():
             for entity in solver.entities:
                 if entity.surface.vis_mode == "visual" and entity._morph.enable_custom_vverts:

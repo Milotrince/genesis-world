@@ -302,6 +302,8 @@ class BatchRenderer(RBC):
 
         # Build the geometry retriever
         self._geom_retriever.build()
+        # The geometry retriever fixes the environments each variant of a heterogeneous entity is drawn in
+        self._visualizer.scene.rigid_solver.add_morph_variant_switch_blocker("the batch renderer")
 
         # Make sure that all cameras have identical resolution
         try:
