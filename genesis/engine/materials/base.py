@@ -1,29 +1,29 @@
-import copy
-from typing import ClassVar
-from typing_extensions import Self
+from typing import Annotated
 
-from pydantic import StrictBool
+from pydantic import Field
 
 from genesis.options.options import Options
+from genesis.typing import PositiveFloat, ValidFloat
 
 
-class Material(Options):
-    """
-    The base class of materials.
+PoissonRatio = Annotated[ValidFloat, Field(gt=-1.0, lt=0.5)]
+
+
+class BaseMaterial(Options):
+    """The physical law of an entity and its parameters, whichever solver simulates it.
+
+    A concrete subclass names one law, such as ``gs.materials.Elastic``. The entity options decide the solver, and each
+    solver reads the parameters it supports. A parameter left to None takes the default of the solver simulating the
+    entity, and the entity options raise an error on a parameter given explicitly that their solver cannot honour.
 
     Note
     ----
     This class should *not* be instantiated directly.
+
+    Parameters
+    ----------
+    density : float | None, optional
+        The mass density, in kg/m^3. If None, the solver decides.
     """
 
-    # The fields holding functions bound to the material by 'model_post_init', which a copy binds to itself instead
-    _dispatch_fields: ClassVar[tuple[str, ...]] = ()
-
-    use_visual_raycasting: StrictBool = False
-
-    def __deepcopy__(self, memo: dict[int, object] | None = None) -> Self:
-        """Copy the field values alone, so that 'model_post_init' binds the dispatch functions to the copy."""
-        if not self._dispatch_fields:
-            return super().__deepcopy__(memo)
-        values = {name: copy.deepcopy(value, memo) for name, value in self if name not in self._dispatch_fields}
-        return type(self).model_construct(_fields_set=set(self.model_fields_set), **values)
+    density: PositiveFloat | None = None

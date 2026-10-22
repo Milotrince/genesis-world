@@ -3,7 +3,6 @@ from dataclasses import dataclass
 import quadrants as qd
 
 import genesis as gs
-from genesis.engine.materials import SPH
 from genesis.engine.states.entities import SPHEntityState
 
 from .particle_entity import ParticleEntity, ParticleEntityDescription
@@ -11,7 +10,14 @@ from .particle_entity import ParticleEntity, ParticleEntityDescription
 
 @dataclass(kw_only=True)
 class SPHEntityDescription(ParticleEntityDescription):
-    material: SPH.Base
+    _name_prefix = "sph_"
+
+    @classmethod
+    def resolve(cls, options, surface, particle_size, boundary):
+        """Sample the particles of an SPH entity by the sampler of its options (see 'ParticleEntityDescription')."""
+        return super().resolve(
+            options, surface, particle_size, boundary, sampler=options.solver_options.sampler, has_skinning=False
+        )
 
 
 @qd.data_oriented
@@ -41,16 +47,18 @@ class SPHEntity(ParticleEntity):
         return self._desc
 
     def _add_particles_to_solver(self):
+        options = self._desc.options
+        material_params = options.material_params
         self._solver._kernel_add_particles(
             self._sim.cur_substep_local,
             self.active,
             self._particle_start,
             self._n_particles,
-            self._material.rho,
-            self._material.stiffness,
-            self._material.exponent,
-            self._material.mu,
-            self._material.gamma,
+            options.material.density,
+            material_params.stiffness,
+            options.solver_options.exponent,
+            material_params.viscosity,
+            material_params.surface_tension,
             self._particles,
         )
 
@@ -161,10 +169,3 @@ class SPHEntity(ParticleEntity):
         if self._scene.n_envs == 0:
             actives = actives[0]
         return actives
-
-    # ------------------------------------------------------------------------------------
-    # --------------------------------- naming methods -----------------------------------
-    # ------------------------------------------------------------------------------------
-
-    def _get_morph_identifier(self) -> str:
-        return f"sph_{super()._get_morph_identifier()}"

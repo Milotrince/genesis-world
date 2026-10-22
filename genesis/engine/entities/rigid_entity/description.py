@@ -22,9 +22,9 @@ from typing_extensions import Self
 
 import genesis as gs
 from genesis.constants import EQUALITY_TYPE, GEOM_TYPE, JOINT_TYPE
-from genesis.engine.materials.base import Material
+from genesis.engine.materials import Material
 from genesis.engine.mesh import InertialProperties
-from genesis.options.entities import EntityOptions
+from genesis.options.entities import EntityOptions, KinematicEntityOptions, RigidEntitySolverOptions
 from genesis.options.morphs import Morph
 from genesis.options.options import Options
 from genesis.options.surfaces import Surface
@@ -86,13 +86,16 @@ class SignedDistanceFieldDescription:
     """Whether the grid carries the gradient of the field."""
 
     @classmethod
-    def from_geometry(cls, mesh: "gs.Mesh", geom_type: GEOM_TYPE, material: Material) -> Self:
-        """Resolve the grid sampling the signed distance field (SDF) of a geometry, at the resolution its material asks.
+    def from_geometry(
+        cls, mesh: "gs.Mesh", geom_type: GEOM_TYPE, solver_options: RigidEntitySolverOptions, is_primitive: bool
+    ) -> Self:
+        """Resolve the grid sampling the signed distance field (SDF) of a geometry, at the resolution its entity asks.
 
         The grid extends past the bounding box of the geometry by a margin along each axis. Its cells have the size the
-        material asks, refined further for a closed non-convex geometry to fit 2 across its thinnest walls, and clipped
-        along each axis to the minimum and maximum resolutions of the material. A terrain carries no gradient, since it
-        derives its gradient from its height field instead.
+        entity solver options ask, refined further for a closed non-convex geometry to fit 2 across its thinnest walls,
+        and clipped along each axis to the minimum and maximum resolutions of those options. A primitive caps the
+        maximum resolution at 32, which resolves its shape exactly whatever its size. A terrain carries no gradient,
+        since it derives its gradient from its height field instead.
         """
         # The vertices are a trimesh array subclass, which the grid parameters derived from them would carry into an
         # exported description
@@ -102,8 +105,8 @@ class SignedDistanceFieldDescription:
         # The cell size is anisotropic, each axis being sized to its own extent, so a thin slab gets fine resolution
         # perpendicular to its surface without bloating the cell count along its long axes. A uniform cell size would
         # leave primitive-vs-mesh contacts noisy whenever the smallest dimension of the primitive is below it.
-        cell_size_lower = grid_size / (material.sdf_max_res - 1)
-        cell_size_upper = grid_size / max(material.sdf_min_res - 1, 2)
+        cell_size_lower = grid_size / ((32 if is_primitive else solver_options.sdf_max_res) - 1)
+        cell_size_upper = grid_size / max(solver_options.sdf_min_res - 1, 2)
         # A convex geom has no thin wall to tunnel through, so it keeps the target. A non-convex geom tunnels when the
         # cell is coarser than its thinnest wall (its area-weighted p25 thickness), on all three axes: the certified
         # penetration bounds that hold shell contacts apart need lattice points near the contact in every direction,
@@ -111,7 +114,7 @@ class SignedDistanceFieldDescription:
         # surface, since inward rays escape an open mesh through its holes, and the mesh it probes stands for this
         # collision mesh, so both share their watertightness.
         sdf_tmesh = mesh.metadata.get("sdf_mesh", mesh.trimesh)
-        cell_size_target = material.sdf_cell_size
+        cell_size_target = solver_options.sdf_cell_size
         if not mesh.is_convex:
             if mesh.is_watertight:
                 wall_thickness = mu.get_wall_thickness(
@@ -382,15 +385,16 @@ class KinematicEntityDescription(EntityDescription):
     written into the geoms it overrides. A geom carries its mesh, so an entity is created from this alone, with no
     asset to read and no geometry to process again.
 
-    The morphs, material and surface it was given stand here as well, since a link states none of them: the material
-    carries the physics the geoms are simulated under, the surface how they are drawn, and a morph what a kind of
-    entity needs beyond its links - the propeller links of a drone, the grid of a terrain. 'morphs' lists every
-    morph the entity dispatches, the primary first, and a homogeneous entity lists exactly one.
+    The morphs and the surface it resolved stand here as well, since a link states none of them: the surface states how
+    the geoms are drawn, and a morph what a kind of entity needs beyond its links (the propeller links of a drone, the
+    grid of a terrain). 'morphs' lists every morph the entity dispatches, the primary first, and a homogeneous entity
+    lists exactly one. The material of the options carries the physics the geoms are simulated under.
     """
+
+    _name_identified_morphs = (Morph,)
 
     morphs: list[Morph]
     surface: Surface
-    visualize_contact: bool = False
     name: str | None = None
     links: list[KinematicLinkDescription] = field(default_factory=list)
     variants: list[KinematicVariantDescription] = field(default_factory=list)
@@ -398,27 +402,21 @@ class KinematicEntityDescription(EntityDescription):
 
     @classmethod
     def resolve(
-        cls,
-        morphs: Sequence[Morph],
-        material: Material,
-        surface: Surface,
-        solver_options: Options,
-        enable_mujoco_compatibility: bool,
-        visualize_contact: bool = False,
-        name: str | None = None,
-        *,
-        options: EntityOptions,
+        cls, options: EntityOptions, surface: Surface, solver_options: Options, enable_mujoco_compatibility: bool
     ) -> Self:
-        """Resolve what an entity is created with into the description it is built from.
+        """Resolve the options an entity is constructed from into the description it is built from.
 
         This is where every asset a morph names is read and post-processed, so an entity created from the returned
-        description opens no file. 'morphs' lists the primary morph first, then one morph per heterogeneous variant.
-        'solver_options' are those of the solver simulating the entity, which the parsers check the assets against.
-        'options' are the entity options the other arguments were taken from, kept as authored in the
-        description. The resolution modifies the morphs, the material and the surface it is given, so 'options' must
-        hold objects of its own.
+        description opens no file. 'options' are the entity options as authored, which the description keeps, and
+        whose morphs it resolves as copies of its own: the primary morph first, then one morph per heterogeneous
+        variant. 'surface' is the surface the scene resolved from them, which the resolution modifies. 'solver_options'
+        are those of the solver simulating the entity, which the parsers check the assets against. Given no name, one
+        is generated from the morphs.
         """
-        morphs = list(morphs)
+        morphs = [
+            morph.model_copy(deep=True)
+            for morph in (options.morph if isinstance(options.morph, tuple) else (options.morph,))
+        ]
         if len(morphs) > 1:
             if not all(
                 isinstance(morph, (gs.morphs.Primitive, gs.morphs.Mesh, gs.morphs.URDF, gs.morphs.MJCF))
@@ -431,17 +429,12 @@ class KinematicEntityDescription(EntityDescription):
                     "basic objects (ie Primitive, Mesh)."
                 )
 
-        if isinstance(material, gs.materials.Rigid):
-            # small sdf res is sufficient for primitives regardless of size
-            if isinstance(morphs[0], gs.morphs.Primitive):
-                material.sdf_max_res = 32
-
-        # Set material-dependent default options
+        # Set the default options that depend on the kind of entity
         for morph in morphs:
             if isinstance(morph, gs.morphs.FileMorph):
                 # Rigid entities will convexify geom by default
                 if morph.convexify is None:
-                    morph.convexify = isinstance(material, gs.materials.Rigid)
+                    morph.convexify = not isinstance(options, KinematicEntityOptions)
                 # Decimation simplifies away the very surface detail that a non-convex collision mesh is kept for, so
                 # it defaults off when convexify is off and on otherwise. Only applies to meshes that skip
                 # watertightening (already-watertight inputs); watertighten does its own feature-preserving QEM.
@@ -458,14 +451,7 @@ class KinematicEntityDescription(EntityDescription):
                 ):
                     morph.default_armature = None
 
-        desc = cls(
-            morphs=morphs,
-            material=material,
-            surface=surface,
-            visualize_contact=visualize_contact,
-            name=name,
-            options=options,
-        )
+        desc = cls(morphs=morphs, surface=surface, name=cls.resolve_name(options), options=options)
         desc._load_morph(morphs[0], Resolution(solver_options, enable_mujoco_compatibility))
         return desc
 
@@ -1408,7 +1394,7 @@ class KinematicEntityDescription(EntityDescription):
         # An explicitly set material density overrides any asset-authored per-geom density, as material friction does
         # for authored frictions. Dropping the keys up front keeps the align anchor, its all-or-none source check,
         # and the build-time inertial estimate consistently uniform-density.
-        if isinstance(self.material, gs.materials.Rigid) and self.material.rho is not None:
+        if self.material is not None and self.material.density is not None:
             for g_info in g_infos:
                 g_info.pop("density", None)
 
@@ -1507,8 +1493,8 @@ class KinematicEntityDescription(EntityDescription):
                 is_mass_explicit = None
 
         dynamics_hint = None
-        if isinstance(self.material, gs.materials.Rigid):
-            rho = self.material.rho
+        if self.material is not None:
+            rho = self.material.density
             if rho is None:
                 if resolution.is_mujoco_compatible:
                     rho = RHO_MUJOCO
@@ -1679,7 +1665,12 @@ class RigidEntityDescription(KinematicEntityDescription):
                     friction_torsional=friction_torsional,
                     friction_rolling=friction_rolling,
                     sol_params=g_info.get("sol_params", gu.default_solver_params()),
-                    sdf=SignedDistanceFieldDescription.from_geometry(g_info["mesh"], g_info["type"], self.material),
+                    sdf=SignedDistanceFieldDescription.from_geometry(
+                        g_info["mesh"],
+                        g_info["type"],
+                        self.options.solver_options,
+                        is_primitive=isinstance(self.morphs[0], gs.morphs.Primitive),
+                    ),
                 )
             )
         return cg_descs

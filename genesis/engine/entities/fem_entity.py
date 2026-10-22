@@ -14,8 +14,9 @@ import genesis as gs
 import genesis.utils.element as eu
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
+from genesis.engine.constitutive import lame_parameters
 from genesis.engine.entities.rigid_entity import RigidLink
-from genesis.engine.materials import FEM
+from genesis.engine.materials import Cloth, Elastic, Muscle
 from genesis.engine.states.entities import FEMEntityState
 from genesis.options.morphs import Morph
 from genesis.options.surfaces import Surface
@@ -33,8 +34,9 @@ class FEMVisGeomDescription:
 
 @dataclass(kw_only=True)
 class FEMEntityDescription(VerticesDescription, EntityDescription):
-    material: FEM.Base
-    morph: Morph
+    _name_prefix = "fem_"
+    _name_identified_morphs = (gs.morphs.Box, gs.morphs.Sphere, gs.morphs.Cylinder)
+
     surface: Surface
     name: str | None
     init_positions_COM: np.ndarray
@@ -45,20 +47,22 @@ class FEMEntityDescription(VerticesDescription, EntityDescription):
     pressure_field: np.ndarray | None
 
     @classmethod
-    def resolve(cls, material, morph, surface, name, *, has_pressure, options):
+    def resolve(cls, options, surface, *, has_pressure):
         """Build the simulation mesh and the visual geoms of an entity from its morph.
 
         Each morph sub-mesh becomes a visual geom with its own surface and UVs, while the simulation operates on a
         single welded copy of their vertices, tracked through 'FEMVisGeomDescription.sim_verts_idx': welding and
         tetrahedralization both keep the input vertices first and in order, so these maps remain valid indices into
         the simulated vertices. The hydroelastic pressure field is computed when 'has_pressure' is set. 'options' are
-        the entity options the other arguments were taken from, kept as authored in the description.
+        the entity options as authored, which the description keeps, and 'surface' the surface the scene resolved from
+        them. Given no name, one is generated from the morph.
         """
+        morph, material = options.morph, options.material
         meshes = gs.Mesh.from_morph_surface(morph, surface)
         surface_verts, surface_faces, verts_maps = mu.merge_submeshes(
             [mesh.verts for mesh in meshes], [mesh.faces for mesh in meshes]
         )
-        if isinstance(material, gs.materials.FEM.Cloth):
+        if isinstance(material, Cloth):
             # Cloth needs no tetrahedralization: the welded surface triangles are the simulation elements.
             verts = surface_verts + morph.pos
             elems = surface_faces
@@ -89,7 +93,7 @@ class FEMEntityDescription(VerticesDescription, EntityDescription):
         # the morph origin.
         init_positions = (verts - verts_COM) @ gu.quat_to_R(init_quat).T + verts_COM + offset_shift
 
-        if isinstance(material, gs.materials.FEM.Cloth):
+        if isinstance(material, Cloth):
             surface_triangles = elems
             surface_elements = np.arange(len(elems), dtype=gs.np_int)
         else:
@@ -112,13 +116,11 @@ class FEMEntityDescription(VerticesDescription, EntityDescription):
                     f"Pressure field max distance is too small: {max_distance}. "
                     "This might be due to a mesh having no internal vertices."
                 )
-            pressure_field = unsigned_distance / max_distance * material.hydroelastic_modulus
+            pressure_field = unsigned_distance / max_distance * options.solver_options.hydroelastic_modulus
 
         return cls(
-            material=material,
-            morph=morph,
             surface=surface,
-            name=name,
+            name=cls.resolve_name(options),
             init_positions=init_positions,
             init_positions_COM=verts_COM + offset_shift,
             elems=elems,
@@ -219,8 +221,8 @@ class FEMVisGeom(RBC):
 def assert_muscle(method):
     @wraps(method)
     def wrapper(self, *args, **kwargs):
-        if not isinstance(self.material, gs.materials.FEM.Muscle):
-            gs.raise_exception("This method is only supported by entities with 'FEM.Muscle' material.")
+        if not isinstance(self.material, Muscle):
+            gs.raise_exception("This method is only supported by entities with a 'Muscle' material.")
         return method(self, *args, **kwargs)
 
     return wrapper
@@ -246,6 +248,8 @@ class FEMEntity(Entity):
         the morph and the surface they are resolved from.
     idx : int
         Unique identifier of the entity within the scene.
+    law_idx : int
+        Index of the constitutive law of the entity in the solver.
     v_start : int, optional
         Starting index of this entity's vertices in the global vertex array (default is 0).
     el_start : int, optional
@@ -264,14 +268,16 @@ class FEMEntity(Entity):
         solver,
         desc: FEMEntityDescription,
         idx,
+        law_idx,
         v_start=0,
         el_start=0,
         s_start=0,
         vvert_start=0,
         vface_start=0,
     ):
-        super().__init__(idx, scene, solver, desc, desc.morph)
+        super().__init__(idx, scene, solver, desc, desc.options.morph)
 
+        self._law_idx = law_idx
         self._v_start = v_start  # offset for vertex index of elements
         self._el_start = el_start  # offset for element index
         self._s_start = s_start  # offset for surface triangles
@@ -447,7 +453,7 @@ class FEMEntity(Entity):
         actu = to_gs_tensor(actu)
 
         is_valid = False
-        n_groups = self.material.n_groups
+        n_groups = self._desc.options.solver_options.n_groups
         if actu.ndim == 0:
             self._tgt["actu"] = actu.tile((self._sim._B, n_groups))
             is_valid = True
@@ -483,7 +489,7 @@ class FEMEntity(Entity):
         """
         self._assert_active()
 
-        n_groups = self.material.n_groups
+        n_groups = self._desc.options.solver_options.n_groups
         max_group_id = muscle_group.max().item()
 
         muscle_group = to_gs_tensor(muscle_group)
@@ -529,7 +535,7 @@ class FEMEntity(Entity):
         # Convert to appropriate numpy array types
         verts_numpy = tensor_to_array(self.init_positions, dtype=gs.np_float)
 
-        if isinstance(self.material, gs.materials.FEM.Cloth):
+        if isinstance(self.material, Cloth):
             self._solver._kernel_add_cloth(
                 f=self._sim.cur_substep_local,
                 v_start=self._v_start,
@@ -539,13 +545,15 @@ class FEMEntity(Entity):
             )
         else:
             elems_np = self.elems.astype(gs.np_int, copy=False)
+            material_params = self._desc.options.material_params
+            mat_mu, mat_lam = lame_parameters(material_params.youngs_modulus, material_params.poisson_ratio)
             self._solver._kernel_add_elements(
                 f=self._sim.cur_substep_local,
-                mat_idx=self._material.idx,
-                mat_mu=self._material.mu,
-                mat_lam=self._material.lam,
-                mat_rho=self._material.rho,
-                mat_friction_mu=self._material.friction_mu,
+                mat_idx=self._law_idx,
+                mat_mu=mat_mu,
+                mat_lam=mat_lam,
+                mat_rho=material_params.density,
+                mat_friction_mu=material_params.friction,
                 v_start=self._v_start,
                 el_start=self._el_start,
                 s_start=self._s_start,
@@ -846,7 +854,7 @@ class FEMEntity(Entity):
             f=f,
             element_el_start=self._el_start,
             n_elements=self.n_elements,
-            n_groups=self.material.n_groups,
+            n_groups=self._desc.options.solver_options.n_groups,
             actu=actu,
         )
 
@@ -1104,23 +1112,6 @@ class FEMEntity(Entity):
         for i_v, i_b in qd.ndrange(self.n_elements, self._sim._B):
             i_global = i_v + self.el_start
             self._solver.elements_el.grad[f, i_global, i_b].actu = 0
-
-    # ------------------------------------------------------------------------------------
-    # --------------------------------- naming methods -----------------------------------
-    # ------------------------------------------------------------------------------------
-
-    def _get_morph_identifier(self) -> str:
-        morph = self._morph
-
-        if isinstance(morph, gs.morphs.Box):
-            return "fem_box"
-        if isinstance(morph, gs.morphs.Sphere):
-            return "fem_sphere"
-        if isinstance(morph, gs.morphs.Cylinder):
-            return "fem_cylinder"
-        if isinstance(morph, gs.morphs.Mesh):
-            return f"fem_{Path(morph.file).stem}"
-        return "fem_entity"
 
     # ------------------------------------------------------------------------------------
     # ----------------------------------- properties -------------------------------------

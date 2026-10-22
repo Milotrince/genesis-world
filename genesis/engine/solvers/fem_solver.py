@@ -10,6 +10,7 @@ import quadrants as qd
 import genesis as gs
 import genesis.utils.array_class as array_class
 from genesis.engine.boundaries import FloorBoundary
+from genesis.engine.constitutive.fem import FEMLaw, FEMLawKey, build_fem_law, get_fem_law_key
 from genesis.engine.couplers import SAPCoupler
 from genesis.engine.entities.fem_entity import FEMEntity, FEMEntityDescription
 from genesis.engine.states.solvers import FEMSolverState
@@ -47,12 +48,9 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
         # use scaled volume for better numerical stability, similar to p_vol_scale in mpm
         self._vol_scale = float(1e4)
 
-        # materials
-        self._mats = list()
-        self._mats_idx = list()
-        self._mats_update_stress = list()
-        self._mats_compute_energy_gradient_hessian = list()
-        self._mats_compute_energy = list()
+        # The constitutive laws of the entities, one per distinct key (see 'get_fem_law_key'), dispatched statically
+        self._laws: list[FEMLaw] = []
+        self._laws_key: list[FEMLawKey] = []
 
         # boundary
         self.setup_boundary()
@@ -278,8 +276,8 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
             for entity in self._entities:
                 entity._add_to_solver()
 
-        for mat in self._mats:
-            mat.build(self)
+        for law in self._laws:
+            law.build(self)
 
         if self.n_elements_max > 0:
             if self.tet_wrong_order[None]:
@@ -300,29 +298,15 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
         # every solver integrates at is settled from the active ones, and that is settled before any of them builds.
         return self.n_elements > 0
 
-    def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
-    ) -> "FEMEntity":
+    def add_entity(self, idx, options, surface, desc=None) -> "FEMEntity":
         if desc is None:
-            desc = FEMEntityDescription.resolve(
-                material, morph, surface, name, has_pressure=isinstance(self.sim.coupler, SAPCoupler), options=options
-            )
+            desc = FEMEntityDescription.resolve(options, surface, has_pressure=isinstance(self.sim.coupler, SAPCoupler))
         assert isinstance(desc, FEMEntityDescription)
 
-        # add material's update methods if not matching any existing material
-        exist = False
-        for mat in self._mats:
-            if material == mat:
-                material.idx = mat.idx
-                exist = True
-                break
-        self._mats.append(material)
-        if not exist:
-            material.idx = len(self._mats_idx)
-            self._mats_idx.append(material.idx)
-            self._mats_update_stress.append(material.update_stress)
-            self._mats_compute_energy_gradient_hessian.append(material.compute_energy_gradient_hessian)
-            self._mats_compute_energy.append(material.compute_energy)
+        law_key = get_fem_law_key(desc.options)
+        if law_key not in self._laws_key:
+            self._laws_key.append(law_key)
+            self._laws.append(build_fem_law(law_key))
 
         # create entity
         entity = FEMEntity(
@@ -330,6 +314,7 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
             solver=self,
             desc=desc,
             idx=idx,
+            law_idx=self._laws_key.index(law_key),
             v_start=self.n_vertices,
             el_start=self.n_elements,
             s_start=self.n_surfaces,
@@ -366,9 +351,9 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
             J = F.determinant()
 
             stress = qd.Matrix.zero(gs.qd_float, 3, 3)
-            for mat_idx in qd.static(self._mats_idx):
-                if self.elements_i[i_e].mat_idx == mat_idx:
-                    stress = self._mats_update_stress[mat_idx](
+            for law_idx in qd.static(range(len(self._laws))):
+                if self.elements_i[i_e].mat_idx == law_idx:
+                    stress = self._laws[law_idx].update_stress(
                         mu=self.elements_i[i_e].mu,
                         lam=self.elements_i[i_e].lam,
                         J=J,
@@ -412,9 +397,9 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
     def precompute_material_data(self, f: qd.i32):
         for i_b, i_e in qd.ndrange(self._B, self.n_elements):
             J, F = self._compute_ele_J_F(f, i_e, i_b)  # use last time step's pos to compute
-            for mat_idx in qd.static(self._mats_idx):
-                if self.elements_i[i_e].mat_idx == mat_idx:
-                    self._mats[mat_idx].pre_compute(J=J, F=F, i_e=i_e, i_b=i_b)
+            for law_idx in qd.static(range(len(self._laws))):
+                if self.elements_i[i_e].mat_idx == law_idx:
+                    self._laws[law_idx].pre_compute(J=J, F=F, i_e=i_e, i_b=i_b)
 
     @qd.kernel
     def init_pos_and_inertia(self, f: qd.i32):
@@ -465,13 +450,13 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
 
             J, F = self._compute_ele_J_F(f + 1, i_e, i_b)
 
-            for mat_idx in qd.static(self._mats_idx):
-                if self.elements_i[i_e].mat_idx == mat_idx:
-                    if self._mats[mat_idx]._hessian_ready:
+            for law_idx in qd.static(range(len(self._laws))):
+                if self.elements_i[i_e].mat_idx == law_idx:
+                    if self._laws[law_idx].is_hessian_ready:
                         (
                             self.elements_el_energy[i_b, i_e].energy,
                             self.elements_el_energy[i_b, i_e].gradient,
-                        ) = self._mats[mat_idx].compute_energy_gradient(
+                        ) = self._laws[law_idx].compute_energy_gradient(
                             mu=self.elements_i[i_e].mu,
                             lam=self.elements_i[i_e].lam,
                             J=J,
@@ -485,7 +470,7 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
                         (
                             self.elements_el_energy[i_b, i_e].energy,
                             self.elements_el_energy[i_b, i_e].gradient,
-                        ) = self._mats[mat_idx].compute_energy_gradient_hessian(
+                        ) = self._laws[law_idx].compute_energy_gradient_hessian(
                             mu=self.elements_i[i_e].mu,
                             lam=self.elements_i[i_e].lam,
                             J=J,
@@ -523,9 +508,9 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
 
             J, F = self._compute_ele_J_F(f + 1, i_e, i_b)
 
-            for mat_idx in qd.static(self._mats_idx):
-                if self.elements_i[i_e].mat_idx == mat_idx:
-                    self.elements_el_energy[i_b, i_e].energy = self._mats[mat_idx].compute_energy(
+            for law_idx in qd.static(range(len(self._laws))):
+                if self.elements_i[i_e].mat_idx == law_idx:
+                    self.elements_el_energy[i_b, i_e].energy = self._laws[law_idx].compute_energy(
                         mu=self.elements_i[i_e].mu,
                         lam=self.elements_i[i_e].lam,
                         J=J,
@@ -857,9 +842,9 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
             self.compute_ele_hessian_gradient(f)
 
             # If the hessian is invariant, we only need to compute it once
-            for mat_idx in self._mats_idx:
-                if self._mats[mat_idx].hessian_invariant:
-                    self._mats[mat_idx]._hessian_ready = True
+            for law in self._laws:
+                if law.hessian_invariant:
+                    law.is_hessian_ready = True
 
             # accumulate vertex force and preconditioner
             self.accumulate_vertex_force_preconditioner(f)

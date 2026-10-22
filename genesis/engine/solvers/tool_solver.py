@@ -57,11 +57,9 @@ class ToolSolver(TimeBasedMixin, Solver):
     def setup_boundary(self):
         self.boundary = FloorBoundary(height=self.floor_height)
 
-    def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
-    ) -> ToolEntity:
+    def add_entity(self, idx, options, surface, desc=None) -> ToolEntity:
         if desc is None:
-            desc = ToolEntityDescription.resolve(material, morph, surface, name, options)
+            desc = ToolEntityDescription.resolve(options, surface)
         assert isinstance(desc, ToolEntityDescription)
         entity = ToolEntity(scene=self._scene, idx=idx, solver=self, desc=desc)
         self._entities.append(entity)
