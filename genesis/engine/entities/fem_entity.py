@@ -45,14 +45,14 @@ class FEMEntityDescription(VerticesDescription, EntityDescription):
     pressure_field: np.ndarray | None
 
     @classmethod
-    def resolve(cls, material, morph, surface, name, *, has_pressure, options=None):
+    def resolve(cls, material, morph, surface, name, *, has_pressure, options):
         """Build the simulation mesh and the visual geoms of an entity from its morph.
 
         Each morph sub-mesh becomes a visual geom with its own surface and UVs, while the simulation operates on a
         single welded copy of their vertices, tracked through 'FEMVisGeomDescription.sim_verts_idx': welding and
         tetrahedralization both keep the input vertices first and in order, so these maps remain valid indices into
         the simulated vertices. The hydroelastic pressure field is computed when 'has_pressure' is set. 'options' are
-        the entity options the other arguments were taken from, if any, kept as authored in the description.
+        the entity options the other arguments were taken from, kept as authored in the description.
         """
         meshes = gs.Mesh.from_morph_surface(morph, surface)
         surface_verts, surface_faces, verts_maps = mu.merge_submeshes(

@@ -2,7 +2,6 @@ import quadrants as qd
 
 from genesis.engine.boundaries import FloorBoundary
 from genesis.engine.entities.tool_entity.tool_entity import ToolEntity, ToolEntityDescription
-from genesis.engine.materials import Tool
 from genesis.engine.states.solvers import ToolSolverState
 from genesis.engine.system_data.tool import ToolData, ToolDescription
 
@@ -16,8 +15,6 @@ class ToolSolver(TimeBasedMixin, Solver):
     ----
     !! This class will be removed once we added differntiability to the RigidSolver. This is just a temporary solution to obtain rigid->soft one-way differeitable coupling.
     """
-
-    material_cls = Tool
 
     # ------------------------------------------------------------------------------------
     # --------------------------------- Initialization -----------------------------------
@@ -61,7 +58,7 @@ class ToolSolver(TimeBasedMixin, Solver):
         self.boundary = FloorBoundary(height=self.floor_height)
 
     def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, options=None, desc=None
+        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
     ) -> ToolEntity:
         if desc is None:
             desc = ToolEntityDescription.resolve(material, morph, surface, name, options)

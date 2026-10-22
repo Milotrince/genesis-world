@@ -51,6 +51,10 @@ def test_entity_options(tmp_path):
     second = scene.add_entity(
         options=options,
     )
+    flattened = scene.add_entity(
+        morph=options.morph,
+        material=options.material,
+    )
     kinematic = scene.add_entity(
         options=gs.options.KinematicEntityOptions(
             morph=gs.morphs.Box(
@@ -172,6 +176,8 @@ def test_entity_options(tmp_path):
     assert kinematic.solver is scene.sim.kinematic_solver
     assert_equal(entity.material.rho, 500.0)
     assert entity.name != second.name
+    assert type(flattened) is gs.engine.entities.RigidEntity
+    assert flattened.options == options
     assert len(heterogeneous.options.morph) == 2
     assert type(fem) is gs.engine.entities.FEMEntity
     assert type(mpm) is gs.engine.entities.MPMEntity
@@ -217,20 +223,21 @@ def test_entity_options(tmp_path):
         scene.add_entity(options=gs.options.EntityOptions(morph=gs.morphs.Sphere(), material=gs.materials.Rigid()))
     with pytest.raises(gs.GenesisException, match="requires a morph"):
         scene.add_entity()
+    with pytest.raises(gs.GenesisException, match="gs.options.KinematicEntityOptions"):
+        scene.add_entity(morph=gs.morphs.Sphere(), material=gs.materials.Kinematic())
+    with pytest.raises(gs.GenesisException, match="gs.options.FEMEntityOptions"):
+        scene.add_entity(morph=gs.morphs.Sphere(), material=gs.materials.FEM.Elastic())
     # The two parts of the hybrid entity are entities of their own
-    assert len(scene.entities) == 15
+    assert len(scene.entities) == 16
 
     exported = tmp_path / "entity_options.gscene"
     scene.export(exported)
     restored = gs.Scene.load(exported)
     assert [type(entity) for entity in restored.entities] == [type(entity) for entity in scene.entities]
-    options_by_entity = [entity.options for entity in scene.entities if entity.options is not None]
-    restored_options_by_entity = [entity.options for entity in restored.entities if entity.options is not None]
-    assert len(restored_options_by_entity) == len(options_by_entity) == 13
-    for restored_options, options in zip(restored_options_by_entity, options_by_entity):
+    for restored_entity, original_entity in zip(restored.entities, scene.entities):
         # FEM and MPM materials hold functions bound to themselves, which no other instance compares equal to
-        assert restored_options.model_dump() == options.model_dump()
-        assert restored_options.model_fields_set == options.model_fields_set
+        assert restored_entity.options.model_dump() == original_entity.options.model_dump()
+        assert restored_entity.options.model_fields_set == original_entity.options.model_fields_set
 
 
 @pytest.mark.required
@@ -830,11 +837,13 @@ def test_per_solver_gravity():
             )
         )
         scene.add_entity(
-            gs.morphs.Sphere(
-                pos=(0.0, 0.0, 0.5),
-                radius=0.1,
+            options=gs.options.MPMEntityOptions(
+                morph=gs.morphs.Sphere(
+                    pos=(0.0, 0.0, 0.5),
+                    radius=0.1,
+                ),
+                material=gs.materials.MPM.Liquid(),
             ),
-            material=gs.materials.MPM.Liquid(),
         )
         scene.build(n_envs=2)
 

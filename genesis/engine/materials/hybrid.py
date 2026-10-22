@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Callable
+from typing import Callable
 
 from pydantic import Field, StrictBool
 
@@ -7,11 +7,8 @@ from genesis.typing import NonNegativeFloat, ValidFloat
 from . import MPM
 from .base import Material
 
-if TYPE_CHECKING:
-    from genesis.engine.entities.hybrid_entity import HybridEntity
 
-
-class Hybrid(Material["HybridEntity"]):
+class Hybrid(Material):
     """
     The class for hybrid body material (soft skin actuated by inner rigid skeleton).
 

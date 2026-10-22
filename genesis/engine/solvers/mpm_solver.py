@@ -28,7 +28,6 @@ if TYPE_CHECKING:
 
 @qd.data_oriented
 class MPMSolver(GravityMixin, TimeBasedMixin, Solver):
-    material_cls = MPM.Base
     # ------------------------------------------------------------------------------------
     # --------------------------------- Initialization -----------------------------------
     # ------------------------------------------------------------------------------------
@@ -245,7 +244,7 @@ class MPMSolver(GravityMixin, TimeBasedMixin, Solver):
         return self.n_particles > 0
 
     def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, options=None, desc=None
+        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
     ) -> MPMEntity:
         if desc is None:
             desc = MPMEntityDescription.resolve(

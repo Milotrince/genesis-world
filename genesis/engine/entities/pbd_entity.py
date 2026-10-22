@@ -36,11 +36,10 @@ class PBDMeshDescription(PBDEntityDescription):
     elems_vol_rest: np.ndarray
 
     @classmethod
-    def resolve(cls, material, morph, surface, particle_size, name, options=None):
+    def resolve(cls, material, morph, surface, particle_size, name, options):
         """Remesh the visual mesh of a cloth or an elastic entity placed at the morph pose, and build its topology.
 
-        'options' are the entity options the other arguments were taken from, if any, kept as authored in the
-        description.
+        'options' are the entity options the other arguments were taken from, kept as authored in the description.
         """
         vmesh = cls.resolve_mesh(morph, surface)
         # The morph pose offset (e.g. an up-axis conversion) is composed onto the morph pose

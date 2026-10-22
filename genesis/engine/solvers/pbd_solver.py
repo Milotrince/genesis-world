@@ -20,7 +20,6 @@ from .base_solver import GravityMixin, Solver, TimeBasedMixin
 
 @qd.data_oriented
 class PBDSolver(GravityMixin, TimeBasedMixin, Solver):
-    material_cls = PBD.Base
     # ------------------------------------------------------------------------------------
     # --------------------------------- Initialization -----------------------------------
     # ------------------------------------------------------------------------------------
@@ -202,7 +201,7 @@ class PBDSolver(GravityMixin, TimeBasedMixin, Solver):
         return self.n_particles > 0
 
     def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, options=None, desc=None
+        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
     ) -> PBD2DEntity | PBD3DEntity | PBDParticleEntity | PBDFreeParticleEntity:
         if desc is None:
             if isinstance(material, (PBD.Cloth, PBD.Elastic)):

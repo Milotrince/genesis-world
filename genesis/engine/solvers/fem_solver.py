@@ -12,7 +12,6 @@ import genesis.utils.array_class as array_class
 from genesis.engine.boundaries import FloorBoundary
 from genesis.engine.couplers import SAPCoupler
 from genesis.engine.entities.fem_entity import FEMEntity, FEMEntityDescription
-from genesis.engine.materials import FEM
 from genesis.engine.states.solvers import FEMSolverState
 from genesis.engine.system_data.fem import FEMData, FEMDescription, FEMEntityData
 from genesis.utils.geom import qd_transform_by_quat, qd_transform_quat_by_quat
@@ -23,7 +22,6 @@ from .base_solver import GravityMixin, Solver, TimeBasedMixin
 
 @qd.data_oriented
 class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
-    material_cls = FEM.Base
     # ------------------------------------------------------------------------------------
     # --------------------------------- Initialization -----------------------------------
     # ------------------------------------------------------------------------------------
@@ -303,7 +301,7 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
         return self.n_elements > 0
 
     def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, options=None, desc=None
+        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
     ) -> "FEMEntity":
         if desc is None:
             desc = FEMEntityDescription.resolve(

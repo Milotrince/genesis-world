@@ -145,16 +145,13 @@ class Simulator(RBC):
         # description from the morph before the entity exists, so the check runs here.
         elif not isinstance(morph, Morph) and not isinstance(material, gs.materials.Kinematic):
             gs.raise_exception(f"An entity is created from one morph, got {type(morph).__name__}.")
-        if visualize_contact and not isinstance(material, gs.materials.Rigid):
-            gs.raise_exception("'visualize_contact' only applies to rigid entities.")
         if isinstance(material, gs.materials.Hybrid):
-            # A hybrid entity has no solver of its own, since its parts are entities of their own. Its material, which
-            # only 'HybridEntityOptions' admits, routes it with or without options. Resolution adds both parts to the
-            # scene first, so the hybrid entity comes after them, authored or loaded.
+            # A hybrid entity has no solver of its own, since its parts are entities of their own. Resolution adds both
+            # parts to the scene first, so the hybrid entity comes after them, authored or loaded.
             if desc is None:
                 desc = HybridEntityDescription.resolve(self.scene, material, morph, surface, name, options)
             entity = HybridEntity(self.n_entities, self.scene, desc)
-        elif options is not None:
+        else:
             # The options decide the solver, by naming the class of the options configuring it
             for solver in self._solvers:
                 if type(solver._options) is options.scene_solver_options_cls:
@@ -163,20 +160,6 @@ class Simulator(RBC):
                 gs.raise_exception(f"No solver simulates entities of options {type(options).__name__}.")
             entity = solver.add_entity(
                 self.n_entities, material, morph, surface, visualize_contact, name=name, options=options, desc=desc
-            )
-        else:
-            # Several solvers may declare a class the material belongs to, since 'Rigid' derives from 'Kinematic'. The
-            # one declaring the most derived class simulates it (see 'Solver.material_cls').
-            solver = None
-            for candidate in self._solvers:
-                if candidate.material_cls is None or not isinstance(material, candidate.material_cls):
-                    continue
-                if solver is None or issubclass(candidate.material_cls, solver.material_cls):
-                    solver = candidate
-            if solver is None:
-                gs.raise_exception(f"No solver simulates entities of material {type(material).__name__}.")
-            entity = solver.add_entity(
-                self.n_entities, material, morph, surface, visualize_contact, name=name, desc=desc
             )
         self._entities.append(entity)
         self.scene._desc.entities.append(entity.desc)
