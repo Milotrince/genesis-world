@@ -376,6 +376,7 @@ class SurfaceDistanceProbeSensor(
         # Build the per-(sensor, tracked-link) triangle BVH in link-local frame. Rigid links don't deform,
         # so this is a one-shot scene-build cost; per-step queries traverse the static structure.
         self._shared_metadata.bvh.append_sensor(track_link_idx, self._shared_metadata.solver)
+        self._block_morph_variant_switch(track_link_idx)
 
     @classmethod
     def reset(cls, shared_metadata: SurfaceDistanceProbeMetadata, shared_ground_truth_cache: torch.Tensor, envs_idx):

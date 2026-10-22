@@ -1826,3 +1826,9 @@ def test_heterogeneous_object(show_viewer, tol):
     assert (elastomer_norm[0, 0] > tol) and (elastomer_norm[1, 0] > tol)
     assert elastomer_norm[0, 1] > elastomer_norm[1, 1] + gs.EPS
     assert surface_distance[0, 1] < surface_distance[1, 1]
+
+    # The point-cloud taxels and the surface probe sample the geometry of the tracked entity once, at build
+    with pytest.raises(gs.GenesisException) as exc_info:
+        obj.set_morph_variant(1)
+    for sensor in (proximity_taxel, elastomer_taxel, surface_probe):
+        assert type(sensor).__name__ in str(exc_info.value)

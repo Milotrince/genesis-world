@@ -826,6 +826,20 @@ def kernel_update_verts_for_geoms(
 
 
 @qd.func
+def func_is_geom_carried(i_g: int, i_b: int, dyn_info: array_class.DynInfo, rigid_config: qd.template()):
+    """Return whether an environment carries a geom, which holds for every geom outside the variants it does not carry.
+
+    A solver holding a heterogeneous entity batches its link info, the geom range of a link being the one of the variant
+    that the environment carries.
+    """
+    is_carried = True
+    if qd.static(rigid_config.batch_links_info):
+        i_l = dyn_info.geoms.link_idx[i_g]
+        is_carried = dyn_info.links.geom_start[i_l, i_b] <= i_g < dyn_info.links.geom_end[i_l, i_b]
+    return is_carried
+
+
+@qd.func
 def func_update_verts_for_geom(
     i_g: int,
     i_b: int,
@@ -840,11 +854,7 @@ def func_update_verts_for_geom(
         if dyn_info.verts.is_fixed[i_v_start]:
             # The single copy of the vertices of a fixed geom comes from an env carrying its heterogeneous variant, the
             # only ones where its pose is meaningful (see func_update_geom_aabbs)
-            is_carried = True
-            if qd.static(rigid_config.batch_links_info):
-                i_l = dyn_info.geoms.link_idx[i_g]
-                is_carried = dyn_info.links.geom_start[i_l, i_b] <= i_g < dyn_info.links.geom_end[i_l, i_b]
-            if is_carried:
+            if func_is_geom_carried(i_g, i_b, dyn_info, rigid_config):
                 for i_v in range(i_v_start, dyn_info.geoms.vert_end[i_g]):
                     verts_state_idx = dyn_info.verts.verts_state_idx[i_v]
                     dyn_state.fixed_verts.pos[verts_state_idx] = gu.qd_transform_by_trans_quat(
@@ -894,10 +904,7 @@ def func_update_geom_aabbs(
 
     qd.loop_config(serialize=qd.static(rigid_config.para_level < gs.PARA_LEVEL.PARTIAL))
     for i_g, i_b in qd.ndrange(n_geoms, _B):
-        is_carried = True
-        if qd.static(rigid_config.batch_links_info):
-            i_l = dyn_info.geoms.link_idx[i_g]
-            is_carried = dyn_info.links.geom_start[i_l, i_b] <= i_g < dyn_info.links.geom_end[i_l, i_b]
+        is_carried = func_is_geom_carried(i_g, i_b, dyn_info, rigid_config)
 
         lower = gu.qd_vec3(qd.math.inf)
         upper = gu.qd_vec3(-qd.math.inf)
@@ -1196,10 +1203,9 @@ def func_update_cartesian_space(
         for i_g, i_b in qd.ndrange(dyn_state.geoms.pos.shape[0], dyn_state.geoms.pos.shape[1]):
             if not dyn_info.geoms.is_fixed[i_g]:
                 i_l = dyn_info.geoms.link_idx[i_g]
-                is_carried = True
-                if qd.static(rigid_config.batch_links_info):
-                    is_carried = dyn_info.links.geom_start[i_l, i_b] <= i_g < dyn_info.links.geom_end[i_l, i_b]
-                if is_carried and func_is_awake_link(i_l, i_b, dyn_state, rigid_config):
+                if func_is_geom_carried(i_g, i_b, dyn_info, rigid_config) and func_is_awake_link(
+                    i_l, i_b, dyn_state, rigid_config
+                ):
                     dyn_state.geoms.pos[i_g, i_b], dyn_state.geoms.quat[i_g, i_b] = (
                         gu.qd_transform_pos_quat_by_trans_quat(
                             dyn_info.geoms.pos[i_g],

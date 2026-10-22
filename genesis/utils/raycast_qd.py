@@ -4,6 +4,7 @@ import genesis as gs
 import genesis.utils.array_class as array_class
 import genesis.utils.geom as gu
 from genesis.engine.bvh import func_build_bvh
+from genesis.engine.solvers.rigid.abd.forward_kinematics import func_is_geom_carried
 from genesis.engine.solvers.rigid.rigid_solver import func_update_all_verts
 
 
@@ -345,9 +346,7 @@ def update_face_aabb(
     leaf_max = -leaf_min
 
     i_g = dyn_info.faces.geom_idx[i_f]
-    i_l = dyn_info.geoms.link_idx[i_g]
-    I_l = [i_l, i_b] if qd.static(rigid_config.batch_links_info) else i_l
-    if dyn_info.links.geom_start[I_l] <= i_g and i_g < dyn_info.links.geom_end[I_l]:
+    if func_is_geom_carried(i_g, i_b, dyn_info, rigid_config):
         for i in qd.static(range(3)):
             i_v = dyn_info.faces.verts_idx[i_f][i]
             i_fv = dyn_info.verts.verts_state_idx[i_v]

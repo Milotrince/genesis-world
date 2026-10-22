@@ -655,6 +655,17 @@ class RigidSensorMixin(_LinkAttachedSensorMixin, Generic[RigidSensorMetadataMixi
     def _register_link(self, entity, link_idx: int):
         self._shared_metadata.links_idx = concat_with_tensor(self._shared_metadata.links_idx, link_idx)
 
+    def _block_morph_variant_switch(self, links_idx):
+        """Make a switch of morph variant of the heterogeneous entities holding some links raise.
+
+        This sensor samples the geometry of these links once, as it stands at build.
+        """
+        solver = self._shared_metadata.solver
+        for i_l in links_idx:
+            entity = solver.links[i_l].entity
+            if entity.is_heterogeneous:
+                solver.add_morph_variant_switch_blocker(type(self).__name__, entity)
+
 
 class KinematicSensorMixin(_LinkAttachedSensorMixin, Generic[KinematicSensorMetadataMixinT]):
     """
