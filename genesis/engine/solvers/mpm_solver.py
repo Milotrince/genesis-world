@@ -10,9 +10,9 @@ import genesis.utils.array_class as array_class
 import genesis.utils.geom as gu
 import genesis.utils.sdf as sdf
 from genesis.engine.boundaries import CubeBoundary
+from genesis.engine.constitutive.mpm import MPMLaw, MPMLawKey, build_mpm_law, get_mpm_law_key
 from genesis.engine.entities import HybridEntity, MPMEntity
 from genesis.engine.entities.mpm_entity import MPMEntityDescription
-from genesis.engine.materials import MPM
 from genesis.engine.states.solvers import MPMSolverState
 from genesis.engine.system_data.mpm import MPMData, MPMDescription
 from genesis.engine.system_data.particles import ParticleEntityData
@@ -67,11 +67,10 @@ class MPMSolver(GravityMixin, TimeBasedMixin, Solver):
                 "boundaries via 'lower_bound' / 'upper_bound'."
             )
 
-        # materials
-        self._materials = list()
-        self._materials_idx = list()
-        self._materials_update_F_S_Jp = list()
-        self._materials_update_stress = list()
+        # The constitutive laws of the entities, one per distinct key (see 'get_mpm_law_key'), dispatched statically.
+        # They are bound once the substep is settled, which a viscous liquid depends on (see 'MPMLiquidLaw').
+        self._laws: list[MPMLaw] = []
+        self._laws_key: list[MPMLawKey] = []
 
         # boundary
         self.setup_boundary()
@@ -166,11 +165,14 @@ class MPMSolver(GravityMixin, TimeBasedMixin, Solver):
 
         self._coupler = self.sim._coupler
 
+        self._laws.clear()
+        self._laws.extend(build_mpm_law(law_key, self.substep_dt) for law_key in self._laws_key)
+
         # Aggregate SVD requirement across registered materials. If no material reads U/V/S, the solver can skip the SVD
         # kernel entirely on the forward pass and derive J from det(F_tmp) directly. Compile-time constant consumed by
         # p2g via qd.static. Forced True under requires_grad so the backward path stays exactly as upstream.
         # TODO: validate the J = det(F_tmp) shortcut composes with quadrants autograd before enabling it there.
-        self.needs_svd = self._sim.requires_grad or any(m.needs_svd for m in self._materials)
+        self.needs_svd = self._sim.requires_grad or any(law.needs_svd for law in self._laws)
 
         if not self.is_active:
             return None
@@ -243,22 +245,13 @@ class MPMSolver(GravityMixin, TimeBasedMixin, Solver):
     def is_active(self):
         return self.n_particles > 0
 
-    def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
-    ) -> MPMEntity:
+    def add_entity(self, idx, options, surface, desc=None) -> MPMEntity:
         if desc is None:
-            desc = MPMEntityDescription.resolve(
-                material,
-                morph,
-                surface,
-                self._particle_size,
-                name,
-                self.boundary,
-                has_skinning=not isinstance(material, (MPM.Liquid, MPM.Sand, MPM.Snow)),
-                options=options,
-            )
+            desc = MPMEntityDescription.resolve(options, surface, self._particle_size, self.boundary)
         assert isinstance(desc, MPMEntityDescription)
-        self.add_material(desc.material)
+        law_key = get_mpm_law_key(desc.options)
+        if law_key not in self._laws_key:
+            self._laws_key.append(law_key)
 
         # create entity
         entity = MPMEntity(
@@ -266,6 +259,7 @@ class MPMSolver(GravityMixin, TimeBasedMixin, Solver):
             solver=self,
             desc=desc,
             idx=idx,
+            law_idx=self._laws_key.index(law_key),
             particle_start=self.n_particles,
             vvert_start=self.n_vverts,
             vface_start=self.n_vfaces,
@@ -273,19 +267,6 @@ class MPMSolver(GravityMixin, TimeBasedMixin, Solver):
         self._entities.append(entity)
 
         return entity
-
-    def add_material(self, material):
-        # Register material update methods if and only if the provided material is not already registered
-        for material_i in self._materials:
-            if material == material_i:
-                material.idx = material_i.idx
-                break
-        else:
-            material.idx = len(self._materials_idx)
-            self._materials_idx.append(material.idx)
-            self._materials_update_F_S_Jp.append(material.update_F_S_Jp)
-            self._materials_update_stress.append(material.update_stress)
-        self._materials.append(material)
 
     @qd.func
     def stencil_range(self):
@@ -375,9 +356,9 @@ class MPMSolver(GravityMixin, TimeBasedMixin, Solver):
                 F_new = qd.Matrix.zero(gs.qd_float, 3, 3)
                 S_new = qd.Matrix.zero(gs.qd_float, 3, 3)
                 Jp_new = gs.qd_float(1.0)
-                for material_idx in qd.static(self._materials_idx):
-                    if self.particles_info[i_p].material_idx == material_idx:
-                        F_new, S_new, Jp_new = self._materials_update_F_S_Jp[material_idx](
+                for law_idx in qd.static(range(len(self._laws))):
+                    if self.particles_info[i_p].material_idx == law_idx:
+                        F_new, S_new, Jp_new = self._laws[law_idx].update_F_S_Jp(
                             J=J,
                             F_tmp=self.particles[f, i_p, i_b].F_tmp,
                             U=self.particles[f, i_p, i_b].U,
@@ -399,9 +380,9 @@ class MPMSolver(GravityMixin, TimeBasedMixin, Solver):
                 # to identity).
                 # 2. Jp is only used by Snow material, and it uses Jp from the previous frame, not the updated one.
                 stress = qd.Matrix.zero(gs.qd_float, 3, 3)
-                for material_idx in qd.static(self._materials_idx):
-                    if self.particles_info[i_p].material_idx == material_idx:
-                        stress = self._materials_update_stress[material_idx](
+                for law_idx in qd.static(range(len(self._laws))):
+                    if self.particles_info[i_p].material_idx == law_idx:
+                        stress = self._laws[law_idx].update_stress(
                             U=self.particles[f, i_p, i_b].U,
                             S=S_new,
                             V=self.particles[f, i_p, i_b].V,

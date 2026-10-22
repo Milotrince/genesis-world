@@ -81,7 +81,6 @@ class KinematicEntity(Entity):
     _description_cls = KinematicEntityDescription
 
     def __init__(self, scene: "Scene", solver: "KinematicSolver", idx: int, desc: KinematicEntityDescription):
-        # Set heterogeneous support before super().__init__() because _get_morph_identifier() needs it
         self._morph_heterogeneous = desc.morphs[1:]
         self._enable_heterogeneous = bool(self._morph_heterogeneous)
 
@@ -424,7 +423,7 @@ class KinematicEntity(Entity):
                     desc = link.desc
                     # An entity attached beneath this one shares its root, so the density comes from the link's own
                     # entity rather than from this one.
-                    rho = link.entity.material.rho
+                    rho = link.entity.material.density
                     if rho is None:
                         if self._solver._enable_mujoco_compatibility:
                             rho = RHO_MUJOCO
@@ -1159,15 +1158,6 @@ class KinematicEntity(Entity):
         self.set_dofs_velocity(None, slice(0, self._n_dofs), envs_idx, skip_forward=skip_forward)
 
     # ------------------------------------------------------------------------------------
-    # --------------------------------- naming methods -----------------------------------
-    # ------------------------------------------------------------------------------------
-
-    def _get_morph_identifier(self) -> str:
-        if self._enable_heterogeneous:
-            return "heterogeneous"
-        return self._morph._identifier()
-
-    # ------------------------------------------------------------------------------------
     # ----------------------------------- properties -------------------------------------
     # ------------------------------------------------------------------------------------
 
@@ -1744,7 +1734,7 @@ class RigidEntity(KinematicEntity):
     """
 
     if TYPE_CHECKING:
-        material: gs.materials.Rigid
+        material: gs.materials.Material
         _solver: "RigidSolver"
 
     _description_cls = RigidEntityDescription
@@ -1759,7 +1749,9 @@ class RigidEntity(KinematicEntity):
         self._equality_start = 0
         self._free_verts_idx_local = torch.tensor([], dtype=gs.tc_int, device=gs.device)
         self._fixed_verts_idx_local = torch.tensor([], dtype=gs.tc_int, device=gs.device)
-        self._visualize_contact: bool = desc.visualize_contact
+        self._visualize_contact: bool = desc.options.visualize_contact
+        # How the IPC coupler simulates the entity (see 'RigidEntitySolverOptions.coup_type')
+        self._coup_type = desc.options.solver_options.coup_type
 
         self._batch_fixed_verts: bool = desc.morphs[0].batch_fixed_verts
 
@@ -1767,9 +1759,10 @@ class RigidEntity(KinematicEntity):
 
     def _add_heterogeneous_variant(self, link, v_link):
         # Add collision geometries
-        coup_links = self.material.coup_links
+        solver_options = self._desc.options.solver_options
+        coup_links = solver_options.coup_links
         for g_desc in v_link.geoms:
-            needs_coup = self.material.needs_coup and (coup_links is None or link.name in coup_links)
+            needs_coup = solver_options.needs_coup and (coup_links is None or link.name in coup_links)
             link._add_geom(g_desc, needs_coup=needs_coup)
 
         # Add visual geoms and record vgeom range via parent
@@ -1833,10 +1826,10 @@ class RigidEntity(KinematicEntity):
         # Make sure that the entity is not object
         if (
             isinstance(self.sim.coupler, IPCCoupler)
-            and self.material.coup_type == "ipc_only"
+            and self._coup_type == "ipc_only"
             and any(l_desc.is_robot for l_desc in self._desc.links)
         ):
-            gs.raise_exception("`RigidMaterial.coup_type='ipc_only'` only supported by rigid non-articulated objects.")
+            gs.raise_exception("coup_type='ipc_only' is only supported by rigid non-articulated entities.")
 
         super()._load_model()
 
@@ -1918,9 +1911,10 @@ class RigidEntity(KinematicEntity):
         # Add visual geometries
         for g_desc in l_desc.vgeoms:
             link._add_vgeom(g_desc)
-        coup_links = self.material.coup_links
+        solver_options = self._desc.options.solver_options
+        coup_links = solver_options.coup_links
         for g_desc in l_desc.geoms:
-            needs_coup = self.material.needs_coup and (coup_links is None or link.name in coup_links)
+            needs_coup = solver_options.needs_coup and (coup_links is None or link.name in coup_links)
             link._add_geom(g_desc, needs_coup=needs_coup)
 
         return link, joints
@@ -2437,10 +2431,8 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type is not None and self.base_link.is_fixed:
-            gs.raise_exception(
-                "This method is only supported by `RigidMaterial.coup_type=None` for fixed-based rigid entities."
-            )
+        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type is not None and self.base_link.is_fixed:
+            gs.raise_exception("This method is only supported by coup_type=None for fixed-based rigid entities.")
         super().set_pos(pos, envs_idx, zero_velocity=zero_velocity, relative=relative, skip_forward=skip_forward)
 
     @gs.assert_built
@@ -2471,10 +2463,8 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type is not None and self.base_link.is_fixed:
-            gs.raise_exception(
-                "This method is only supported by `RigidMaterial.coup_type=None` for fixed-based rigid entities."
-            )
+        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type is not None and self.base_link.is_fixed:
+            gs.raise_exception("This method is only supported by coup_type=None for fixed-based rigid entities.")
         super().set_quat(quat, envs_idx, zero_velocity=zero_velocity, relative=relative, skip_forward=skip_forward)
 
     @gs.assert_built
@@ -2536,8 +2526,8 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type == "external_articulation":
-            gs.raise_exception("This method is not supported by `RigidMaterial.coup_type='external_articulation'`.")
+        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == "external_articulation":
+            gs.raise_exception("This method is not supported by coup_type='external_articulation'.")
         super().set_qpos(qpos, qs_idx_local, envs_idx, zero_velocity=zero_velocity, skip_forward=skip_forward)
 
     @gs.assert_built
@@ -2724,8 +2714,8 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type == "external_articulation":
-            gs.raise_exception("This method is not supported by `RigidMaterial.coup_type='external_articulation'`.")
+        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == "external_articulation":
+            gs.raise_exception("This method is not supported by coup_type='external_articulation'.")
         super().set_dofs_position(position, dofs_idx_local, envs_idx, zero_velocity=zero_velocity)
 
     # ------------------------------------------------------------------------------------
@@ -2749,7 +2739,7 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type == "ipc_only":
+        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == "ipc_only":
             gs.raise_exception("This method is not supported for `coup_type='ipc_only'` entities.")
 
         dofs_idx = self._get_global_idx(dofs_idx_local, self.n_dofs, self._dof_start, unsafe=True)
@@ -2772,7 +2762,7 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type == "ipc_only":
+        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == "ipc_only":
             gs.raise_exception("This method is not supported for `coup_type='ipc_only'` entities.")
 
         dofs_idx = self._get_global_idx(dofs_idx_local, self.n_dofs, self._dof_start, unsafe=True)
@@ -2796,7 +2786,7 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type == "ipc_only":
+        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == "ipc_only":
             gs.raise_exception("This method is not supported for `coup_type='ipc_only'` entities.")
 
         dofs_idx = self._get_global_idx(dofs_idx_local, self.n_dofs, self._dof_start, unsafe=True)
@@ -2821,7 +2811,7 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type == "ipc_only":
+        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == "ipc_only":
             gs.raise_exception("This method is not supported for `coup_type='ipc_only'` entities.")
 
         dofs_idx = self._get_global_idx(dofs_idx_local, self.n_dofs, self._dof_start, unsafe=True)
@@ -3273,7 +3263,7 @@ class RigidEntity(KinematicEntity):
         Note
         ----
         The torsional friction coefficient associated with a pair of geometries in contact is defined as the maximum
-        between their respective values (see 'gs.materials.Rigid'). Only effective when torsional friction is enabled
+        between their respective values (see 'gs.materials.Material'). Only effective when torsional friction is enabled
         at the scene level (see 'RigidOptions.enable_torsional_friction').
 
         Parameters
@@ -3294,7 +3284,7 @@ class RigidEntity(KinematicEntity):
         Note
         ----
         The rolling friction coefficient associated with a pair of geometries in contact is defined as the maximum
-        between their respective values (see 'gs.materials.Rigid'). Only effective when rolling friction is enabled
+        between their respective values (see 'gs.materials.Material'). Only effective when rolling friction is enabled
         at the scene level (see 'RigidOptions.enable_rolling_friction').
 
         Parameters
@@ -3469,7 +3459,7 @@ class RigidEntity(KinematicEntity):
     @property
     def gravity_compensation(self):
         """Apply a force to compensate gravity. A value of 1 will make a zero-gravity behavior. Default to 0"""
-        return self.material.gravity_compensation
+        return self._desc.options.gravity_compensation
 
     @property
     def vert_start(self):

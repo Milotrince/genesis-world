@@ -575,7 +575,17 @@ def test_filtered_entity_still_collides_with_ground(collision_filtering_usd, sho
             pos=(0.0, 0.0, 0.05),
         ),
     )
+    floating_entities = scene.add_stage(
+        options=gs.options.RigidEntityOptions(
+            morph=gs.morphs.USD(
+                file=collision_filtering_usd,
+                pos=(5.0, 0.0, 1.0),
+            ),
+            gravity_compensation=1.0,
+        ),
+    )
     scene.build()
+    floating_aabb_min = [tensor_to_array(entity.get_AABB())[0] for entity in floating_entities]
 
     for _ in range(50):
         scene.step()
@@ -584,6 +594,9 @@ def test_filtered_entity_still_collides_with_ground(collision_filtering_usd, sho
     for entity in entities:
         aabb_min, _aabb_max = tensor_to_array(entity.get_AABB())
         assert -5e-4 < aabb_min[-1] < 0.0
+    # Every entity of a stage takes the options of the stage, so the gravity-compensated copy keeps its height
+    for entity, aabb_min in zip(floating_entities, floating_aabb_min, strict=True):
+        assert_allclose(tensor_to_array(entity.get_AABB())[0], aabb_min, tol=gs.EPS)
 
 
 @pytest.mark.required

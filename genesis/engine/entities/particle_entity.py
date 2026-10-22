@@ -26,7 +26,9 @@ VVERTS_DIST2_MAX_SIZE = 2**20
 
 @dataclass(kw_only=True)
 class ParticleEntityDescription(VerticesDescription, EntityDescription):
-    morph: Morph
+    _name_identified_morphs = (gs.morphs.Box, gs.morphs.Sphere, gs.morphs.Cylinder)
+    _name_fallback = "particle"
+
     surface: Surface
     name: str | None
     particle_size: float
@@ -52,14 +54,15 @@ class ParticleEntityDescription(VerticesDescription, EntityDescription):
         return None
 
     @classmethod
-    def resolve(cls, material, morph, surface, particle_size, name, boundary, *, has_skinning, options):
-        """Sample the particles of an entity from its morph, and place them and its visual mesh at the morph pose.
+    def resolve(cls, options, surface, particle_size, boundary, *, sampler, has_skinning, **fields):
+        """Sample the particles of an entity from the morph of its options, and place them and its visual mesh there.
 
-        The particles must lie inside 'boundary', and the visual vertices and faces are kept for skinning when
-        'has_skinning' is set. 'options' are the entity options the other arguments were taken from, kept as
-        authored in the description.
+        'options' are the entity options as authored, which the description keeps, and 'surface' the surface the scene
+        resolved from them. The particles are sampled by 'sampler', must lie inside 'boundary', and the visual vertices
+        and faces are kept for skinning when 'has_skinning' is set. 'fields' are the fields of a subclass, passed on to
+        its constructor. Given no name, one is generated from the morph.
         """
-        sampler = material.sampler
+        morph = options.morph
         match sampler.split("-"):
             case ["regular"] | ["random"]:
                 pass
@@ -131,10 +134,8 @@ class ParticleEntityDescription(VerticesDescription, EntityDescription):
             vverts = np.zeros((0, 3), dtype=gs.np_float)
             vfaces = np.zeros((0, 3), dtype=gs.np_int)
         return cls(
-            material=material,
-            morph=morph,
             surface=surface,
-            name=name,
+            name=cls.resolve_name(options),
             particle_size=particle_size,
             has_skinning=has_skinning,
             sampler=sampler,
@@ -145,6 +146,7 @@ class ParticleEntityDescription(VerticesDescription, EntityDescription):
             vfaces=vfaces,
             mesh_set_group_ids=mesh_set_group_ids,
             options=options,
+            **fields,
         )
 
 
@@ -184,7 +186,7 @@ class ParticleEntity(Entity):
     def __init__(
         self, scene, solver, desc: ParticleEntityDescription, idx, particle_start, vvert_start=None, vface_start=None
     ):
-        super().__init__(idx, scene, solver, desc, desc.morph)
+        super().__init__(idx, scene, solver, desc, desc.options.morph)
 
         self._particle_size = desc.particle_size
         self._particle_start = particle_start
@@ -711,25 +713,6 @@ class ParticleEntity(Entity):
         if self._scene.n_envs == 0:
             closest_idx = closest_idx[0]
         return closest_idx
-
-    # ------------------------------------------------------------------------------------
-    # --------------------------------- naming methods -----------------------------------
-    # ------------------------------------------------------------------------------------
-
-    def _get_morph_identifier(self) -> str:
-        morph = self._morph
-
-        if isinstance(morph, gs.morphs.Box):
-            return "box"
-        if isinstance(morph, gs.morphs.Sphere):
-            return "sphere"
-        if isinstance(morph, gs.morphs.Cylinder):
-            return "cylinder"
-        if isinstance(morph, gs.morphs.Mesh):
-            return Path(morph.file).stem
-        if isinstance(morph, gs.morphs.Nowhere):
-            return "emitter"
-        return "particle"
 
     # ------------------------------------------------------------------------------------
     # ----------------------------------- properties -------------------------------------

@@ -527,13 +527,13 @@ class RigidOptions(GravityMixin, TimeBasedMixin):
         solver does not reach the fixed point. Always 'convex' when 'enable_mujoco_compatibility' is set.
     enable_torsional_friction : bool, optional
         Whether contacts also resist relative spin about their normal, with strength set per geometry by the material
-        option 'friction_torsional' (see 'gs.materials.Rigid'). Enable it when spin resistance matters - a grasped
+        option 'friction_torsional' (see 'gs.materials.Material'). Enable it when spin resistance matters - a grasped
         object twisting in a gripper, a top spinning in place - motions a point contact transmits no torque against,
         so they persist indefinitely otherwise. The extra spin resistance slows down the constraint solve on every
         contact, including those where spin is irrelevant. Defaults to False.
     enable_rolling_friction : bool, optional
         Whether contacts also resist rolling, with strength set per geometry by the material option 'friction_rolling'
-        (see 'gs.materials.Rigid'). Enable it when rolling resistance matters - a ball or wheel coasting to rest, a
+        (see 'gs.materials.Material'). Enable it when rolling resistance matters - a ball or wheel coasting to rest, a
         cylinder settling on a slope - motions a point contact otherwise never slows down. The extra rolling
         resistance slows down the constraint solve on every contact, more so than torsional friction (two extra axes),
         and requires 'enable_torsional_friction'. Defaults to False.

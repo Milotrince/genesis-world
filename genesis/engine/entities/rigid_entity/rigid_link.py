@@ -695,14 +695,14 @@ class RigidLink(KinematicLink):
 
     def set_friction_torsional(self, friction_torsional):
         """
-        Set the torsional friction of all the link's geoms (see 'gs.materials.Rigid').
+        Set the torsional friction of all the link's geoms (see 'gs.materials.Material').
         """
         for geom in self._geoms:
             geom.set_friction_torsional(friction_torsional)
 
     def set_friction_rolling(self, friction_rolling):
         """
-        Set the rolling friction of all the link's geoms (see 'gs.materials.Rigid').
+        Set the rolling friction of all the link's geoms (see 'gs.materials.Material').
         """
         for geom in self._geoms:
             geom.set_friction_rolling(friction_rolling)

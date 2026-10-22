@@ -200,28 +200,19 @@ class KinematicSolver(Solver):
     # ----------------------------------- add_entity -------------------------------------
     # ------------------------------------------------------------------------------------
 
-    def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name=None, *, options, desc=None
-    ) -> "KinematicEntity":
+    def add_entity(self, idx, options, surface, desc=None) -> "KinematicEntity":
         """Create an entity from its description.
 
-        Given no description, one is resolved from the other arguments (see 'KinematicEntityDescription'), the morph
-        deciding the kind of entity among those the solver builds ('_entity_classes'). The entity options the other
-        arguments were taken from are kept in the description as authored. The class of a given description
-        says which kind it holds. Creation from a description reads no asset.
+        Given no description, one is resolved from the entity options and the surface the scene resolved from them
+        (see 'KinematicEntityDescription'), the primary morph deciding the kind of entity among those the solver builds
+        ('_entity_classes'). The class of a given description says which kind it holds. Creation from a description
+        reads no asset.
         """
         if desc is None:
-            morphs = (morph,) if isinstance(morph, Morph) else tuple(morph)
-            entity_cls = next(cls for morph_cls, cls in self._entity_classes if isinstance(morphs[0], morph_cls))
+            morph = options.morph[0] if isinstance(options.morph, tuple) else options.morph
+            entity_cls = next(cls for morph_cls, cls in self._entity_classes if isinstance(morph, morph_cls))
             desc = entity_cls._description_cls.resolve(
-                morphs,
-                material,
-                surface,
-                self._options,
-                self._enable_mujoco_compatibility,
-                visualize_contact,
-                name,
-                options=options,
+                options, surface, self._options, self._enable_mujoco_compatibility
             )
         else:
             for _, entity_cls in self._entity_classes:
@@ -912,7 +903,7 @@ class KinematicSolver(Solver):
         """
         vgeom_enabled = torch.zeros(self.n_vgeoms_, dtype=gs.tc_bool, device=gs.device)
         for entity in self.entities:
-            if not entity.material.use_visual_raycasting:
+            if not entity.desc.options.use_visual_raycasting:
                 continue
             for vgeom in entity.vgeoms:
                 vgeom_enabled[vgeom.idx] = 1
@@ -1812,7 +1803,7 @@ class KinematicSolver(Solver):
     def vfaces_raycast_mask(self) -> torch.Tensor:
         """Per-vface mask, shape (n_vfaces,), selecting the vfaces opted into visual raycasting.
 
-        A vface is opted in iff its owning vgeom belongs to an entity whose material has use_visual_raycasting=True.
+        A vface is opted in iff its owning vgeom belongs to an entity whose options set use_visual_raycasting=True.
         Both the entity materials and the vface-to-vgeom mapping are fixed once the scene is built, so the mask is
         fitted at build time and shared by every visual raycast BVH (raycaster sensors, viewer plugins) to gate which
         vfaces contribute.
