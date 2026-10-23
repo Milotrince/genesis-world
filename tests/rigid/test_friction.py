@@ -420,7 +420,7 @@ def test_static_hold_unaffected_by_press_on_separate_body(show_viewer):
     geom = presser.geoms[0]
     geom.set_friction(0.37)
     geom.set_friction_rolling(0.02)
-    assert_allclose(geom.get_friction(), scene.rigid_solver.get_geoms_friction(geom.idx), tol=gs.EPS)
+    assert_allclose(geom.get_friction(), scene.rigid_solver.get_geoms_friction(geom.idx)[..., 0, 0], tol=gs.EPS)
     assert_allclose(geom.get_friction(), 0.37, tol=gs.EPS)
     assert_allclose(geom.get_friction_rolling(), 0.02, tol=gs.EPS)
     assert_allclose(geom.desc.friction, FRICTION, tol=gs.EPS)
@@ -1003,6 +1003,9 @@ def test_kinetic_friction(n_envs, show_viewer):
     ]
     scene.build(n_envs=n_envs)
 
+    # A coefficient set in one environment leaves the other at the one its material authored
+    boxes[1].set_friction(0.4, envs_idx=[1] if n_envs > 0 else None)
+
     for _ in range(N_SETTLE):
         scene.step()
 
@@ -1026,6 +1029,8 @@ def test_kinetic_friction(n_envs, show_viewer):
     speed_1 = torch.stack([box.get_dofs_velocity()[..., 0] for box in boxes])
 
     friction = torch.tensor([friction for friction, _ in BOXES], device=gs.device).reshape(-1, *(1,) * (n_envs > 0))
+    friction = friction.expand_as(height_0).clone()
+    friction[(1, 1) if n_envs > 0 else 1] = 0.4
     is_sliding = (friction < TIP_FRICTION).expand_as(height_0)
 
     # Below the threshold the box slides flat; above it, friction torques it over its leading edge.

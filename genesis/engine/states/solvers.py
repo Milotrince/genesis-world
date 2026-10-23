@@ -123,7 +123,7 @@ class RigidSolverState:
         self.dofs_acc = torch.zeros((_B, scene.sim.rigid_solver.n_dofs), dtype=gs.tc_float, device=gs.device)
         self.links_pos = torch.zeros((_B, scene.sim.rigid_solver.n_links, 3), dtype=gs.tc_float, device=gs.device)
         self.links_quat = torch.zeros((_B, scene.sim.rigid_solver.n_links, 4), dtype=gs.tc_float, device=gs.device)
-        self.friction_ratio = torch.ones((_B, scene.sim.rigid_solver.n_geoms), dtype=gs.tc_float, device=gs.device)
+        self.geoms_friction = torch.zeros((_B, scene.sim.rigid_solver.n_geoms, 3), dtype=gs.tc_float, device=gs.device)
 
         # The variant each environment carries of each heterogeneous entity, None without any
         self.envs_variant = None
@@ -134,7 +134,7 @@ class RigidSolverState:
     @property
     def grad_tensors(self):
         """The tensors of the state that carry gradients."""
-        return (self.qpos, self.dofs_vel, self.dofs_acc, self.links_pos, self.links_quat, self.friction_ratio)
+        return (self.qpos, self.dofs_vel, self.dofs_acc, self.links_pos, self.links_quat, self.geoms_friction)
 
     @property
     def s_global(self):

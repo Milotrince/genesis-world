@@ -598,8 +598,6 @@ def kernel_init_geom_fields(
     geoms_quat: qd.types.ndarray(),
     geoms_type: qd.types.ndarray(),
     geoms_friction: qd.types.ndarray(),
-    geoms_friction_torsional: qd.types.ndarray(),
-    geoms_friction_rolling: qd.types.ndarray(),
     geoms_sol_params: qd.types.ndarray(),
     geoms_data: qd.types.ndarray(),
     geoms_is_convex: qd.types.ndarray(),
@@ -618,7 +616,7 @@ def kernel_init_geom_fields(
     rigid_config: qd.template(),
 ):
     n_geoms = geoms_pos.shape[0]
-    _B = dyn_state.geoms.friction_ratio.shape[1]
+    _B = dyn_state.geoms.friction.shape[1]
 
     qd.loop_config(serialize=qd.static(rigid_config.para_level < gs.PARA_LEVEL.PARTIAL))
     for i_g in range(n_geoms):
@@ -650,9 +648,6 @@ def kernel_init_geom_fields(
 
         dyn_info.geoms.link_idx[i_g] = geoms_link_idx[i_g]
         dyn_info.geoms.type[i_g] = geoms_type[i_g]
-        dyn_info.geoms.friction[i_g] = geoms_friction[i_g]
-        dyn_info.geoms.friction_torsional[i_g] = geoms_friction_torsional[i_g]
-        dyn_info.geoms.friction_rolling[i_g] = geoms_friction_rolling[i_g]
 
         dyn_info.geoms.is_convex[i_g] = geoms_is_convex[i_g]
         dyn_info.geoms.is_hollow[i_g] = geoms_is_hollow[i_g]
@@ -711,7 +706,8 @@ def kernel_init_geom_fields(
 
     qd.loop_config(serialize=qd.static(rigid_config.para_level < gs.PARA_LEVEL.PARTIAL))
     for i_g, i_b in qd.ndrange(n_geoms, _B):
-        dyn_state.geoms.friction_ratio[i_g, i_b] = 1.0
+        for j in qd.static(range(3)):
+            dyn_state.geoms.friction[i_g, i_b][j] = geoms_friction[i_g, j]
 
 
 @qd.kernel(fastcache=True)

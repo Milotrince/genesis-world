@@ -679,26 +679,31 @@ class RigidLink(KinematicLink):
         """
         return self._solver.get_links_mass(self._idx, envs_idx)[..., 0]
 
-    def set_friction(self, friction):
+    @gs.assert_built
+    def set_friction(self, friction, envs_idx=None):
         """
-        Set the friction of all the link's geoms.
+        Set the sliding friction coefficient of all the link's geoms, per environment (see 'RigidEntity.set_friction').
         """
-        for geom in self._geoms:
-            geom.set_friction(friction)
+        friction = torch.as_tensor(friction, dtype=gs.tc_float, device=gs.device)
+        self._entity.set_friction(friction[..., None], [self.idx_local], envs_idx)
 
-    def set_friction_torsional(self, friction_torsional):
+    @gs.assert_built
+    def set_friction_torsional(self, friction_torsional, envs_idx=None):
         """
-        Set the torsional friction of all the link's geoms (see 'gs.materials.Material').
+        Set the torsional friction coefficient of all the link's geoms, per environment (see
+        'RigidEntity.set_friction_torsional').
         """
-        for geom in self._geoms:
-            geom.set_friction_torsional(friction_torsional)
+        friction_torsional = torch.as_tensor(friction_torsional, dtype=gs.tc_float, device=gs.device)
+        self._entity.set_friction_torsional(friction_torsional[..., None], [self.idx_local], envs_idx)
 
-    def set_friction_rolling(self, friction_rolling):
+    @gs.assert_built
+    def set_friction_rolling(self, friction_rolling, envs_idx=None):
         """
-        Set the rolling friction of all the link's geoms (see 'gs.materials.Material').
+        Set the rolling friction coefficient of all the link's geoms, per environment (see
+        'RigidEntity.set_friction_rolling').
         """
-        for geom in self._geoms:
-            geom.set_friction_rolling(friction_rolling)
+        friction_rolling = torch.as_tensor(friction_rolling, dtype=gs.tc_float, device=gs.device)
+        self._entity.set_friction_rolling(friction_rolling[..., None], [self.idx_local], envs_idx)
 
     # ------------------------------------------------------------------------------------
     # ----------------------------------- properties -------------------------------------

@@ -59,13 +59,7 @@ from .abd.accessor import (
     kernel_set_dofs_position,
     kernel_set_dofs_stiffness,
     kernel_set_drone_rpm,
-    kernel_set_geom_friction,
-    kernel_set_geom_friction_rolling,
-    kernel_set_geom_friction_torsional,
     kernel_set_geoms_friction,
-    kernel_set_geoms_friction_ratio,
-    kernel_set_geoms_friction_rolling,
-    kernel_set_geoms_friction_torsional,
     kernel_set_global_sol_params,
     kernel_set_links_COM,
     kernel_set_links_inertia,
@@ -1209,9 +1203,10 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 np.array(geoms_center, dtype=gs.np_float),
                 np.array([geom.init_quat for geom in geoms], dtype=gs.np_float),
                 np.array([geom.type for geom in geoms], dtype=gs.np_int),
-                np.array([geom.desc.friction for geom in geoms], dtype=gs.np_float),
-                np.array([geom.desc.friction_torsional for geom in geoms], dtype=gs.np_float),
-                np.array([geom.desc.friction_rolling for geom in geoms], dtype=gs.np_float),
+                np.array(
+                    [(geom.desc.friction, geom.desc.friction_torsional, geom.desc.friction_rolling) for geom in geoms],
+                    dtype=gs.np_float,
+                ),
                 geoms_sol_params,
                 np.array([geom.data for geom in geoms], dtype=gs.np_float),
                 np.array([geom.is_convex for geom in geoms], dtype=gs.np_bool),
@@ -1803,7 +1798,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 state.dofs_acc,
                 state.links_pos,
                 state.links_quat,
-                state.friction_ratio,
+                state.geoms_friction,
                 self.dyn_state,
                 self.rigid_info,
                 self.rigid_config,
@@ -1864,7 +1859,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
             cfrc_ang_dst = qd_to_torch(self.dyn_state.links.cfrc_applied_ang, transpose=True, copy=False)
             cfrc_coupling_vel_dst = qd_to_torch(self.dyn_state.links.cfrc_coupling_vel, transpose=True, copy=False)
             cfrc_coupling_ang_dst = qd_to_torch(self.dyn_state.links.cfrc_coupling_ang, transpose=True, copy=False)
-            fric_dst = qd_to_torch(self.dyn_state.geoms.friction_ratio, transpose=True, copy=False)
+            friction_dst = qd_to_torch(self.dyn_state.geoms.friction, transpose=True, copy=False)
             # Setting the state is a discontinuity: wake every body in the affected envs (a body left hibernated would
             # stay frozen), restoring the flags and the awake-dof count alongside the other state buffers.
             if self._use_hibernation:
@@ -1904,7 +1899,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 cfrc_coupling_vel_dst.masked_fill_(envs_mask[:, None, None], 0.0)
                 cfrc_coupling_ang_dst.masked_fill_(envs_mask[:, None, None], 0.0)
                 if self.n_geoms:
-                    torch.where(envs_mask[:, None], state.friction_ratio, fric_dst, out=fric_dst)
+                    torch.where(envs_mask[:, None, None], state.geoms_friction, friction_dst, out=friction_dst)
                 if self._use_hibernation:
                     links_hibernated_dst.masked_fill_(envs_mask[:, None], 0)
                     awake_steps_dst.masked_fill_(envs_mask[:, None], 0)
@@ -1929,7 +1924,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 cfrc_coupling_vel_dst[envs_idx] = 0.0
                 cfrc_coupling_ang_dst[envs_idx] = 0.0
                 if self.n_geoms:
-                    fric_dst[envs_idx] = state.friction_ratio[envs_idx]
+                    friction_dst[envs_idx] = state.geoms_friction[envs_idx]
                 if self._use_hibernation:
                     links_hibernated_dst[envs_idx] = 0
                     awake_steps_dst[envs_idx] = 0
@@ -1951,7 +1946,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 state.dofs_acc,
                 state.links_pos,
                 state.links_quat,
-                state.friction_ratio,
+                state.geoms_friction,
                 self.dyn_state,
                 self.rigid_info,
                 self.rigid_config,
@@ -2649,15 +2644,6 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         """Set the center of mass (COM) of the given links, as an offset from the origin of their local frame."""
         self._set_links_info(com, links_idx, "COM", envs_idx)
 
-    @mutates(StateChange.MODEL)
-    def set_geoms_friction_ratio(self, friction_ratio, geoms_idx=None, envs_idx=None):
-        friction_ratio, geoms_idx, envs_idx = self._sanitize_io_variables(
-            friction_ratio, geoms_idx, self.n_geoms, "geoms_idx", envs_idx, skip_allocation=True
-        )
-        if self.n_envs == 0:
-            friction_ratio = friction_ratio[None]
-        kernel_set_geoms_friction_ratio(geoms_idx, envs_idx, friction_ratio, self.dyn_state, self.rigid_config)
-
     @mutates(StateChange.GEOMETRY, links=MutatedLinks.ARTICULATED)
     def set_qpos(self, qpos, qs_idx=None, envs_idx=None, *, skip_forward=False):
         if self.constraint_solver is not None:
@@ -3237,8 +3223,9 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         tensor = qd_to_torch(self.dyn_info.links.invweight, envs_idx, links_idx, transpose=True, copy=True)
         return tensor[0] if self.n_envs == 0 and self._options.batch_links_info else tensor
 
-    def get_geoms_friction_ratio(self, geoms_idx=None, envs_idx=None):
-        tensor = qd_to_torch(self.dyn_state.geoms.friction_ratio, envs_idx, geoms_idx, transpose=True, copy=True)
+    def get_geoms_friction(self, geoms_idx=None, envs_idx=None):
+        """Get the sliding, torsional and rolling friction coefficients of the given geoms, along the last axis."""
+        tensor = qd_to_torch(self.dyn_state.geoms.friction, envs_idx, geoms_idx, transpose=True, copy=True)
         return tensor[0] if self.n_envs == 0 else tensor
 
     def get_geoms_pos(self, geoms_idx=None, envs_idx=None, *, relative=False):
@@ -3521,15 +3508,6 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         """
         return self.get_kinetic_energy(envs_idx=envs_idx) + self.get_potential_energy(envs_idx=envs_idx)
 
-    def get_geoms_friction(self, geoms_idx=None):
-        return qd_to_torch(self.dyn_info.geoms.friction, geoms_idx, copy=True)
-
-    def get_geoms_friction_torsional(self, geoms_idx=None):
-        return qd_to_torch(self.dyn_info.geoms.friction_torsional, geoms_idx, copy=True)
-
-    def get_geoms_friction_rolling(self, geoms_idx=None):
-        return qd_to_torch(self.dyn_info.geoms.friction_rolling, geoms_idx, copy=True)
-
     def get_AABB(self, entities_idx=None, envs_idx=None):
         from genesis.engine.couplers import LegacyCoupler
 
@@ -3565,37 +3543,25 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         return aabb[0] if self.n_envs == 0 else aabb
 
     @mutates(StateChange.MODEL)
-    def set_geom_friction(self, friction, geoms_idx):
-        kernel_set_geom_friction(geoms_idx, friction, self.dyn_info)
+    def set_geoms_friction(self, friction, geoms_idx=None, envs_idx=None, *, i_component=0):
+        """Set one friction coefficient of the given geoms, per environment.
 
-    @mutates(StateChange.MODEL)
-    def set_geom_friction_torsional(self, friction_torsional, geoms_idx):
-        kernel_set_geom_friction_torsional(geoms_idx, friction_torsional, self.dyn_info)
+        The coefficient is selected by `i_component`: 0 for sliding, 1 for torsional and 2 for rolling.
+        """
+        if gs.use_zerocopy:
+            mask = (0, *indices_to_mask(geoms_idx)) if self.n_envs == 0 else indices_to_mask(envs_idx, geoms_idx)
+            friction_t = qd_to_torch(self.dyn_state.geoms.friction, transpose=True, copy=False)[..., i_component]
+            assign_indexed_tensor(friction_t, mask, friction)
+            if gs.backend == gs.metal:
+                torch.mps.synchronize()
+            return
 
-    @mutates(StateChange.MODEL)
-    def set_geom_friction_rolling(self, friction_rolling, geoms_idx):
-        kernel_set_geom_friction_rolling(geoms_idx, friction_rolling, self.dyn_info)
-
-    @mutates(StateChange.MODEL)
-    def set_geoms_friction(self, friction, geoms_idx=None):
-        friction, geoms_idx, _ = self._sanitize_io_variables(
-            friction, geoms_idx, self.n_geoms, "geoms_idx", envs_idx=None, batched=False, skip_allocation=True
+        friction, geoms_idx, envs_idx = self._sanitize_io_variables(
+            friction, geoms_idx, self.n_geoms, "geoms_idx", envs_idx, skip_allocation=True
         )
-        kernel_set_geoms_friction(geoms_idx, friction, self.dyn_info, self.rigid_config)
-
-    @mutates(StateChange.MODEL)
-    def set_geoms_friction_torsional(self, friction_torsional, geoms_idx=None):
-        friction_torsional, geoms_idx, _ = self._sanitize_io_variables(
-            friction_torsional, geoms_idx, self.n_geoms, "geoms_idx", envs_idx=None, batched=False, skip_allocation=True
-        )
-        kernel_set_geoms_friction_torsional(geoms_idx, friction_torsional, self.dyn_info, self.rigid_config)
-
-    @mutates(StateChange.MODEL)
-    def set_geoms_friction_rolling(self, friction_rolling, geoms_idx=None):
-        friction_rolling, geoms_idx, _ = self._sanitize_io_variables(
-            friction_rolling, geoms_idx, self.n_geoms, "geoms_idx", envs_idx=None, batched=False, skip_allocation=True
-        )
-        kernel_set_geoms_friction_rolling(geoms_idx, friction_rolling, self.dyn_info, self.rigid_config)
+        if self.n_envs == 0:
+            friction = friction[None]
+        kernel_set_geoms_friction(geoms_idx, envs_idx, i_component, friction, self.dyn_state, self.rigid_config)
 
     @mutates(StateChange.MODEL)
     def add_weld_constraint(self, link1_idx, link2_idx, envs_idx=None):
