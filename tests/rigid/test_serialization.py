@@ -154,6 +154,8 @@ def test_export_and_load_rigid(
             color=(0.8, 0.2, 0.2),
         ),
     )
+    # A contact pair travels by the names of its targets, here an entity and one geom of another
+    scene.add_contact_pair(between=(box, mesh_set.geoms[1]), friction=0.3, is_collision_enabled=True)
     # A link whose frame is anchored on the geometry it holds, given a pose offset as well
     anchored = scene.add_entity(
         morph=gs.morphs.Mesh(
@@ -331,6 +333,10 @@ def test_export_and_load_rigid(
     assert_equal(restored.options.sim.dt, scene.options.sim.dt)
     assert_equal(restored.options.rigid.dt, scene.options.rigid.dt)
     assert [entity.name for entity in restored.entities] == [entity.name for entity in scene.entities]
+    assert restored.desc.contact_pairs == scene.desc.contact_pairs
+    assert [pair.geoms_idx for pair in restored.sim.rigid_solver.contact_pairs] == [
+        pair.geoms_idx for pair in scene.sim.rigid_solver.contact_pairs
+    ]
     assert_equal(restored.entities[1].material.friction, box.material.friction)
     # A texture is drawn from its pixels, which travel, and the name of the image is all that is kept of its path.
     assert_equal(restored.entities[1].surface.diffuse_texture.image_array, box.surface.diffuse_texture.image_array)

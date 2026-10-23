@@ -3235,7 +3235,8 @@ class RigidEntity(KinematicEntity):
         Note
         ----
         The friction coefficient of a contact is the maximum between those of the two geoms, floored at 0.01, so the
-        coefficients of both geoms matter.
+        coefficients of both geoms matter. A contact pair stating the coefficient overrides it (see
+        'Scene.add_contact_pair').
 
         Parameters
         ----------

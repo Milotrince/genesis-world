@@ -47,6 +47,7 @@ from .abd.accessor import (
     kernel_get_links_acc,
     kernel_get_links_vel,
     kernel_get_state,
+    kernel_set_contact_classes_friction,
     kernel_set_dofs_act_bias,
     kernel_set_dofs_act_gain,
     kernel_set_dofs_armature,
@@ -150,6 +151,7 @@ from .constraint.solver import (
     func_resolve_post,
     func_solve_body,
 )
+from .contact_pair import ContactPair, ContactParameters, resolve_contact_pairs
 
 if TYPE_CHECKING:
     from genesis.engine.scene import Scene
@@ -238,6 +240,12 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         # The features that cannot follow a switch of morph variant, each with the entity it blocks, None for any (see
         # 'add_morph_variant_switch_blocker')
         self._morph_variant_switch_blockers: list[tuple[str, RigidEntity | None]] = []
+        # The contact pairs declared on the scene (see 'Scene.add_contact_pair'), and what their resolution at build
+        # states per contact class (see 'resolve_contact_pairs')
+        self._contact_pairs: list[ContactPair] = []
+        self._geoms_contact_class: np.ndarray | None = None
+        self._contact_classes_friction: np.ndarray | None = None
+        self._contact_classes_is_collision_enabled: np.ndarray | None = None
 
         # The differentiable solve keeps every body in its iteration trace, so hibernation stays off there (see the
         # use_hibernation option).
@@ -324,6 +332,11 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         self.n_free_verts_ = max(1, self.n_free_verts)
         self.n_fixed_verts_ = max(1, self.n_fixed_verts)
         self.n_candidate_equalities_ = max(1, self.n_equalities + self._options.max_dynamic_constraints)
+        (
+            self._geoms_contact_class,
+            self._contact_classes_friction,
+            self._contact_classes_is_collision_enabled,
+        ) = resolve_contact_pairs(self._contact_pairs, self.n_geoms)
 
         # Resolve precision-dependent tolerance default. The convergence thresholds reference the scene's free-motion
         # cost (see func_exit_decision in linesearch.py), which stands an order of magnitude above the bare inertia
@@ -343,6 +356,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
             n_free_verts_=self.n_free_verts_,
             n_fixed_verts_=self.n_fixed_verts_,
             n_candidate_equalities_=self.n_candidate_equalities_,
+            n_contact_classes_=self.n_contact_classes,
             is_dynamic=True,
         )
         return self._data_description
@@ -1224,6 +1238,10 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 self.dyn_info,
                 self.rigid_config,
             )
+            self.dyn_info.geoms.contact_class.from_numpy(self._geoms_contact_class)
+            self.dyn_state.geoms.contact_classes_friction.from_numpy(
+                np.repeat(self._contact_classes_friction[:, :, None], self._B, axis=2)
+            )
 
     def _init_entity_fields(self):
         if self._entities:
@@ -1799,6 +1817,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 state.links_pos,
                 state.links_quat,
                 state.geoms_friction,
+                state.contact_classes_friction,
                 self.dyn_state,
                 self.rigid_info,
                 self.rigid_config,
@@ -1860,6 +1879,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
             cfrc_coupling_vel_dst = qd_to_torch(self.dyn_state.links.cfrc_coupling_vel, transpose=True, copy=False)
             cfrc_coupling_ang_dst = qd_to_torch(self.dyn_state.links.cfrc_coupling_ang, transpose=True, copy=False)
             friction_dst = qd_to_torch(self.dyn_state.geoms.friction, transpose=True, copy=False)
+            pairs_friction_dst = qd_to_torch(self.dyn_state.geoms.contact_classes_friction, transpose=True, copy=False)
             # Setting the state is a discontinuity: wake every body in the affected envs (a body left hibernated would
             # stay frozen), restoring the flags and the awake-dof count alongside the other state buffers.
             if self._use_hibernation:
@@ -1900,6 +1920,12 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 cfrc_coupling_ang_dst.masked_fill_(envs_mask[:, None, None], 0.0)
                 if self.n_geoms:
                     torch.where(envs_mask[:, None, None], state.geoms_friction, friction_dst, out=friction_dst)
+                    torch.where(
+                        envs_mask[:, None, None, None],
+                        state.contact_classes_friction,
+                        pairs_friction_dst,
+                        out=pairs_friction_dst,
+                    )
                 if self._use_hibernation:
                     links_hibernated_dst.masked_fill_(envs_mask[:, None], 0)
                     awake_steps_dst.masked_fill_(envs_mask[:, None], 0)
@@ -1925,6 +1951,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 cfrc_coupling_ang_dst[envs_idx] = 0.0
                 if self.n_geoms:
                     friction_dst[envs_idx] = state.geoms_friction[envs_idx]
+                    pairs_friction_dst[envs_idx] = state.contact_classes_friction[envs_idx]
                 if self._use_hibernation:
                     links_hibernated_dst[envs_idx] = 0
                     awake_steps_dst[envs_idx] = 0
@@ -1947,6 +1974,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 state.links_pos,
                 state.links_quat,
                 state.geoms_friction,
+                state.contact_classes_friction,
                 self.dyn_state,
                 self.rigid_info,
                 self.rigid_config,
@@ -3563,6 +3591,39 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
             friction = friction[None]
         kernel_set_geoms_friction(geoms_idx, envs_idx, i_component, friction, self.dyn_state, self.rigid_config)
 
+    @gs.assert_unbuilt
+    def add_contact_pair(
+        self, geoms_idx: tuple[frozenset[int], frozenset[int]], parameters: ContactParameters, name: str
+    ) -> ContactPair:
+        """Declare the contact parameters between two sets of geoms (see 'Scene.add_contact_pair')."""
+        for pair in self._contact_pairs:
+            if {*pair.geoms_idx} == {*geoms_idx}:
+                gs.raise_exception(f"Contact pair {name} ties the same geoms as contact pair {pair.name}.")
+        pair = ContactPair(self, geoms_idx, parameters, name)
+        self._contact_pairs.append(pair)
+        return pair
+
+    @mutates(StateChange.MODEL)
+    def set_contact_classes_friction(self, friction, cells, envs_idx=None, i_component=0):
+        """Set one friction coefficient of the given pairs of contact classes, per environment.
+
+        The coefficient is selected by `i_component` as in 'set_geoms_friction', and each cell of `cells` names a pair
+        of contact classes (see 'resolve_contact_pairs').
+        """
+        envs_idx = self._scene._sanitize_envs_idx(envs_idx)
+        if envs_idx.dtype == torch.bool:
+            envs_idx = self._scene._envs_idx[envs_idx]
+        friction = broadcast_tensor(friction, gs.tc_float, (len(envs_idx),))
+        cells_idx = torch.tensor(cells, dtype=gs.tc_int, device=gs.device)
+        kernel_set_contact_classes_friction(
+            cells_idx, envs_idx, i_component, friction, self.dyn_state, self.rigid_config
+        )
+
+    def get_contact_classes_friction(self, envs_idx=None):
+        """Get the friction coefficients that contact pairs state between each pair of contact classes, -1 where none."""
+        tensor = qd_to_torch(self.dyn_state.geoms.contact_classes_friction, envs_idx, transpose=True, copy=True)
+        return tensor[0] if self.n_envs == 0 else tensor
+
     @mutates(StateChange.MODEL)
     def add_weld_constraint(self, link1_idx, link2_idx, envs_idx=None):
         # The only type-specific entry is the torque scale of the rotation rows.
@@ -3755,6 +3816,26 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         if self.is_built:
             return self._equalities
         return gs.List(equality for entity in self._entities for equality in entity.equalities)
+
+    @property
+    def contact_pairs(self) -> list[ContactPair]:
+        """The contact pairs declared on the scene (see 'Scene.add_contact_pair')."""
+        return self._contact_pairs
+
+    @property
+    def n_contact_classes(self) -> int:
+        """The number of classes of geoms sharing the same contact pairs, at least one."""
+        return max(1, len(self._contact_classes_friction))
+
+    @property
+    def geoms_contact_class(self) -> np.ndarray:
+        """The contact class of each geom (see 'resolve_contact_pairs')."""
+        return self._geoms_contact_class
+
+    @property
+    def contact_classes_is_collision_enabled(self) -> np.ndarray:
+        """Whether contact pairs let the geoms of each pair of contact classes collide, -1 where none states it."""
+        return self._contact_classes_is_collision_enabled
 
 
 @qd.func

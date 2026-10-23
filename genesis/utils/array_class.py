@@ -2592,6 +2592,8 @@ class GeomsInfo:
     data: qd.Tensor
     link_idx: qd.Tensor
     type: qd.Tensor
+    # The class of the geom among those sharing the same contact pairs (see 'resolve_contact_pairs' in contact_pair.py)
+    contact_class: qd.Tensor
     sol_params: qd.Tensor
     vert_num: qd.Tensor
     vert_start: qd.Tensor
@@ -2626,6 +2628,7 @@ def get_geoms_info(description, is_active=True):
         data=V(dtype=gs.qd_vec7, shape=shape),
         link_idx=V(dtype=gs.qd_int, shape=shape),
         type=V(dtype=gs.qd_int, shape=shape),
+        contact_class=V(dtype=gs.qd_int, shape=shape),
         sol_params=V(dtype=gs.qd_vec7, shape=shape),
         vert_num=V(dtype=gs.qd_int, shape=shape),
         vert_start=V(dtype=gs.qd_int, shape=shape),
@@ -2663,6 +2666,9 @@ class GeomsState:
     is_hibernated: qd.Tensor = of_kind(DataKind.STATE)
     # Sliding, torsional and rolling friction coefficients, per environment so that each can be randomized
     friction: qd.Tensor = of_kind(DataKind.INFO)
+    # The friction coefficients that contact pairs state between two contact classes, replacing those the two geoms
+    # combine, each -1 where no pair states it (see 'GeomsInfo.contact_class')
+    contact_classes_friction: qd.Tensor = of_kind(DataKind.INFO)
 
 
 def get_geoms_state(description, is_active=True):
@@ -2677,6 +2683,11 @@ def get_geoms_state(description, is_active=True):
         verts_updated=V(dtype=gs.qd_bool, shape=shape),
         is_hibernated=V(dtype=gs.qd_int, shape=shape),
         friction=V_VEC(3, dtype=gs.qd_float, shape=shape),
+        contact_classes_friction=V_VEC(
+            3,
+            dtype=gs.qd_float,
+            shape=(description.n_contact_classes_, description.n_contact_classes_, description._B) if is_active else (),
+        ),
     )
 
 

@@ -100,6 +100,7 @@ def kernel_get_state(
     links_pos: qd.types.ndarray(),
     links_quat: qd.types.ndarray(),
     geoms_friction: qd.types.ndarray(),
+    contact_classes_friction: qd.types.ndarray(),
     dyn_state: array_class.DynState,
     rigid_info: array_class.RigidInfo,
     rigid_config: qd.template(),
@@ -131,6 +132,12 @@ def kernel_get_state(
         for j in qd.static(range(3)):
             geoms_friction[i_b, i_g, j] = dyn_state.geoms.friction[i_g, i_b][j]
 
+    n_contact_classes = contact_classes_friction.shape[1]
+    qd.loop_config(serialize=rigid_config.para_level < gs.PARA_LEVEL.PARTIAL)
+    for i_ca, i_cb, i_b in qd.ndrange(n_contact_classes, n_contact_classes, _B):
+        for j in qd.static(range(3)):
+            contact_classes_friction[i_b, i_ca, i_cb, j] = dyn_state.geoms.contact_classes_friction[i_ca, i_cb, i_b][j]
+
 
 @qd.kernel(fastcache=True)
 def kernel_set_state(
@@ -141,6 +148,7 @@ def kernel_set_state(
     links_pos: qd.types.ndarray(),
     links_quat: qd.types.ndarray(),
     geoms_friction: qd.types.ndarray(),
+    contact_classes_friction: qd.types.ndarray(),
     dyn_state: array_class.DynState,
     rigid_info: array_class.RigidInfo,
     rigid_config: qd.template(),
@@ -178,6 +186,13 @@ def kernel_set_state(
         i_b = envs_idx[i_b_]
         for j in qd.static(range(3)):
             dyn_state.geoms.friction[i_g, i_b][j] = geoms_friction[i_b, i_g, j]
+
+    n_contact_classes = contact_classes_friction.shape[1]
+    qd.loop_config(serialize=rigid_config.para_level < gs.PARA_LEVEL.PARTIAL)
+    for i_ca, i_cb, i_b_ in qd.ndrange(n_contact_classes, n_contact_classes, _B):
+        i_b = envs_idx[i_b_]
+        for j in qd.static(range(3)):
+            dyn_state.geoms.contact_classes_friction[i_ca, i_cb, i_b][j] = contact_classes_friction[i_b, i_ca, i_cb, j]
 
 
 @qd.kernel(fastcache=True)
@@ -634,6 +649,25 @@ def kernel_set_geoms_friction(
         for j in qd.static(range(3)):
             if j == i_component:
                 dyn_state.geoms.friction[i_g, i_b][j] = friction[i_b_, i_g_]
+
+
+@qd.kernel(fastcache=True)
+def kernel_set_contact_classes_friction(
+    cells_idx: qd.types.ndarray(),
+    envs_idx: qd.types.ndarray(),
+    i_component: int,
+    friction: qd.types.ndarray(),
+    dyn_state: array_class.DynState,
+    rigid_config: qd.template(),
+):
+    qd.loop_config(serialize=rigid_config.para_level < gs.PARA_LEVEL.PARTIAL)
+    for i_cell, i_b_ in qd.ndrange(cells_idx.shape[0], envs_idx.shape[0]):
+        i_ca = cells_idx[i_cell, 0]
+        i_cb = cells_idx[i_cell, 1]
+        i_b = envs_idx[i_b_]
+        for j in qd.static(range(3)):
+            if j == i_component:
+                dyn_state.geoms.contact_classes_friction[i_ca, i_cb, i_b][j] = friction[i_b_]
 
 
 @qd.kernel(fastcache=True)

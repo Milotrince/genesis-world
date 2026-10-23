@@ -963,8 +963,20 @@ def test_kinetic_friction(n_envs, show_viewer):
     # A cube resting flat tips once friction can torque it over its leading edge, from mu = width / (2 * com_height).
     TIP_FRICTION = SIZE / (2.0 * 0.5 * SIZE)
     # Friction coefficient and launch speed per box, spanning both sides of that threshold. 0.01 is the smallest
-    # coefficient the contact model applies, and the plane wears it so the pairwise max leaves each box its own.
-    BOXES = ((0.01, 6.0), (0.25, 6.0), (0.5, 2.0), (0.5, 6.0), (0.5, 20.0), (0.9, 6.0), (1.2, 6.0), (2.0, 6.0))
+    # coefficient the contact model applies, and the plane wears it so the pairwise max leaves each box its own. The
+    # last two boxes take the coefficient of a contact pair with the plane instead.
+    BOXES = (
+        (0.01, 6.0),
+        (0.25, 6.0),
+        (0.5, 2.0),
+        (0.5, 6.0),
+        (0.5, 20.0),
+        (0.9, 6.0),
+        (1.2, 6.0),
+        (2.0, 6.0),
+        (0.9, 6.0),
+        (0.9, 6.0),
+    )
     N_SETTLE = 40
     N_SLIDE = 40
 
@@ -982,7 +994,7 @@ def test_kinetic_friction(n_envs, show_viewer):
         ),
         show_viewer=show_viewer,
     )
-    scene.add_entity(
+    plane = scene.add_entity(
         gs.morphs.Plane(),
         material=gs.materials.Material(
             friction=0.01,
@@ -1001,16 +1013,48 @@ def test_kinetic_friction(n_envs, show_viewer):
         )
         for i_box, (friction, _) in enumerate(BOXES)
     ]
+    # Collision masks keeping a box off the plane, whose masks hold the lower 16 bits, give way to a pair asking for
+    # their contact, and a pair keeps a box off the plane that its masks let collide
+    masked_box = scene.add_entity(
+        gs.morphs.Box(
+            pos=(0.0, 4.0 * SIZE * len(BOXES), 0.5 * SIZE),
+            size=(SIZE, SIZE, SIZE),
+            contype=1 << 16,
+            conaffinity=1 << 16,
+        ),
+        material=gs.materials.Material(
+            friction=0.5,
+        ),
+    )
+    ghost_box = scene.add_entity(
+        gs.morphs.Box(
+            pos=(0.0, 4.0 * SIZE * (len(BOXES) + 1), 0.5 * SIZE),
+            size=(SIZE, SIZE, SIZE),
+        ),
+    )
+    scene.add_contact_pair(between=(plane, masked_box), is_collision_enabled=True)
+    scene.add_contact_pair(between=(plane, ghost_box), is_collision_enabled=False)
+    # A pair replaces the coefficient the two geoms would combine, even with one below both of theirs
+    scene.add_contact_pair(between=(plane, boxes[8]), friction=0.3)
+    link_pair = scene.add_contact_pair(between=(plane, boxes[9].base_link), friction=0.6)
+    with pytest.raises(gs.GenesisException):
+        scene.add_contact_pair(between=(boxes[8], plane), friction=0.5)
+    with pytest.raises(gs.GenesisException):
+        scene.add_contact_pair(between=(plane, boxes[0]), friction=0.001)
+    with pytest.raises(gs.GenesisException):
+        scene.add_contact_pair(between=(plane, boxes[0]))
+    boxes.append(masked_box)
     scene.build(n_envs=n_envs)
 
     # A coefficient set in one environment leaves the other at the one its material authored
     boxes[1].set_friction(0.4, envs_idx=[1] if n_envs > 0 else None)
+    link_pair.set_friction(0.45, envs_idx=[0] if n_envs > 0 else None)
 
     for _ in range(N_SETTLE):
         scene.step()
 
     height_0 = torch.stack([box.get_pos()[..., 2] for box in boxes])
-    for box, (_, speed) in zip(boxes, BOXES):
+    for box, (_, speed) in zip(boxes, (*BOXES, (0.5, 6.0))):
         velocity = box.get_dofs_velocity()
         velocity[..., 0] = speed
         box.set_dofs_velocity(velocity)
@@ -1028,9 +1072,11 @@ def test_kinetic_friction(n_envs, show_viewer):
         tilt_max = torch.maximum(tilt_max, torch.rad2deg(torch.arccos(up_z.clamp(-1.0, 1.0))))
     speed_1 = torch.stack([box.get_dofs_velocity()[..., 0] for box in boxes])
 
-    friction = torch.tensor([friction for friction, _ in BOXES], device=gs.device).reshape(-1, *(1,) * (n_envs > 0))
-    friction = friction.expand_as(height_0).clone()
+    friction = torch.tensor([*(friction for friction, _ in BOXES), 0.5], device=gs.device)
+    friction[8:10] = torch.tensor([0.3, 0.6])
+    friction = friction.reshape(-1, *(1,) * (n_envs > 0)).expand_as(height_0).clone()
     friction[(1, 1) if n_envs > 0 else 1] = 0.4
+    friction[(9, 0) if n_envs > 0 else 9] = 0.45
     is_sliding = (friction < TIP_FRICTION).expand_as(height_0)
 
     # Below the threshold the box slides flat; above it, friction torques it over its leading edge.
@@ -1052,3 +1098,8 @@ def test_kinetic_friction(n_envs, show_viewer):
     # Each box decelerates at its own mu * g, independently of how fast it was launched.
     deceleration = (speed_0 - speed_1) / (N_SLIDE * scene.sim.dt)
     assert_allclose(deceleration[is_sliding], (friction * GRAVITY).expand_as(height_0)[is_sliding], rtol=0.01)
+
+    # The box kept out of contact falls through the plane freely
+    n_steps = N_SETTLE + N_SLIDE
+    fall_height = GRAVITY * scene.sim.dt**2 * 0.5 * n_steps * (n_steps + 1)
+    assert_allclose(ghost_box.get_pos()[..., 2], 0.5 * SIZE - fall_height, tol=1e-3)

@@ -413,17 +413,26 @@ class Collider:
         # pair of fixed links wrt the world
         valid &= ~(geom_is_fixed[row] & geom_is_fixed[col])
 
+        # Contact pairs stating whether their geoms collide override the collision masks and the self-collision options
+        # (see 'Scene.add_contact_pair'), the other filters still applying
+        geoms_contact_class = self._solver.geoms_contact_class
+        pairs_is_collision_enabled = self._solver.contact_classes_is_collision_enabled[
+            geoms_contact_class[row], geoms_contact_class[col]
+        ]
+        is_included = pairs_is_collision_enabled == 1
+        valid &= pairs_is_collision_enabled != 0
+
         # contype and conaffinity
         same_entity = geom_entity_id[row] == geom_entity_id[col]
         has_local_mask = geom_local_mask[row] | geom_local_mask[col]
         con_match = (geom_contype[row] & geom_conaffinity[col]) | (geom_contype[col] & geom_conaffinity[row])
         con_skip = (same_entity | ~has_local_mask) & (con_match == 0)
-        valid &= ~con_skip
+        valid &= ~con_skip | is_included
 
         # self collision (same root), disabled
         same_root = geom_root_idx[row] == geom_root_idx[col]
         if not self._solver._enable_self_collision:
-            valid &= ~same_root
+            valid &= ~same_root | is_included
 
         # Weld constraint filtering
         if weld_pairs:
@@ -442,7 +451,7 @@ class Collider:
         # These checks only apply when self_collision is enabled and the pair passed all vectorized filters
         self_colliding_pairs: list[tuple[int, int]] = []
 
-        needs_self_check = self._solver._enable_self_collision and np.any(valid & same_root)
+        needs_self_check = self._solver._enable_self_collision and np.any(valid & same_root & ~is_included)
         needs_neutral_check = needs_self_check and not self._solver._enable_neutral_collision
 
         # Lazily compute geom vertices only for geoms that need neutral overlap checks
@@ -452,7 +461,7 @@ class Collider:
         # several others in the neutral configuration
         geoms_voxels: dict[int, tuple[trimesh.voxel.VoxelGrid, np.ndarray]] = {}
         if needs_neutral_check:
-            self_root_indices = np.where(valid & same_root)[0]
+            self_root_indices = np.where(valid & same_root & ~is_included)[0]
             self_root_geom_idxs = np.unique(np.concatenate([row[self_root_indices], col[self_root_indices]]))
             # The pose of a heterogeneous geom is only meaningful in the environments carrying its variant. Every
             # same-root pair left belongs to a single variant of one entity, so the first environment carrying a geom
@@ -519,7 +528,7 @@ class Collider:
                     geoms_verts[i_g] = verts
 
         if needs_self_check:
-            self_root_indices = np.where(valid & same_root)[0]
+            self_root_indices = np.where(valid & same_root & ~is_included)[0]
             for idx in self_root_indices:
                 i_ga, i_gb = row[idx], col[idx]
                 link_ga = geoms[i_ga].link
