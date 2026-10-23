@@ -4,42 +4,11 @@ from typing import TYPE_CHECKING, NamedTuple
 import numpy as np
 
 import genesis as gs
+from genesis.engine.entities.rigid_entity.description import ContactParameters
 from genesis.repr_base import RBC
 
 if TYPE_CHECKING:
     from genesis.engine.solvers.rigid.rigid_solver import RigidSolver
-
-
-@dataclasses.dataclass
-class ContactParameters:
-    """The contact parameters a contact pair states, each None to keep what the geoms of its two targets resolve to.
-
-    'friction', 'friction_torsional' and 'friction_rolling' replace the coefficients that the two geoms of a contact
-    would otherwise combine (see 'gs.materials.Material'). 'is_collision_enabled' set to True lets the geoms of the two
-    targets collide whatever their collision masks say, and False keeps them from colliding.
-    """
-
-    friction: float | None = None
-    friction_torsional: float | None = None
-    friction_rolling: float | None = None
-    is_collision_enabled: bool | None = None
-
-    def __post_init__(self):
-        if all(value is None for value in dataclasses.astuple(self)):
-            gs.raise_exception("A contact pair must state at least one contact parameter.")
-        if self.friction is not None and not 0.01 <= self.friction <= 5.0:
-            gs.raise_exception(f"The friction of a contact pair must lie between 0.01 and 5, got {self.friction}.")
-        for name, value in (
-            ("friction_torsional", self.friction_torsional),
-            ("friction_rolling", self.friction_rolling),
-        ):
-            if value is not None and value < 0.0:
-                gs.raise_exception(f"The '{name}' of a contact pair must be non-negative, got {value}.")
-
-    @property
-    def friction_coefficients(self) -> tuple[float | None, float | None, float | None]:
-        """The sliding, torsional and rolling friction coefficients, in the order of the geom friction vectors."""
-        return (self.friction, self.friction_torsional, self.friction_rolling)
 
 
 @dataclasses.dataclass

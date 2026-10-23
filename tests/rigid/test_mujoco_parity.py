@@ -153,6 +153,7 @@ def test_frictionloss(gs_sim, mj_sim, tol):
     [
         "sphere_plane_spin",
         pytest.param("sphere_plane_roll", marks=pytest.mark.friction_rolling(True)),
+        "sphere_plane_pair",
     ],
 )
 @pytest.mark.parametrize(

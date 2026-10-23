@@ -24,14 +24,10 @@ import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
 from genesis.engine.entities.base_entity import Entity, EntityDescription
 from genesis.engine.entities.rigid_entity import KinematicEntity, RigidEntity, RigidGeom, RigidLink
+from genesis.engine.entities.rigid_entity.description import ContactParameters
 from genesis.engine.force_fields import ForceField
 from genesis.engine.materials import BaseMaterial, Cloth, Liquid, Material, Sand, Snow
-from genesis.engine.solvers.rigid.contact_pair import (
-    ContactPair,
-    ContactPairDescription,
-    ContactParameters,
-    ContactTargetDescription,
-)
+from genesis.engine.solvers.rigid.contact_pair import ContactPair, ContactPairDescription, ContactTargetDescription
 from genesis.engine.states.solvers import SimState, SimulatorCheckpoint
 from genesis.options import (
     BaseCouplerOptions,

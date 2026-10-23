@@ -185,6 +185,44 @@ def sphere_plane_spin():
 
 
 @pytest.fixture(scope="session")
+def sphere_plane_pair():
+    """Generate an MJCF model for a sphere spinning and sliding on a plane, which touches the plane through an explicit
+    contact pair alone and takes the friction of that pair."""
+    mjcf = _build_plane_contact_model("sphere_plane_pair", condim="4", friction="1. 0.005 0.", plane_size="10. 10. 10.")
+    body = ET.SubElement(mjcf.find("worldbody"), "body", name="sphere", pos="0. 0. 0.1")
+    ET.SubElement(body, "geom", type="sphere", name="sphere", size="0.1", contype="0", conaffinity="0")
+    ET.SubElement(body, "joint", name="sphere_root", type="free")
+    contact = ET.SubElement(mjcf, "contact")
+    ET.SubElement(contact, "pair", geom1="floor", geom2="sphere", condim="4", friction="0.3 0.3 0.02 0.0001 0.0001")
+    return mjcf
+
+
+@pytest.fixture(scope="session")
+def paired_spheres():
+    """Generate an MJCF model for two free spheres whose collision masks are both zero and that an explicit contact pair
+    ties together, spaced 1 m apart along the x axis."""
+    mjcf = ET.Element("mujoco", model="paired_spheres")
+    worldbody = ET.SubElement(mjcf, "worldbody")
+    for name, x in (("sphere_a", "-0.5"), ("sphere_b", "0.5")):
+        body = ET.SubElement(worldbody, "body", name=name, pos=f"{x} 0. 0.1")
+        ET.SubElement(body, "geom", type="sphere", name=name, size="0.1", contype="0", conaffinity="0")
+        ET.SubElement(body, "joint", name=f"{name}_root", type="free")
+    ET.SubElement(ET.SubElement(mjcf, "contact"), "pair", geom1="sphere_a", geom2="sphere_b")
+    return mjcf
+
+
+@pytest.fixture(scope="session")
+def two_feet_slab():
+    """Generate an MJCF model for a free cube of side 0.1 made of two box geoms side by side along the x axis."""
+    mjcf = ET.Element("mujoco", model="two_feet_slab")
+    body = ET.SubElement(ET.SubElement(mjcf, "worldbody"), "body", name="slab", pos="0. 0. 0.05")
+    for name, x in (("foot_front", "0.025"), ("foot_back", "-0.025")):
+        ET.SubElement(body, "geom", type="box", name=name, size="0.025 0.05 0.05", pos=f"{x} 0. 0.")
+    ET.SubElement(body, "joint", name="slab_root", type="free")
+    return mjcf
+
+
+@pytest.fixture(scope="session")
 def humanoid_ball_floor():
     """The humanoid model with its floor plane swapped for a large sphere. The reference engine resolves plane-capsule
     pairs with a dedicated primitive whose analytic second cap contact the perturbation-based multi-contact cannot

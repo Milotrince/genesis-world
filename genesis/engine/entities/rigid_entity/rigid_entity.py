@@ -1845,6 +1845,17 @@ class RigidEntity(KinematicEntity):
         for e_desc in self._desc.equalities:
             self._add_equality(e_desc)
 
+        # A geom name of the asset stands for every geom its geometry was split into. A pair naming a geom left out of
+        # the collision geometry, such as an excluded ground plane, governs no contact.
+        for p_desc in self._desc.contact_pairs:
+            geoms_idx = tuple(
+                frozenset(geom.idx for geom in self.geoms if geom.metadata.get("name") == name)
+                for name in p_desc.geoms_name
+            )
+            if all(geoms_idx):
+                name = ", ".join(f"'{self.name}':'{geom_name}'" for geom_name in p_desc.geoms_name)
+                self._solver.add_contact_pair(geoms_idx, p_desc.parameters, f"({name})")
+
     def attach(
         self,
         parent_entity,

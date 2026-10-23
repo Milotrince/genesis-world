@@ -421,6 +421,10 @@ class Collider:
         ]
         is_included = pairs_is_collision_enabled == 1
         valid &= pairs_is_collision_enabled != 0
+        # A geom whose collision masks are both zero collides through the pairs including it alone (see 'parse_geom'
+        # in mjcf.py)
+        is_maskless = (geom_contype == 0) & (geom_conaffinity == 0)
+        valid &= ~(is_maskless[row] | is_maskless[col]) | is_included
 
         # contype and conaffinity
         same_entity = geom_entity_id[row] == geom_entity_id[col]
