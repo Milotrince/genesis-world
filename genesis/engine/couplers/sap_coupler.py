@@ -256,6 +256,8 @@ class SAPCoupler(RBC):
         for equality in self.rigid_solver.equalities:
             if equality.type == gs.EQUALITY_TYPE.JOINT and equality.eq_obj2id < 0:
                 gs.raise_exception("SAPCoupler does not support JOINT equality constraints without `joint2`.")
+        if self.rigid_solver.contact_pairs:
+            gs.raise_exception("SAPCoupler resolves rigid contacts itself and does not support contact pairs.")
 
         init_tet_tables = False
 

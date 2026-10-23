@@ -898,7 +898,8 @@ class Scene(RBC):
         None. A target is a rigid entity, one of its links or one of its collision geoms, and both targets may belong
         to one entity. Where several pairs state a coefficient for one contact, the pair whose two targets lie within
         those of the others wins, so a pair between two geoms refines a pair between their entities. Two pairs stating
-        one coefficient for one contact where neither lies within the other raise at build.
+        one coefficient for one contact where neither lies within the other raise at build, and so does the SAP
+        coupler, which resolves rigid contacts itself.
 
         Parameters
         ----------
