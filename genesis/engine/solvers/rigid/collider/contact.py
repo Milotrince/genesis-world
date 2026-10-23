@@ -528,14 +528,15 @@ def func_set_contact(
     Set the contact data for the contact [i_c]. This is used for the backward pass, which parallelizes over the entire
     contact data, and for the split narrowphase multi-contact writes.
     """
-    # A contact pair covering the two geoms replaces each coefficient it states (see 'contact_classes_friction')
+    # A contact pair covering the two geoms replaces each coefficient it states (see 'contact_classes_pair_idx')
     friction = qd.max(dyn_state.geoms.friction[i_ga, i_b], dyn_state.geoms.friction[i_gb, i_b])
     i_ca = dyn_info.geoms.contact_class[i_ga]
     i_cb = dyn_info.geoms.contact_class[i_gb]
-    friction_pair = dyn_state.geoms.contact_classes_friction[i_ca, i_cb, i_b]
+    pairs_idx = dyn_info.geoms.contact_classes_pair_idx[i_ca, i_cb]
     for j in qd.static(range(3)):
-        if friction_pair[j] >= 0.0:
-            friction[j] = friction_pair[j]
+        i_p = pairs_idx[j]
+        if i_p >= 0:
+            friction[j] = dyn_state.geoms.contact_pairs_friction[i_p, i_b][j]
 
     # Every contact the solver sees is written here, so a non-finite position, normal or penetration is flagged here
     # rather than several stages later as a force gone wrong. Flagged rather than dropped: a missing contact lets

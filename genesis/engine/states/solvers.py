@@ -124,9 +124,8 @@ class RigidSolverState:
         self.links_pos = torch.zeros((_B, scene.sim.rigid_solver.n_links, 3), dtype=gs.tc_float, device=gs.device)
         self.links_quat = torch.zeros((_B, scene.sim.rigid_solver.n_links, 4), dtype=gs.tc_float, device=gs.device)
         self.geoms_friction = torch.zeros((_B, scene.sim.rigid_solver.n_geoms, 3), dtype=gs.tc_float, device=gs.device)
-        n_contact_classes = scene.sim.rigid_solver.n_contact_classes
-        self.contact_classes_friction = torch.zeros(
-            (_B, n_contact_classes, n_contact_classes, 3), dtype=gs.tc_float, device=gs.device
+        self.contact_pairs_friction = torch.zeros(
+            (_B, scene.sim.rigid_solver.n_contact_pairs_, 3), dtype=gs.tc_float, device=gs.device
         )
 
         # The variant each environment carries of each heterogeneous entity, None without any
