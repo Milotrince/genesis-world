@@ -1,4 +1,3 @@
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,10 +11,9 @@ import quadrants as qd
 import genesis as gs
 import genesis.utils.array_class as array_class
 import genesis.utils.geom as gu
-import genesis.utils.urdf as uu
-from genesis.engine.materials import Hybrid
 from genesis.engine.system_data.particles import ParticleEntityData
 from genesis.ext.urdfpy.urdf import URDF
+from genesis.options.entities import HybridEntityOptions, MPMEntityOptions, RigidEntityOptions
 from genesis.options.morphs import Morph
 from genesis.options.surfaces import Surface
 from genesis.utils.hybrid import (
@@ -51,97 +49,95 @@ class HybridAssociationDescription:
 class HybridEntityDescription(EntityDescription):
     """The two parts of a hybrid entity, which the scene holds as entities of their own, and their association.
 
-    The association is None when the material uses the default coupling between the solvers of the parts.
+    The association is None when the options use the default coupling between the solvers of the parts.
     """
 
-    material: Hybrid
-    morph: Morph
+    _name_identified_morphs = (gs.morphs.URDF,)
+    _name_fallback = "hybrid"
+
     surface: Surface
-    name: str | None
+    name: str
     rigid_entity_idx: int
     soft_entity_idx: int
     association: HybridAssociationDescription | None
 
     @classmethod
-    def resolve(cls, scene, material, morph, surface, name):
+    def resolve(cls, scene, options: HybridEntityOptions, surface):
         """Add both parts of a hybrid entity to the scene and associate the soft particles with the rigid links.
 
-        The instantiation callbacks of the material run here, so the description holds what they returned.
+        The instantiation callbacks of the options run here, so the description holds what they returned. 'options'
+        are the entity options as authored, which the description keeps, and 'surface' the surface the scene resolved
+        from them. Given no name, one is generated from the morph.
         """
-        material_rigid = material.material_rigid
-        # The association sets the muscle groups of the soft material, so each hybrid entity takes its own copy
-        material_soft = material.material_soft.model_copy()
-
+        morph = options.morph
         surface_rigid = gs.surfaces.Smooth(roughness=0.4)  # HACK hardcoded
 
+        rigid_solver_options = options.solver_options.rigid
         if isinstance(morph, gs.morphs.URDF):
-            # set up rigid part
-            if material.use_default_coupling:
-                gs.logger.info("Use default coupling in hybrid. Overwrite `needs_coup` in rigid material to True")
-                material_rigid.needs_coup = True
-            else:
-                gs.logger.info("Use default coupling in hybrid. Overwrite `needs_coup` in rigid material to False")
-                material_rigid.needs_coup = False
-
-            part_rigid = scene.add_entity(material=material_rigid, morph=morph, surface=surface_rigid)
+            # A URDF skeleton interacts with its skin through the coupler of the scene exactly when the default coupling
+            # is used
+            rigid_solver_options = rigid_solver_options.model_copy(update={"needs_coup": options.use_default_coupling})
+        rigid_options = RigidEntityOptions(
+            morph=morph,
+            material=options.material_rigid,
+            solver_options=rigid_solver_options,
+            surface=surface_rigid,
+            gravity_compensation=options.gravity_compensation,
+        )
+        if isinstance(morph, gs.morphs.URDF):
+            part_rigid = scene.add_entity(options=rigid_options)
 
             # get rigid part in world coords
             augment_link_world_coords(part_rigid)
 
             # set soft parts based on rigid links
             func_instantiate_soft_from_rigid = (
-                material.func_instantiate_soft_from_rigid or default_func_instantiate_soft_from_rigid
+                options.func_instantiate_soft_from_rigid or default_func_instantiate_soft_from_rigid
             )
             part_soft = func_instantiate_soft_from_rigid(
-                scene=scene,
-                part_rigid=part_rigid,
-                material_soft=material_soft,
-                material_hybrid=material,
-                surface=surface,
+                scene=scene, part_rigid=part_rigid, options=options, surface=surface
             )
 
         elif isinstance(morph, gs.morphs.Mesh):
-            # instantiate soft part
-            part_soft = scene.add_entity(material=material_soft, morph=morph, surface=surface)
+            part_soft = scene.add_entity(
+                options=MPMEntityOptions(
+                    morph=morph,
+                    material=options.material_soft,
+                    solver_options=options.solver_options.soft,
+                    surface=surface,
+                )
+            )
 
             # load mesh in the same way as the soft entity
             mesh = load_mesh(morph.file)
 
-            # instantiate rigid part
-            if material.func_instantiate_rigid_from_soft is None:
-                func_instantiate_rigid_from_soft = default_func_instantiate_rigid_from_soft
-            else:
-                func_instantiate_rigid_from_soft = material.func_instantiate_rigid_from_soft
+            func_instantiate_rigid_from_soft = (
+                options.func_instantiate_rigid_from_soft or default_func_instantiate_rigid_from_soft
+            )
             part_rigid = func_instantiate_rigid_from_soft(
-                scene=scene,
-                mesh=mesh,
-                morph=morph,
-                material_rigid=material_rigid,
-                material_hybrid=material,
-                surface=surface_rigid,
+                scene=scene, mesh=mesh, morph=morph, rigid_options=rigid_options, surface=surface_rigid
             )
 
         else:
             raise ValueError("`morph` in hybrid entity should be either URDF or Mesh")
 
         association = None
-        if not material.use_default_coupling:
+        if not options.use_default_coupling:
             # get rigid-soft association function
-            if material.func_instantiate_rigid_soft_association is None:
+            if options.func_instantiate_rigid_soft_association is None:
                 if isinstance(morph, gs.morphs.URDF):
                     func_instantiate_rigid_soft_association = default_func_instantiate_rigid_soft_association_from_rigid
                 elif isinstance(morph, gs.morphs.Mesh):
                     func_instantiate_rigid_soft_association = default_func_instantiate_rigid_soft_association_from_soft
             else:
-                func_instantiate_rigid_soft_association = material.func_instantiate_rigid_soft_association
+                func_instantiate_rigid_soft_association = options.func_instantiate_rigid_soft_association
             muscle_group, link_idcs, geom_idcs, trans_local_to_global, quat_local_to_global = (
                 func_instantiate_rigid_soft_association(part_rigid=part_rigid, part_soft=part_soft)
             )
             if muscle_group is not None:
                 muscle_group = muscle_group.astype(gs.np_int, copy=False)
-
-            # set muscle group
-            material_soft.n_groups = len(link_idcs)
+            # The skin has one muscle group per link it follows, which only the association decides
+            part_soft.desc.n_groups = len(link_idcs)
 
             association = HybridAssociationDescription(
                 links_idx=np.array(link_idcs, dtype=gs.np_int),
@@ -152,13 +148,12 @@ class HybridEntityDescription(EntityDescription):
             )
 
         return cls(
-            material=material,
-            morph=morph,
             surface=surface,
-            name=name,
+            name=cls.resolve_name(options),
             rigid_entity_idx=part_rigid.idx,
             soft_entity_idx=part_soft.idx,
             association=association,
+            options=options,
         )
 
 
@@ -179,12 +174,12 @@ class HybridEntity(Entity):
     scene : genesis.Scene
         The simulation scene where the entity is added.
     desc : HybridEntityDescription
-        The rigid and the soft part, which the scene already holds, and their association, with the hybrid material,
-        the morph and the surface they are resolved from.
+        The rigid and the soft part, which the scene already holds, and their association, with the options, the
+        morph and the surface they are resolved from.
     """
 
     def __init__(self, idx, scene, desc: HybridEntityDescription):
-        super().__init__(idx, scene, None, desc, desc.morph)
+        super().__init__(idx, scene, None, desc, desc.options.morph)
         self._soft_data: ParticleEntityData | None = None
         self._part_soft_info: qd.Field | None = None
         self._part_soft_init_positions: qd.Field | None = None
@@ -208,34 +203,13 @@ class HybridEntity(Entity):
             self._part_soft_init_positions.from_numpy(part_soft.init_particles)
 
         # set members
-        self._material_rigid = part_rigid.material
         self._part_rigid = part_rigid
         self._solver_rigid = part_rigid.solver
-        self._material_soft = part_soft.material
         self._part_soft = part_soft
         self._solver_soft = part_soft.solver
 
         # TODO: test with different dt
         assert self._solver_rigid.dt == self._solver_soft.dt, "Rigid and soft solver should have the same dt for now"
-
-    # ------------------------------------------------------------------------------------
-    # --------------------------------- naming methods -----------------------------------
-    # ------------------------------------------------------------------------------------
-
-    def _get_morph_identifier(self) -> str:
-        morph = self._morph
-        if isinstance(morph, gs.morphs.URDF):
-            if isinstance(morph.file, str):
-                # Try to get robot name from URDF file, fall back to filename stem
-                try:
-                    return uu.get_robot_name(morph.file)
-                except (ValueError, ET.ParseError, FileNotFoundError, OSError) as e:
-                    gs.logger.warning(f"Could not extract robot name from URDF: {e}. Using filename stem instead.")
-                    return Path(morph.file).stem
-            return morph.file.name
-        if isinstance(morph, gs.morphs.Mesh):
-            return Path(morph.file).stem
-        return "hybrid"
 
     # ------------------------------------------------------------------------------------
     # ----------------------------------- basic ops --------------------------------------
@@ -469,7 +443,7 @@ class HybridEntity(Entity):
                 xd_vel *= dt_scale  # assume linear scaling between the timestep difference of soft/rigid solver
 
                 vel_d = xd_vel - self._soft_data.data.particles.vel[f_, i_global, i_b]
-                vel_d *= qd.exp(-self._solver_soft.dt * self.material.damping)
+                vel_d *= qd.exp(-self._solver_soft.dt * self._desc.options.damping)
 
                 # soft-to-rigid coupling
                 dt_for_rigid_acc = (
@@ -485,7 +459,7 @@ class HybridEntity(Entity):
                 links_state.cfrc_coupling_ang[link_idx, i_b] += frc_ang
 
                 # rigid-to-soft coupling # NOTE: this may lead to unstable feedback loop
-                self._soft_data.data.particles.vel[f_, i_global, i_b] += vel_d * self.material.soft_dv_coef
+                self._soft_data.data.particles.vel[f_, i_global, i_b] += vel_d * self._desc.options.soft_dv_coef
 
     # ------------------------------------------------------------------------------------
     # ----------------------------------- properties -------------------------------------
@@ -574,7 +548,7 @@ def _visualize_muscle_group(positions, muscle_group):
 # ------------------------------------------------------------------------------------
 
 
-def default_func_instantiate_soft_from_rigid(scene, part_rigid, material_soft, material_hybrid, surface):
+def default_func_instantiate_soft_from_rigid(scene, part_rigid, options, surface):
     meshes = []
     trans_local_to_global = []
     euler_local_to_global = []
@@ -596,7 +570,7 @@ def default_func_instantiate_soft_from_rigid(scene, part_rigid, material_soft, m
             faces=geom.init_faces,
             vertex_normals=geom.init_normals,
         )
-        outer_verts = verts + inner_mesh.vertex_normals * material_hybrid.thickness
+        outer_verts = verts + inner_mesh.vertex_normals * options.thickness
         outer_mesh = trimesh.Trimesh(vertices=outer_verts, faces=geom.init_faces)
         # mesh = trimesh.boolean.difference([outer_mesh, inner_mesh]) # wrap around the rigid link
         mesh = outer_mesh  # FIXME: hack to avoid `ValueError: No backends available for boolean operations!`
@@ -611,20 +585,23 @@ def default_func_instantiate_soft_from_rigid(scene, part_rigid, material_soft, m
             meshes[i] = trimesh.boolean.difference([mesh] + meshes[i + 1 :])
 
     part_soft = scene.add_entity(
-        material=material_soft,
-        morph=gs.morphs.MeshSet(
-            files=meshes,
-            poss=trans_local_to_global,
-            eulers=euler_local_to_global,
-            scale=1,  # scale is already handled in geom.init_verts
-        ),
-        surface=surface,
+        options=MPMEntityOptions(
+            morph=gs.morphs.MeshSet(
+                files=meshes,
+                poss=trans_local_to_global,
+                eulers=euler_local_to_global,
+                scale=1,  # scale is already handled in geom.init_verts
+            ),
+            material=options.material_soft,
+            solver_options=options.solver_options.soft,
+            surface=surface,
+        )
     )
 
     return part_soft
 
 
-def default_func_instantiate_rigid_from_soft(scene, mesh, morph, material_rigid, material_hybrid, surface):
+def default_func_instantiate_rigid_from_soft(scene, mesh, morph, rigid_options, surface):
     # skeletonization
     gelmesh = trimesh_to_gelmesh(mesh)
     graph_gel = skeletonization(gelmesh)
@@ -653,7 +630,7 @@ def default_func_instantiate_rigid_from_soft(scene, mesh, morph, material_rigid,
     quat_rigid = morph.quat
     scale_rigid = morph.scale
     morph_rigid = gs.morphs.URDF(file=urdf, pos=pos_rigid, quat=quat_rigid, scale=scale_rigid, fixed=morph.fixed)
-    part_rigid = scene.add_entity(material=material_rigid, morph=morph_rigid, surface=surface)
+    part_rigid = scene.add_entity(options=rigid_options.model_copy(update={"morph": morph_rigid, "surface": surface}))
 
     return part_rigid
 

@@ -10,7 +10,7 @@ import quadrants as qd
 
 import genesis as gs
 import genesis.utils.geom as gu
-from genesis.engine.materials import Tool
+from genesis.engine.materials import Material
 from genesis.engine.states.entities import ToolEntityState
 from genesis.engine.system_data.tool import ToolEntityData
 from genesis.options.morphs import Morph
@@ -26,11 +26,12 @@ from .mesh import Mesh
 class ToolEntityDescription(VerticesDescription, EntityDescription):
     """The mesh of a tool, normalized and scaled, with its vertex normals, its faces and its signed distance field.
 
-    The signed distance field and its transform from the mesh frame are None when the material disables collision.
+    The signed distance field and its transform from the mesh frame are None when the solver options disable
+    collision.
     """
 
-    material: Tool
-    morph: Morph
+    _name_fallback = "tool"
+
     surface: Surface
     name: str | None
     init_pos: np.ndarray
@@ -41,12 +42,15 @@ class ToolEntityDescription(VerticesDescription, EntityDescription):
     T_mesh_to_sdf: np.ndarray | None
 
     @classmethod
-    def resolve(cls, material, morph, surface, name):
+    def resolve(cls, options, surface):
         """Load the mesh of a tool from its morph, fit it in a unit box centered at the origin, and scale it.
 
-        The signed distance field is sampled on the normalized mesh at the resolution of the material, and its
-        transform from the mesh frame accounts for the scale of the morph.
+        The signed distance field is sampled on the normalized mesh at the resolution of the solver options, and its
+        transform from the mesh frame accounts for the scale of the morph. 'options' are the entity options as
+        authored, which the description keeps, and 'surface' the surface the scene resolved from them. Given no name,
+        one is generated from the morph.
         """
+        morph = options.morph
         mesh_orig = load_mesh(morph.file)
         scale = np.linalg.norm(mesh_orig.extents, ord=np.inf)
         center = np.mean(mesh_orig.bounds, axis=0)
@@ -58,8 +62,8 @@ class ToolEntityDescription(VerticesDescription, EntityDescription):
         )
         T_init = gu.scale_to_T(np.array(morph.scale, dtype=gs.np_float))
         sdf_voxels = T_mesh_to_sdf = None
-        if material.collision:
-            sdf_data = compute_sdf_data(mesh, material.sdf_res)
+        if options.solver_options.collision:
+            sdf_data = compute_sdf_data(mesh, options.solver_options.sdf_res)
             sdf_voxels = sdf_data["voxels"].astype(gs.np_float, order="C", copy=False)
             T_mesh_to_sdf = sdf_data["T_mesh_to_sdf"].astype(gs.np_float, order="C", copy=False) @ gu.inv_T(T_init)
         # The morph pose offset (e.g. an up-axis conversion) is composed onto the morph pose
@@ -70,10 +74,8 @@ class ToolEntityDescription(VerticesDescription, EntityDescription):
             np.array(morph.quat, dtype=gs.np_float),
         )
         return cls(
-            material=material,
-            morph=morph,
             surface=surface,
-            name=name,
+            name=cls.resolve_name(options),
             init_pos=init_pos,
             init_quat=init_quat,
             init_positions=gu.transform_by_T(mesh.vertices.astype(gs.np_float, order="C", copy=False), T_init),
@@ -81,6 +83,7 @@ class ToolEntityDescription(VerticesDescription, EntityDescription):
             faces=mesh.faces.astype(gs.np_int, order="C", copy=False),
             sdf_voxels=sdf_voxels,
             T_mesh_to_sdf=T_mesh_to_sdf,
+            options=options,
         )
 
 
@@ -101,21 +104,12 @@ class ToolEntity(Entity):
     """
 
     def __init__(self, scene, idx, solver, desc: ToolEntityDescription):
-        super().__init__(idx, scene, solver, desc, desc.morph)
+        super().__init__(idx, scene, solver, desc, desc.options.morph)
         self._entity_data: ToolEntityData | None = None
 
         self.mesh = Mesh(entity=self, desc=desc)
         self.init_tgt_vars()
         self.init_ckpt()
-
-    # ------------------------------------------------------------------------------------
-    # --------------------------------- naming methods -----------------------------------
-    # ------------------------------------------------------------------------------------
-
-    def _get_morph_identifier(self) -> str:
-        if isinstance(self._morph, gs.morphs.Mesh):
-            return Path(self._morph.file).stem
-        return "tool"
 
     # ------------------------------------------------------------------------------------
     # --------------------------------- initialization -----------------------------------

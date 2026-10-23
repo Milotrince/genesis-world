@@ -21,10 +21,11 @@ def test_gravity(show_viewer, tol):
 
     sphere = scene.add_entity(gs.morphs.Sphere())
     ghost = scene.add_entity(
-        morph=gs.morphs.Sphere(
-            pos=(1.0, 0.0, 0.0),
+        options=gs.options.KinematicEntityOptions(
+            morph=gs.morphs.Sphere(
+                pos=(1.0, 0.0, 0.0),
+            ),
         ),
-        material=gs.materials.Kinematic(),
     )
     scene.build(n_envs=3)
 
@@ -712,8 +713,8 @@ def test_dofs_force_balance_advanced(contact_resolution, show_viewer, tol):
             size=(0.05, 0.05, 0.05),
             pos=(0.03, 0.33, 0.57),
         ),
-        material=gs.materials.Rigid(
-            rho=400.0,
+        material=gs.materials.Material(
+            density=400.0,
         ),
     )
     scene.build()

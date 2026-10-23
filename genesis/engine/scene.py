@@ -24,24 +24,37 @@ import genesis.utils.mesh as mu
 from genesis.engine.entities.base_entity import Entity, EntityDescription
 from genesis.engine.entities.rigid_entity import KinematicEntity
 from genesis.engine.force_fields import ForceField
-from genesis.engine.materials.base import EntityT, Material
+from genesis.engine.materials import BaseMaterial, Cloth, Liquid, Material, Sand, Snow
 from genesis.engine.states.solvers import SimState, SimulatorCheckpoint
 from genesis.options import (
-    SceneOptions,
     BaseCouplerOptions,
+    EntityOptions,
+    FEMEntityOptions,
     FEMOptions,
+    HybridEntityOptions,
+    KinematicEntityOptions,
     KinematicOptions,
+    MPMEntityOptions,
     MPMOptions,
+    PBDClothEntityOptions,
+    PBDElasticEntityOptions,
+    PBDLiquidEntityOptions,
     PBDOptions,
+    PBDParticleEntityOptions,
     ProfilingOptions,
+    RigidEntityOptions,
     RigidOptions,
+    SceneOptions,
     SFOptions,
     SimOptions,
+    SPHEntityOptions,
     SPHOptions,
+    ToolEntityOptions,
     ToolOptions,
     ViewerOptions,
     VisOptions,
 )
+from genesis.options.entities import get_entity_options_cls
 from genesis.options.morphs import Morph
 from genesis.options.recorders import RecorderOptions, TrajectoryFile
 from genesis.options.renderers import RendererOptions
@@ -58,6 +71,17 @@ from genesis.utils.warnings import warn_once
 from genesis.vis import Visualizer
 
 if TYPE_CHECKING:
+    from genesis.engine.entities import (
+        FEMEntity,
+        HybridEntity,
+        MPMEntity,
+        PBD2DEntity,
+        PBD3DEntity,
+        PBDFreeParticleEntity,
+        PBDParticleEntity,
+        SPHEntity,
+        ToolEntity,
+    )
     from genesis.engine.entities.base_entity import Entity
     from genesis.engine.entities.rigid_entity import RigidEntity
     from genesis.engine.sensors.base_sensor import Sensor
@@ -309,39 +333,71 @@ class Scene(RBC):
             self._is_built = False
 
     @overload
+    def add_entity(self, *, options: RigidEntityOptions) -> "RigidEntity": ...
+
+    @overload
+    def add_entity(self, *, options: KinematicEntityOptions) -> KinematicEntity: ...
+
+    @overload
+    def add_entity(self, *, options: FEMEntityOptions) -> "FEMEntity": ...
+
+    @overload
+    def add_entity(self, *, options: MPMEntityOptions) -> "MPMEntity": ...
+
+    @overload
+    def add_entity(self, *, options: SPHEntityOptions) -> "SPHEntity": ...
+
+    @overload
+    def add_entity(self, *, options: PBDClothEntityOptions) -> "PBD2DEntity": ...
+
+    @overload
+    def add_entity(self, *, options: PBDElasticEntityOptions) -> "PBD3DEntity": ...
+
+    @overload
+    def add_entity(self, *, options: PBDLiquidEntityOptions) -> "PBDParticleEntity": ...
+
+    @overload
+    def add_entity(self, *, options: PBDParticleEntityOptions) -> "PBDFreeParticleEntity": ...
+
+    @overload
+    def add_entity(self, *, options: ToolEntityOptions) -> "ToolEntity": ...
+
+    @overload
+    def add_entity(self, *, options: HybridEntityOptions) -> "HybridEntity": ...
+
+    @overload
     def add_entity(
         self,
         morph: Morph | Iterable[Morph],
-        material: None = ...,
+        material: Material | None = ...,
         surface: Surface | None = ...,
         visualize_contact: bool = ...,
         vis_mode: str | None = ...,
         name: str | None = ...,
     ) -> "RigidEntity": ...
 
-    @overload
-    def add_entity(
-        self,
-        morph: Morph | Iterable[Morph],
-        material: Material[EntityT] = ...,
-        surface: Surface | None = ...,
-        visualize_contact: bool = ...,
-        vis_mode: str | None = ...,
-        name: str | None = ...,
-    ) -> EntityT: ...
-
     @gs.assert_unbuilt
     def add_entity(
         self,
-        morph: Morph | Iterable[Morph],
+        morph: Morph | Iterable[Morph] | None = None,
         material: Material | None = None,
         surface: Surface | None = None,
-        visualize_contact: bool = False,
+        visualize_contact: bool | None = None,
         vis_mode: str | None = None,
         name: str | None = None,
+        *,
+        options: EntityOptions | None = None,
     ) -> "Entity":
-        """
-        Add an entity to the scene.
+        """Add an entity to the scene, constructed from entity options or from individual arguments.
+
+        The class of ``options`` decides the kind of entity and the solver simulating it, such as
+        ``gs.options.RigidEntityOptions``, ``gs.options.KinematicEntityOptions`` or ``gs.options.FEMEntityOptions``.
+        The entity keeps a copy of them as ``entity.options``, so one instance can construct several entities.
+
+        The individual arguments are a shorthand for ``options=gs.options.RigidEntityOptions(...)``, so they always
+        build a rigid entity. Any other kind of entity, a kinematic one included, takes its options class, and a
+        material of another kind raises an error naming the classes admitting it. Passing options and individual
+        arguments together raises an error too.
 
         Parameters
         ----------
@@ -353,138 +409,128 @@ class Scene(RBC):
             inertia, link frames (e.g. a different 'scale', or a different pose for a fixed base) and joint parameters
             may differ.
         material : gs.materials.Material | None, optional
-            The material of the entity. If None, use ``gs.materials.Rigid()``.
+            The material of the rigid entity. If None, use ``gs.materials.Material()``.
         surface : gs.surfaces.Surface | None, optional
             The surface of the entity. If None, use ``gs.surfaces.Default()``.
-        visualize_contact : bool
+        visualize_contact : bool | None, optional
             Whether to visualize contact forces applied to this entity as arrows in the viewer and rendered images.
-            Note that this will not be displayed in images rendered by camera using the `RayTracer` renderer.
+            The `RayTracer` renderer draws no arrows. If None, defaults to False.
         vis_mode : str | None, optional
             The visualization mode of the entity. This is a handy shortcut for setting `surface.vis_mode` without
             explicitly creating a surface object.
         name : str | None, optional
             User-specified name for the entity. If not provided, an auto-generated name will be assigned
             based on the morph type and entity UID (e.g., "box_a1b2c3d4"). Must be unique within the scene.
+        options : gs.options.EntityOptions | None, optional
+            The options to construct the entity from, an instance of a subclass of ``gs.options.EntityOptions``. They
+            replace every other argument.
 
         Returns
         -------
         entity : genesis.Entity
-            The created entity.
+            The created entity, of the kind its options class decides.
         """
-        if material is None:
-            material = gs.materials.Rigid()
-
-        if surface is None:
-            # assign a local surface, otherwise modification will apply on global default surface
-            surface = gs.surfaces.Default()
-
-        # Handle heterogeneous morphs (any iterable of morphs, excluding Morph objects). Whether a morph, or several,
-        # can be built from is for the entity created from it to say.
-        if isinstance(morph, collections.abc.Iterable) and not isinstance(morph, Morph):
-            morph = tuple(morph)
+        if options is None:
+            if morph is None:
+                gs.raise_exception("Entity construction requires a morph.")
+            if material is not None and not isinstance(material, Material):
+                options_classes = get_entity_options_cls(material)
+                if not options_classes:
+                    gs.raise_exception(f"No entity options admit material {type(material).__name__}.")
+                options_names = " or ".join(f"'gs.options.{options_cls.__name__}'" for options_cls in options_classes)
+                gs.raise_exception(
+                    f"Individual 'add_entity' arguments build a rigid entity, which material {type(material).__name__} "
+                    f"cannot construct. Pass 'options=' an instance of {options_names} instead."
+                )
+            # Heterogeneous morphs may come as any iterable of morphs
+            if isinstance(morph, collections.abc.Iterable) and not isinstance(morph, Morph):
+                morph = tuple(morph)
+            options = RigidEntityOptions(
+                morph=morph,
+                material=material if material is not None else Material(),
+                surface=surface,
+                visualize_contact=visualize_contact if visualize_contact is not None else False,
+                vis_mode=vis_mode,
+                name=name,
+            )
+        elif any(value is not None for value in (morph, material, surface, visualize_contact, vis_mode, name)):
+            gs.raise_exception("Pass either entity options or individual entity arguments, never both.")
+        if options.scene_solver_options_cls is None and not isinstance(options, HybridEntityOptions):
+            gs.raise_exception(
+                f"{type(options).__name__} selects no entity family. Use one of its subclasses, such as "
+                "RigidEntityOptions."
+            )
+        # Revalidated, since 'model_copy(update=...)' bypasses validation, while keeping the fields the user gave, which
+        # an export records. The entity owns a copy of its own.
+        options = (
+            type(options)
+            .model_construct(_fields_set=set(options.model_fields_set), **dict(type(options).model_validate(options)))
+            .model_copy(deep=True)
+        )
+        morph = options.morph[0] if isinstance(options.morph, tuple) else options.morph
+        # A local surface, so that the resolution leaves the surface of the options as authored
+        surface = gs.surfaces.Default() if options.surface is None else options.surface.model_copy(deep=True)
 
         # some morph should not smooth surface normal
-        if isinstance(
-            morph[0] if isinstance(morph, tuple) else morph, (gs.morphs.Box, gs.morphs.Cylinder, gs.morphs.Terrain)
-        ):
+        if isinstance(morph, (gs.morphs.Box, gs.morphs.Cylinder, gs.morphs.Terrain)):
             surface.smooth = False
 
         if surface.double_sided is None:
-            surface.double_sided = isinstance(material, (gs.materials.PBD.Cloth, gs.materials.FEM.Cloth))
+            surface.double_sided = isinstance(options, PBDClothEntityOptions) or (
+                isinstance(options, FEMEntityOptions) and isinstance(options.material, Cloth)
+            )
 
-        if vis_mode is not None:
-            surface.vis_mode = vis_mode
-        # validate and populate default surface.vis_mode considering morph type
-        if isinstance(material, (gs.materials.Kinematic, gs.materials.Tool)):
-            if surface.vis_mode is None:
-                surface.vis_mode = "visual"
-
-            if surface.vis_mode not in ("visual", "collision", "sdf"):
-                gs.raise_exception(
-                    f"Unsupported `surface.vis_mode` for material {material}: '{surface.vis_mode}'. Expected one of: "
-                    "['visual', 'collision', 'sdf']."
-                )
-
-        elif isinstance(
-            material,
-            (
-                gs.materials.PBD.Liquid,
-                gs.materials.PBD.Particle,
-                gs.materials.MPM.Liquid,
-                gs.materials.MPM.Sand,
-                gs.materials.MPM.Snow,
-                gs.materials.SPH.Liquid,
-            ),
+        if options.vis_mode is not None:
+            surface.vis_mode = options.vis_mode
+        # The kind of entity decides the default visualization mode and the ones it supports
+        if isinstance(options, (RigidEntityOptions, KinematicEntityOptions, ToolEntityOptions)):
+            vis_modes = ("visual", "collision", "sdf")
+        elif isinstance(options, (PBDLiquidEntityOptions, PBDParticleEntityOptions, SPHEntityOptions)) or (
+            isinstance(options, MPMEntityOptions) and isinstance(options.material, (Liquid, Sand, Snow))
         ):
-            if surface.vis_mode is None:
-                surface.vis_mode = "particle"
-
-            if surface.vis_mode not in ("particle", "recon"):
-                gs.raise_exception(
-                    f"Unsupported `surface.vis_mode` for material {material}: '{surface.vis_mode}'. Expected one of: ['particle', 'recon']."
-                )
-
-        elif isinstance(material, gs.materials.SF.Smoke):
-            if surface.vis_mode is None:
-                surface.vis_mode = "particle"
-
-            if surface.vis_mode not in ("particle",):
-                gs.raise_exception(
-                    f"Unsupported `surface.vis_mode` for material {material}: '{surface.vis_mode}'. Expected one of: ['particle', 'recon']."
-                )
-
-        elif isinstance(material, (gs.materials.PBD.Base, gs.materials.MPM.Base, gs.materials.SPH.Base)):
-            if surface.vis_mode is None:
-                surface.vis_mode = "visual"
-
-            if surface.vis_mode not in ("visual", "particle", "recon"):
-                gs.raise_exception(
-                    f"Unsupported `surface.vis_mode` for material {material}: '{surface.vis_mode}'. Expected one of: ['visual', 'particle', 'recon']."
-                )
-
-        elif isinstance(material, gs.materials.FEM.Base):
-            if surface.vis_mode is None:
-                surface.vis_mode = "visual"
-
-            if surface.vis_mode not in ("visual",):
-                gs.raise_exception(
-                    f"Unsupported `surface.vis_mode` for material {material}: '{surface.vis_mode}'. Expected one of: ['visual']."
-                )
-
-        elif isinstance(material, gs.materials.Hybrid):  # determine the visual of the outer soft part
-            if surface.vis_mode is None:
-                surface.vis_mode = "particle"
-
-            if surface.vis_mode not in ("particle", "visual"):
-                gs.raise_exception(
-                    f"Unsupported `surface.vis_mode` for material {material}: '{surface.vis_mode}'. Expected one of: ['particle', 'visual']."
-                )
-
+            vis_modes = ("particle", "recon")
+        elif isinstance(options, (PBDClothEntityOptions, PBDElasticEntityOptions, MPMEntityOptions)):
+            vis_modes = ("visual", "particle", "recon")
+        elif isinstance(options, FEMEntityOptions):
+            vis_modes = ("visual",)
         else:
-            gs.raise_exception()
+            # The visual of a hybrid entity is the one of its soft part
+            vis_modes = ("particle", "visual")
+        if surface.vis_mode is None:
+            surface.vis_mode = vis_modes[0]
+        if surface.vis_mode not in vis_modes:
+            gs.raise_exception(
+                f"Unsupported `surface.vis_mode` for {type(options).__name__}: '{surface.vis_mode}'. Expected one of: "
+                f"{list(vis_modes)}."
+            )
 
-        entity = self._sim._add_entity(morph, material, surface, visualize_contact, name)
+        entity = self._sim._add_entity(options, surface)
 
         return entity
 
     @gs.assert_unbuilt
     def add_stage(
         self,
-        morph: gs.morphs.USD,
+        morph: gs.morphs.USD | None = None,
         material: Material | None = None,
         surface: Surface | None = None,
-        visualize_contact: bool = False,
-        vis_mode: Literal["visual", "collision"] = "visual",
+        visualize_contact: bool | None = None,
+        vis_mode: Literal["visual", "collision"] | None = None,
+        *,
+        options: RigidEntityOptions | None = None,
     ):
         """
         Add a stage to the scene.
+
+        Every rigid entity of the stage is constructed from the same entity options, with its own part of the stage as
+        morph. The individual arguments are a shorthand for ``options=gs.options.RigidEntityOptions(...)``.
 
         Parameters
         ----------
         morph : gs.morphs.USD
             The stage to add to the scene.
         material : gs.materials.Material | None, optional
-            The material of the stage. If None, use ``gs.materials.Rigid()`` for all morphs.
+            The material of the rigid entities of the stage. If None, use ``gs.materials.Material()`` for all morphs.
         surface : gs.surfaces.Surface | None, optional
             The surface of the stage. If None, use ``gs.surfaces.Default()`` for all morphs.
         visualize_contact : bool
@@ -493,21 +539,34 @@ class Scene(RBC):
         vis_mode : str | None, optional
             The visualization mode of the stage. This is a handy shortcut for setting `surface.vis_mode` without
             explicitly creating a surface object.
+        options : gs.options.RigidEntityOptions | None, optional
+            The options to construct the rigid entities of the stage from, whose morph is the stage. They replace every
+            other argument.
 
         Returns
         -------
         entities : List[genesis.Entity]
             The created entities.
         """
-        if not isinstance(morph, gs.morphs.USD):
-            gs.raise_exception(f"Unsupported morph: {morph}.")
+        if options is None:
+            options = RigidEntityOptions(
+                morph=morph,
+                material=material if material is not None else Material(),
+                surface=surface,
+                visualize_contact=visualize_contact if visualize_contact is not None else False,
+                vis_mode=vis_mode,
+            )
+        elif any(value is not None for value in (morph, material, surface, visualize_contact, vis_mode)):
+            gs.raise_exception("Pass either entity options or individual stage arguments, never both.")
+        if not isinstance(options.morph, gs.morphs.USD):
+            gs.raise_exception(f"Unsupported morph: {options.morph}.")
         from genesis.utils.usd import parse_usd_stage
 
         # One `gs.morphs.USD` per rigid entity of the stage, added while the stage it was split from stays open.
-        with parse_usd_stage(morph) as entity_morphs:
+        with parse_usd_stage(options.morph) as entity_morphs:
             entities = []
             for entity_morph in entity_morphs:
-                entities.append(self.add_entity(entity_morph, material, surface, visualize_contact, vis_mode))
+                entities.append(self.add_entity(options=options.model_copy(update={"morph": entity_morph})))
         return entities
 
     @gs.assert_unbuilt
@@ -766,24 +825,20 @@ class Scene(RBC):
 
     @gs.assert_unbuilt
     def add_emitter(
-        self,
-        material: Material,
-        max_particles=20000,
-        surface: Surface | None = None,
+        self, options: MPMEntityOptions | SPHEntityOptions | PBDLiquidEntityOptions | PBDParticleEntityOptions
     ):
         """
         Add a fluid emitter to the scene.
 
         Parameters
         ----------
-        material : gs.materials.Material
-            The material of the fluid to be emitted. Must be an instance of `gs.materials.MPM.Base`,
-            `gs.materials.SPH.Base`, `gs.materials.PBD.Particle` or `gs.materials.PBD.Liquid`.
-        max_particles : int
-            The maximum number of particles that can be emitted by the emitter. Particles will be recycled once this
-            limit is reached.
-        surface : gs.surfaces.Surface | None, optional
-            The surface of the emitter. If None, use `gs.surfaces.Default(color=(0.6, 0.8, 1.0, 1.0))`.
+        options : gs.options.EntityOptions
+            The entity options of the emitted particles, whose class decides the solver simulating them: one of
+            ``gs.options.MPMEntityOptions``, ``gs.options.SPHEntityOptions``, ``gs.options.PBDLiquidEntityOptions``
+            or ``gs.options.PBDParticleEntityOptions``. Their morph is ``gs.morphs.Nowhere(n_particles=...)``, which
+            sets the maximum number of particles the emitter holds, recycled once all are emitted. If their surface is
+            None, use ``gs.surfaces.Default(color=(0.6, 0.8, 1.0, 1.0))``, and its visualization mode defaults to
+            'particle'.
 
         Returns
         -------
@@ -796,27 +851,27 @@ class Scene(RBC):
             gs.raise_exception("Emitter is not supported in differentiable mode.")
 
         if not isinstance(
-            material, (gs.materials.MPM.Base, gs.materials.SPH.Base, gs.materials.PBD.Particle, gs.materials.PBD.Liquid)
+            options, (MPMEntityOptions, SPHEntityOptions, PBDLiquidEntityOptions, PBDParticleEntityOptions)
         ):
             gs.raise_exception(
-                "Non-supported material for emitter. Supported materials are: `gs.materials.MPM.Base`, "
-                "`gs.materials.SPH.Base`, `gs.materials.PBD.Particle`, `gs.materials.PBD.Liquid`."
+                f"Non-supported entity options for emitter: {type(options).__name__}. Supported ones are "
+                "MPMEntityOptions, SPHEntityOptions, PBDLiquidEntityOptions and PBDParticleEntityOptions."
+            )
+        if not isinstance(options.morph, gs.morphs.Nowhere):
+            gs.raise_exception(
+                f"The morph of an emitter must be gs.morphs.Nowhere, got {type(options.morph).__name__}."
             )
 
+        surface = options.surface
         if surface is None:
             surface = gs.surfaces.Default(color=(0.6, 0.8, 1.0, 1.0))
-
         if surface.vis_mode is None:
-            surface.vis_mode = "particle"
+            surface = surface.model_copy(update={"vis_mode": "particle"})
         if surface.vis_mode == "visual":
             gs.raise_exception("surface.vis_mode='visual' is not supported for fluid emitters.")
 
-        emitter = Emitter(max_particles)
-        entity = self.add_entity(
-            morph=gs.morphs.Nowhere(n_particles=max_particles),
-            material=material,
-            surface=surface,
-        )
+        emitter = Emitter(options.morph.n_particles)
+        entity = self.add_entity(options=options.model_copy(update={"surface": surface}))
         emitter.set_entity(entity)
         self._emitters.append(emitter)
         return emitter

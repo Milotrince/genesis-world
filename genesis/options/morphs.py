@@ -128,7 +128,11 @@ class Morph(Options):
 
     @model_validator(mode="before")
     @classmethod
-    def _resolve_orientation(cls, data: dict) -> dict:
+    def _resolve_orientation(cls, data: Any) -> Any:
+        # An input other than field values, such as the sequence of morphs a field typed 'Morph | tuple[Morph, ...]'
+        # also tries against 'Morph', is left to the type check that rejects it.
+        if not isinstance(data, dict):
+            return data
         is_free = data.pop("is_free", None)
         if is_free is not None:
             gs.logger.warning("'is_free' is deprecated and will be removed in the future.")
@@ -168,7 +172,12 @@ class Morph(Options):
 ############################ Nowhere ############################
 class Nowhere(Morph):
     """
-    Reserved for emitter. Internal use only.
+    The morph of the particles of an emitter (see ``Scene.add_emitter``), which start outside of the scene.
+
+    Parameters
+    ----------
+    n_particles : int
+        The number of particles, which is the maximum number of particles the emitter holds at once.
     """
 
     n_particles: StrictInt = Field(ge=1)
@@ -293,7 +302,10 @@ class Box(Primitive, TetGenMixin):
 
     @model_validator(mode="before")
     @classmethod
-    def _resolve_geometry(cls, data: dict) -> dict:
+    def _resolve_geometry(cls, data: Any) -> Any:
+        # See 'Morph._resolve_orientation' for an input other than field values
+        if not isinstance(data, dict):
+            return data
         lower, upper, size = data.get("lower"), data.get("upper"), data.get("size")
 
         if lower is not None and upper is not None:
@@ -607,7 +619,10 @@ class FileMorph(Morph):
 
     @model_validator(mode="before")
     @classmethod
-    def _resolve_file_and_defaults(cls, data: dict) -> dict:
+    def _resolve_file_and_defaults(cls, data: Any) -> Any:
+        # See 'Morph._resolve_orientation' for an input other than field values
+        if not isinstance(data, dict):
+            return data
         # Clamp thresholds to avoid decomposition of convex and primitive shapes
         obj_thresh = data.get("decompose_object_error_threshold", 0.15)
         robot_thresh = data.get("decompose_robot_error_threshold", float("inf"))
@@ -992,7 +1007,10 @@ class MJCF(FileMorph):
 
     @model_validator(mode="before")
     @classmethod
-    def _enforce_isotropic_scale(cls, data: dict) -> dict:
+    def _enforce_isotropic_scale(cls, data: Any) -> Any:
+        # See 'Morph._resolve_orientation' for an input other than field values
+        if not isinstance(data, dict):
+            return data
         # Anisotropic scaling is ill-defined for poly-articulated robots because link positions depend on configuration,
         # making the effect of per-axis scaling configuration-dependent. Limiting to scalar factor avoids this.
         scale = np.atleast_1d(np.array(data.get("scale", 1.0)))
@@ -1142,7 +1160,10 @@ class URDF(FileMorph):
 
     @model_validator(mode="before")
     @classmethod
-    def _enforce_isotropic_scale(cls, data: dict) -> dict:
+    def _enforce_isotropic_scale(cls, data: Any) -> Any:
+        # See 'Morph._resolve_orientation' for an input other than field values
+        if not isinstance(data, dict):
+            return data
         # Anisotropic scaling is ill-defined for poly-articulated robots. See MJCF for details.
         scale = np.atleast_1d(np.array(data.get("scale", 1.0)))
         if scale.std() > gs.EPS:
@@ -1337,7 +1358,7 @@ class Terrain(Morph):
     Note
     ----
     Rigid terrain will also be represented as SDF for collision checking, but its resolution is auto-computed and
-    ignores the value specified in `gs.materials.Rigid()`.
+    ignores the values specified in `gs.options.RigidEntitySolverOptions`.
 
     Parameters
     ----------

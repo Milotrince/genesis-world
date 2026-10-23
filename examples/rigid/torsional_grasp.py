@@ -71,7 +71,7 @@ def main():
                 pos=(0.0, (2 * i_side - 1) * 0.1095, 0.3),
                 fixed=True,
             ),
-            material=gs.materials.Rigid(
+            material=gs.materials.Material(
                 friction_torsional=0.002,
             ),
         )
@@ -80,7 +80,7 @@ def main():
             file=checkered_ball_mjcf(),
             pos=(0.0, 0.0, 0.3),
         ),
-        material=gs.materials.Rigid(
+        material=gs.materials.Material(
             friction_torsional=0.002,
         ),
     )

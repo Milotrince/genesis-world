@@ -379,8 +379,8 @@ def test_islands_converge_independently(show_viewer, n_envs):
             size=(0.01, 0.01, 0.01),
             pos=(1.5, 0.0, 0.005),
         ),
-        material=gs.materials.Rigid(
-            rho=1000.0,
+        material=gs.materials.Material(
+            density=1000.0,
         ),
     )
     scene.build(n_envs=n_envs)

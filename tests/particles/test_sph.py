@@ -35,16 +35,15 @@ def create_sph_scene(show_viewer, particle_size=0.01, pressure_solver="WCSPH"):
     )
 
     liquid = scene.add_entity(
-        material=gs.materials.SPH.Liquid(
-            sampler="regular",
-        ),
-        morph=gs.morphs.Box(
-            pos=(0.0, 0.0, 0.65),
-            size=(0.4, 0.4, 0.4),
-        ),
-        surface=gs.surfaces.Default(
-            color=(0.4, 0.8, 1.0),
-            vis_mode="particle",
+        options=gs.options.SPHEntityOptions(
+            morph=gs.morphs.Box(
+                pos=(0.0, 0.0, 0.65),
+                size=(0.4, 0.4, 0.4),
+            ),
+            surface=gs.surfaces.Default(
+                color=(0.4, 0.8, 1.0),
+                vis_mode="particle",
+            ),
         ),
     )
 
@@ -305,19 +304,18 @@ def test_pressure_carries_column_weight(tmp_path, show_viewer, pressure_solver):
         morph=gs.morphs.Plane(),
     )
     scene.add_entity(
-        morph=gs.morphs.Box(
-            pos=(0.0, 0.0, 0.25),
-            size=(0.3, 0.3, 0.5),
-        ),
-        material=gs.materials.SPH.Liquid(
-            sampler="regular",
+        options=gs.options.SPHEntityOptions(
+            morph=gs.morphs.Box(
+                pos=(0.0, 0.0, 0.25),
+                size=(0.3, 0.3, 0.5),
+            ),
         ),
     )
     # The sampled particles are resolved into the description that the scene file holds
     exported = tmp_path / f"column{SCENE_FORMAT}"
     scene.export(exported)
     scene = gs.Scene.load(exported, show_viewer=show_viewer)
-    assert isinstance(scene.entities[1].material, gs.materials.SPH.Liquid)
+    assert isinstance(scene.entities[1].material, gs.materials.Liquid)
     scene.build()
 
     for _ in range(100):

@@ -40,12 +40,11 @@ def test_rigid_flotation_follows_density_ratio(n_envs, pressure_solver, show_vie
         morph=gs.morphs.Plane(),
     )
     scene.add_entity(
-        morph=gs.morphs.Box(
-            pos=(0.0, 0.0, 0.25),
-            size=(0.5, 0.5, 0.5),
-        ),
-        material=gs.materials.SPH.Liquid(
-            sampler="regular",
+        options=gs.options.SPHEntityOptions(
+            morph=gs.morphs.Box(
+                pos=(0.0, 0.0, 0.25),
+                size=(0.5, 0.5, 0.5),
+            ),
         ),
     )
     light_ball = scene.add_entity(
@@ -53,8 +52,8 @@ def test_rigid_flotation_follows_density_ratio(n_envs, pressure_solver, show_vie
             pos=(-0.12, 0.0, 0.25),
             radius=0.06,
         ),
-        material=gs.materials.Rigid(
-            rho=200.0,
+        material=gs.materials.Material(
+            density=200.0,
         ),
     )
     heavy_ball = scene.add_entity(
@@ -62,8 +61,8 @@ def test_rigid_flotation_follows_density_ratio(n_envs, pressure_solver, show_vie
             pos=(0.12, 0.0, 0.25),
             radius=0.06,
         ),
-        material=gs.materials.Rigid(
-            rho=1500.0,
+        material=gs.materials.Material(
+            density=1500.0,
         ),
     )
     raft = scene.add_entity(
@@ -72,8 +71,8 @@ def test_rigid_flotation_follows_density_ratio(n_envs, pressure_solver, show_vie
             size=(0.1, 0.1, 0.04),
             euler=(30.0, 0.0, 0.0),
         ),
-        material=gs.materials.Rigid(
-            rho=200.0,
+        material=gs.materials.Material(
+            density=200.0,
         ),
     )
     scene.build(n_envs=n_envs)
@@ -123,12 +122,11 @@ def test_coupling_force_wakes_hibernated_link(n_envs, show_viewer):
         morph=gs.morphs.Plane(),
     )
     liquid = scene.add_entity(
-        morph=gs.morphs.Box(
-            pos=(-0.35, 0.0, 0.15),
-            size=(0.3, 0.4, 0.3),
-        ),
-        material=gs.materials.SPH.Liquid(
-            sampler="regular",
+        options=gs.options.SPHEntityOptions(
+            morph=gs.morphs.Box(
+                pos=(-0.35, 0.0, 0.15),
+                size=(0.3, 0.4, 0.3),
+            ),
         ),
     )
     ball = scene.add_entity(
@@ -136,8 +134,8 @@ def test_coupling_force_wakes_hibernated_link(n_envs, show_viewer):
             pos=(0.35, 0.0, 0.06),
             radius=0.06,
         ),
-        material=gs.materials.Rigid(
-            rho=200.0,
+        material=gs.materials.Material(
+            density=200.0,
         ),
     )
     # The island partition, which hibernation builds on, only engages when the scene holds at least two free
@@ -147,8 +145,8 @@ def test_coupling_force_wakes_hibernated_link(n_envs, show_viewer):
             pos=(0.0, 0.0, 0.06),
             radius=0.06,
         ),
-        material=gs.materials.Rigid(
-            rho=2000.0,
+        material=gs.materials.Material(
+            density=2000.0,
         ),
     )
     scene.build(n_envs=n_envs)

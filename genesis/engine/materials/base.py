@@ -1,22 +1,29 @@
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import Annotated
 
-from pydantic import StrictBool
+from pydantic import Field
 
 from genesis.options.options import Options
-
-if TYPE_CHECKING:
-    from genesis.engine.entities.base_entity import Entity
-
-EntityT = TypeVar("EntityT", bound="Entity")
+from genesis.typing import PositiveFloat, ValidFloat
 
 
-class Material(Options, Generic[EntityT]):
-    """
-    The base class of materials.
+PoissonRatio = Annotated[ValidFloat, Field(gt=-1.0, lt=0.5)]
+
+
+class BaseMaterial(Options):
+    """The physical law of an entity and its parameters, whichever solver simulates it.
+
+    A concrete subclass names one law, such as ``gs.materials.Elastic``. The entity options decide the solver, and each
+    solver reads the parameters it supports. A parameter left to None takes the default of the solver simulating the
+    entity, and the entity options raise an error on a parameter given explicitly that their solver cannot honour.
 
     Note
     ----
     This class should *not* be instantiated directly.
+
+    Parameters
+    ----------
+    density : float | None, optional
+        The mass density, in kg/m^3. If None, the solver decides.
     """
 
-    use_visual_raycasting: StrictBool = False
+    density: PositiveFloat | None = None

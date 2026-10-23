@@ -6,7 +6,7 @@ import torch
 import quadrants as qd
 
 import genesis as gs
-from genesis.engine.materials import MPM
+from genesis.engine.materials import Liquid, Muscle, Sand, Snow
 from genesis.engine.states.entities import MPMEntityState
 from genesis.utils.misc import to_gs_tensor
 
@@ -15,14 +15,38 @@ from .particle_entity import ParticleEntity, ParticleEntityDescription, assert_a
 
 @dataclass(kw_only=True)
 class MPMEntityDescription(ParticleEntityDescription):
-    material: MPM.Base
+    """The particles of an MPM entity and its number of muscle groups.
+
+    The skin of a hybrid entity has one muscle group per link it follows (see 'HybridEntityDescription'), and any other
+    entity the number its solver options give.
+    """
+
+    _name_prefix = "mpm_"
+
+    n_groups: int
+
+    @classmethod
+    def resolve(cls, options, surface, particle_size, boundary):
+        """Sample the particles of an MPM entity by the sampler its options resolve to.
+
+        See 'ParticleEntityDescription.resolve'.
+        """
+        return super().resolve(
+            options,
+            surface,
+            particle_size,
+            boundary,
+            sampler=options.material_params.sampler,
+            has_skinning=not isinstance(options.material, (Liquid, Sand, Snow)),
+            n_groups=options.solver_options.n_groups,
+        )
 
 
 def assert_muscle(method):
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
-        if not isinstance(self.material, gs.materials.MPM.Muscle):
-            gs.raise_exception("This method is only supported by entities with 'MPM.Muscle' material.")
+        if not isinstance(self.material, Muscle):
+            gs.raise_exception("This method is only supported by entities with a 'Muscle' material.")
         return method(self, *args, **kwargs)
 
     return wrapper
@@ -43,6 +67,8 @@ class MPMEntity(ParticleEntity):
         The resolved particles and visual mesh, with the material, morph and surface they are resolved from.
     idx : int
         Unique index of the entity.
+    law_idx : int
+        Index of the constitutive law of the entity in the solver.
     particle_start : int
         Starting particle index.
     vvert_start : int
@@ -57,11 +83,13 @@ class MPMEntity(ParticleEntity):
         solver,
         desc: MPMEntityDescription,
         idx,
+        law_idx,
         particle_start,
         vvert_start,
         vface_start,
     ):
         super().__init__(scene, solver, desc, idx, particle_start, vvert_start, vface_start)
+        self._law_idx = law_idx
 
     @property
     def desc(self) -> MPMEntityDescription:
@@ -74,14 +102,14 @@ class MPMEntity(ParticleEntity):
         Sets up the list of keys for target states, including velocity, position, activeness, and finally actuation (for
         muscle only).
         """
-        if isinstance(self.material, gs.materials.MPM.Muscle):
+        if isinstance(self.material, Muscle):
             self._tgt_keys = ("pos", "vel", "act", "actu")
         else:
             self._tgt_keys = ("pos", "vel", "act")
 
     def _add_to_solver(self):
         super()._add_to_solver()
-        if isinstance(self.material, gs.materials.MPM.Muscle) and isinstance(self._morph, gs.options.morphs.MeshSet):
+        if isinstance(self.material, Muscle) and isinstance(self._morph, gs.options.morphs.MeshSet):
             self.set_muscle_group(self.mesh_set_group_ids)
 
     def _add_particles_to_solver(self):
@@ -90,9 +118,9 @@ class MPMEntity(ParticleEntity):
             self.active,
             self._particle_start,
             self._n_particles,
-            self._material.idx,
-            self._material._default_Jp,
-            self._material.rho,
+            self._law_idx,
+            self._solver._laws[self._law_idx].default_Jp,
+            self._material.density,
             self._particles,
         )
 
@@ -247,7 +275,7 @@ class MPMEntity(ParticleEntity):
         Returns the pairs (input, gradient) of the inputs applied at this step that track gradients.
         """
         inputs_grad = []
-        if isinstance(self.material, gs.materials.MPM.Muscle):
+        if isinstance(self.material, Muscle):
             _tgt_actu = self._tgt_buffer["actu"].pop()
             if _tgt_actu is not None and _tgt_actu.requires_grad:
                 actu_grad = torch.zeros_like(_tgt_actu)
@@ -417,8 +445,8 @@ class MPMEntity(ParticleEntity):
         """
         actus = to_gs_tensor(actus)
         if actus.ndim == 0:
-            actus = actus.reshape((1,)).expand((self.material.n_groups,))
-        self._set_particles_target_state("actu", "actuation", (self.material.n_groups,), gs.tc_float, actus, envs_idx)
+            actus = actus.reshape((1,)).expand((self._desc.n_groups,))
+        self._set_particles_target_state("actu", "actuation", (self._desc.n_groups,), gs.tc_float, actus, envs_idx)
 
     @assert_muscle
     @gs.assert_built
@@ -438,9 +466,9 @@ class MPMEntity(ParticleEntity):
         envs_idx = self._scene._sanitize_envs_idx(envs_idx)
         particles_idx_local = self._sanitize_particles_idx_local(particles_idx_local, envs_idx)
         particles_idx = particles_idx_local + self._particle_start
-        actus = self._sanitize_particles_tensor(actus, gs.tc_float, particles_idx, envs_idx, (self.material.n_groups,))
+        actus = self._sanitize_particles_tensor(actus, gs.tc_float, particles_idx, envs_idx, (self._desc.n_groups,))
         self.solver._kernel_set_particles_actu(
-            self._sim.cur_substep_local, self.material.n_groups, particles_idx, envs_idx, actus
+            self._sim.cur_substep_local, self._desc.n_groups, particles_idx, envs_idx, actus
         )
 
     @gs.assert_built
@@ -482,7 +510,7 @@ class MPMEntity(ParticleEntity):
         muscle_group = self._sanitize_particles_tensor(muscle_group, gs.tc_int, particles_idx, batched=False)
 
         # FIXME: This check is too expensive
-        # if not (0 <= muscle_group & muscle_group < self.material.n_groups).all():
+        # if not (0 <= muscle_group & muscle_group < self._desc.n_groups).all():
         #     gs.raise_exception("Elements of `muscle_group' are out-of-range.")
 
         self.solver._kernel_set_particles_muscle_group(particles_idx, muscle_group)
@@ -670,10 +698,3 @@ class MPMEntity(ParticleEntity):
             particles_mask = torch.ones((self._sim._B, self.n_particles), dtype=torch.bool, device=gs.device)
 
         self._solver._kernel_remove_particle_constraints(particles_mask, self._particle_start)
-
-    # ------------------------------------------------------------------------------------
-    # --------------------------------- naming methods -----------------------------------
-    # ------------------------------------------------------------------------------------
-
-    def _get_morph_identifier(self) -> str:
-        return f"mpm_{super()._get_morph_identifier()}"

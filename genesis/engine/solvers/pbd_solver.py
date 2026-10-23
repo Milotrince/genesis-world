@@ -9,9 +9,9 @@ import genesis.utils.geom as gu
 from genesis.engine.boundaries import CubeBoundary
 from genesis.engine.entities import PBD2DEntity, PBD3DEntity, PBDFreeParticleEntity, PBDParticleEntity
 from genesis.engine.entities.pbd_entity import PBDEntityDescription, PBDMeshDescription, PBDTetEntity
-from genesis.engine.materials import PBD
 from genesis.engine.states.solvers import PBDSolverState
 from genesis.engine.system_data.pbd import PBDData, PBDDescription, PBDEntityData
+from genesis.options.entities import PBDClothEntityOptions, PBDElasticEntityOptions, PBDLiquidEntityOptions
 from genesis.utils.array_class import LinksState
 from genesis.utils.geom import SpatialHasher
 
@@ -20,7 +20,6 @@ from .base_solver import GravityMixin, Solver, TimeBasedMixin
 
 @qd.data_oriented
 class PBDSolver(GravityMixin, TimeBasedMixin, Solver):
-    material_cls = PBD.Base
     # ------------------------------------------------------------------------------------
     # --------------------------------- Initialization -----------------------------------
     # ------------------------------------------------------------------------------------
@@ -202,18 +201,16 @@ class PBDSolver(GravityMixin, TimeBasedMixin, Solver):
         return self.n_particles > 0
 
     def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, desc=None
+        self, idx, options, surface, desc=None
     ) -> PBD2DEntity | PBD3DEntity | PBDParticleEntity | PBDFreeParticleEntity:
         if desc is None:
-            if isinstance(material, (PBD.Cloth, PBD.Elastic)):
-                desc = PBDMeshDescription.resolve(material, morph, surface, self._particle_size, name)
+            if isinstance(options, (PBDClothEntityOptions, PBDElasticEntityOptions)):
+                desc = PBDMeshDescription.resolve(options, surface, self._particle_size)
             else:
-                desc = PBDEntityDescription.resolve(
-                    material, morph, surface, self._particle_size, name, self.boundary, has_skinning=False
-                )
+                desc = PBDEntityDescription.resolve(options, surface, self._particle_size, self.boundary)
         assert isinstance(desc, PBDEntityDescription)
 
-        if isinstance(desc.material, PBD.Cloth):
+        if isinstance(desc.options, PBDClothEntityOptions):
             entity = PBD2DEntity(
                 scene=self.scene,
                 solver=self,
@@ -225,7 +222,7 @@ class PBDSolver(GravityMixin, TimeBasedMixin, Solver):
                 vvert_start=self.n_vverts,
                 vface_start=self.n_vfaces,
             )
-        elif isinstance(desc.material, PBD.Elastic):
+        elif isinstance(desc.options, PBDElasticEntityOptions):
             entity = PBD3DEntity(
                 scene=self.scene,
                 solver=self,
@@ -237,16 +234,14 @@ class PBDSolver(GravityMixin, TimeBasedMixin, Solver):
                 vvert_start=self.n_vverts,
                 vface_start=self.n_vfaces,
             )
-        elif isinstance(desc.material, PBD.Liquid):
+        elif isinstance(desc.options, PBDLiquidEntityOptions):
             entity = PBDParticleEntity(
                 scene=self.scene, solver=self, desc=desc, idx=idx, particle_start=self.n_particles
             )
-        elif isinstance(desc.material, PBD.Particle):
+        else:
             entity = PBDFreeParticleEntity(
                 scene=self.scene, solver=self, desc=desc, idx=idx, particle_start=self.n_particles
             )
-        else:
-            raise NotImplementedError()
 
         self._entities.append(entity)
 

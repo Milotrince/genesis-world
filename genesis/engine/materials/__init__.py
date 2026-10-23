@@ -1,5 +1,9 @@
-from . import FEM, MPM, PBD, SF, SPH
-from .kinematic import Kinematic
-from .hybrid import Hybrid
-from .rigid import Rigid
-from .tool import Tool
+from .base import BaseMaterial
+from .cloth import Cloth
+from .elastic import Elastic
+from .elasto_plastic import ElastoPlastic
+from .liquid import Liquid
+from .material import Material
+from .muscle import Muscle
+from .sand import Sand
+from .snow import Snow
