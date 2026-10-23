@@ -881,7 +881,6 @@ class Scene(RBC):
         return emitter
 
     @gs.assert_unbuilt
-    @gs.assert_unbuilt
     def add_contact_pair(
         self,
         between: tuple[RigidEntity | RigidLink | RigidGeom, RigidEntity | RigidLink | RigidGeom],
@@ -970,6 +969,7 @@ class Scene(RBC):
         self._desc.contact_pairs.append(desc)
         return pair
 
+    @gs.assert_unbuilt
     def add_force_field(self, force_field: ForceField):
         """
         Add a force field to the scene.
