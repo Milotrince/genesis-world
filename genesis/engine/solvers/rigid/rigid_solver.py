@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -13,6 +14,7 @@ from genesis.constants import link_ref_frame
 from genesis.engine.entities import DroneEntity, RigidEntity, TerrainEntity
 from genesis.engine.materials import Rigid
 from genesis.engine.states import RigidSolverState, SolverCheckpoint
+from genesis.engine.system_data.articulated import ArticulatedDescription, RigidGeomData
 from genesis.options.morphs import Drone, Morph, Terrain
 from genesis.options.solvers import RigidOptions
 from genesis.typing import Vec2FType, Vec3FType
@@ -309,7 +311,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
     def init_ckpt(self):
         pass
 
-    def build(self):
+    def describe(self) -> ArticulatedDescription:
         self._n_geoms = self.n_geoms
         self._n_verts = self.n_verts
         self._n_free_verts = self.n_free_verts
@@ -338,6 +340,44 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
             if not self._enable_mujoco_compatibility:
                 self._options.tolerance *= 0.1
 
+        self._data_description = replace(
+            super().describe(),
+            n_geoms_=self.n_geoms_,
+            n_verts_=self.n_verts_,
+            n_faces_=self.n_faces_,
+            n_edges_=self.n_edges_,
+            n_free_verts_=self.n_free_verts_,
+            n_fixed_verts_=self.n_fixed_verts_,
+            n_candidate_equalities_=self.n_candidate_equalities_,
+            is_dynamic=True,
+        )
+        return self._data_description
+
+    def register_data(self):
+        super().register_data()
+        for entity in self.entities:
+            for link in entity.links:
+                for geom in link.geoms:
+                    is_batched = not geom.is_fixed or entity._batch_fixed_verts
+                    self.sim._system_data.add(
+                        RigidGeomData(
+                            owner=self,
+                            idx=geom.idx,
+                            data=self._data_record,
+                            link_idx=link.idx,
+                            vert_start=geom.vert_start,
+                            vert_end=geom.vert_end,
+                            face_start=geom.face_start,
+                            face_end=geom.face_end,
+                            verts_state=self.dyn_state.free_verts if is_batched else self.dyn_state.fixed_verts,
+                            verts_state_start=geom.verts_state_start,
+                            verts_state_end=geom.verts_state_end,
+                            edge_start=geom.edge_start,
+                            edge_end=geom.edge_end,
+                        )
+                    )
+
+    def build(self):
         super().build()
 
         self._init_vert_fields()
@@ -767,8 +807,6 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
 
         self.rigid_info = self.data_manager.rigid_info
         self._rigid_adjoint_cache = self.data_manager.rigid_adjoint_cache
-        self.dyn_info = self.data_manager.dyn_info
-        self.dyn_state = self.data_manager.dyn_state
         self.kinematics_scratch = self.data_manager.kinematics_scratch
         if self._use_hibernation:
             self.n_awake_dofs = self.rigid_info.n_awake_dofs
@@ -1302,8 +1340,9 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                     self.dyn_info,
                     self.rigid_info,
                     self.rigid_config,
-                    self._is_backward,
-                    self._errno,
+                    is_reversed=False,
+                    is_backward=self._is_backward,
+                    errno=self._errno,
                 )
         else:
             # The work before the constraint solve is captured as three graphs, since the compile time of a kernel grows
@@ -1362,10 +1401,6 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         if not isinstance(self.sim.coupler, SAPCoupler):
             self._is_forward_pos_updated = not self._enable_mujoco_compatibility
             self._is_forward_vel_updated = not self._enable_mujoco_compatibility
-            if self._requires_grad:
-                kernel_save_adjoint_cache(
-                    f + 1, self.dyn_state, self._rigid_adjoint_cache, self.rigid_info, self.rigid_config
-                )
 
     def get_error_envs_mask(self):
         return qd_to_torch(self._errno) > 0
@@ -1509,7 +1544,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         )
 
     def _func_update_acc(self):
-        kernel_update_acc(self.dyn_state, self.dyn_info, self.rigid_info, self.rigid_config)
+        kernel_update_acc(self.dyn_state, self.dyn_info, self.rigid_info, self.rigid_config, is_backward=False)
 
     def _func_integrate_dq_entity(self, dq, i_e, i_b, respect_joint_limit):
         func_integrate_dq_entity(i_e, i_b, dq, self.dyn_info, self.rigid_info, self.rigid_config, respect_joint_limit)
@@ -1695,9 +1730,11 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
             self.dyn_info,
             self.rigid_info,
             self.rigid_config,
+            is_reversed=True,
             is_backward=True,
             errno=self._errno,
         )
+        kernel_update_acc.grad(self.dyn_state, self.dyn_info, self.rigid_info, self.rigid_config, is_backward=True)
 
         # Mirror the forward branch in _func_constraint_force:
         #   (A) _disable_constraint=True: the forward never calls the constraint solver; acc is the smooth-dynamics
@@ -1719,8 +1756,10 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
             is_backward=True,
         )
 
-        # If it was the very first substep, we need to backpropagate through the initial update of the cartesian space
-        if self._enable_mujoco_compatibility or self._sim.cur_substep_global == 0:
+        # The first substep of a step starts from the cartesian space the inputs of the step refreshed from the state
+        # they set (the initial one for the very first step). Its adjoint belongs to that state, so it is folded in
+        # before the reverse pass of the inputs reads it, which leaves none to the post-integrate update.
+        if self._enable_mujoco_compatibility or self._sim.cur_substep_global % self._sim.substeps == 0:
             self._update_cartesian_grad(envs_idx)
 
         # Change back to forward mode
@@ -1740,14 +1779,21 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 self.dyn_info,
                 self.rigid_info,
                 self.rigid_config,
-                self._is_backward,
-                self._errno,
+                is_reversed=False,
+                is_backward=self._is_backward,
+                errno=self._errno,
             )
         elif isinstance(self.sim.coupler, IPCCoupler):
             # If any rigid entity is coupled to IPC, perform rigid simulation in post-coupling phase.
             # Collision exclusion for IPC-coupled links is handled in the collider at build time.
             if self.sim.coupler.has_any_rigid_coupling:
                 self.substep(f)
+
+        if self._requires_grad and not isinstance(self.sim.coupler, SAPCoupler):
+            # After the couplers, which accumulate the coupling wrench the next substep consumes
+            kernel_save_adjoint_cache(
+                f + 1, self.dyn_state, self._rigid_adjoint_cache, self.rigid_info, self.rigid_config
+            )
 
     # ------------------------------------------------------------------------------------
     # -------------------------------- state get/set -------------------------------------
@@ -1806,6 +1852,8 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
             quat_dst = qd_to_torch(self.dyn_state.links.quat, transpose=True, copy=False)
             cfrc_vel_dst = qd_to_torch(self.dyn_state.links.cfrc_applied_vel, transpose=True, copy=False)
             cfrc_ang_dst = qd_to_torch(self.dyn_state.links.cfrc_applied_ang, transpose=True, copy=False)
+            cfrc_coupling_vel_dst = qd_to_torch(self.dyn_state.links.cfrc_coupling_vel, transpose=True, copy=False)
+            cfrc_coupling_ang_dst = qd_to_torch(self.dyn_state.links.cfrc_coupling_ang, transpose=True, copy=False)
             fric_dst = qd_to_torch(self.dyn_state.geoms.friction_ratio, transpose=True, copy=False)
             # Setting the state is a discontinuity: wake every body in the affected envs (a body left hibernated would
             # stay frozen), restoring the flags and the awake-dof count alongside the other state buffers.
@@ -1843,6 +1891,8 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 torch.where(envs_mask[:, None, None], state.links_quat, quat_dst, out=quat_dst)
                 cfrc_vel_dst.masked_fill_(envs_mask[:, None, None], 0.0)
                 cfrc_ang_dst.masked_fill_(envs_mask[:, None, None], 0.0)
+                cfrc_coupling_vel_dst.masked_fill_(envs_mask[:, None, None], 0.0)
+                cfrc_coupling_ang_dst.masked_fill_(envs_mask[:, None, None], 0.0)
                 if self.n_geoms:
                     torch.where(envs_mask[:, None], state.friction_ratio, fric_dst, out=fric_dst)
                 if self._use_hibernation:
@@ -1866,6 +1916,8 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 quat_dst[envs_idx] = state.links_quat[envs_idx]
                 cfrc_vel_dst[envs_idx] = 0.0
                 cfrc_ang_dst[envs_idx] = 0.0
+                cfrc_coupling_vel_dst[envs_idx] = 0.0
+                cfrc_coupling_ang_dst[envs_idx] = 0.0
                 if self.n_geoms:
                     fric_dst[envs_idx] = state.friction_ratio[envs_idx]
                 if self._use_hibernation:
@@ -1952,6 +2004,12 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
             self._ckpt[ckpt_name]["qpos"] = qd_to_numpy(self._rigid_adjoint_cache.qpos, copy=True)
             self._ckpt[ckpt_name]["dofs_vel"] = qd_to_numpy(self._rigid_adjoint_cache.dofs_vel, copy=True)
             self._ckpt[ckpt_name]["dofs_acc"] = qd_to_numpy(self._rigid_adjoint_cache.dofs_acc, copy=True)
+            self._ckpt[ckpt_name]["links_cfrc_coupling_ang"] = qd_to_numpy(
+                self._rigid_adjoint_cache.links_cfrc_coupling_ang, copy=True
+            )
+            self._ckpt[ckpt_name]["links_cfrc_coupling_vel"] = qd_to_numpy(
+                self._rigid_adjoint_cache.links_cfrc_coupling_vel, copy=True
+            )
 
             for entity in self._entities:
                 entity.save_ckpt(ckpt_name)
@@ -1961,6 +2019,8 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         self.rigid_info.qpos.from_numpy(self._ckpt[ckpt_name]["qpos"][0])
         self.dyn_state.dofs.vel.from_numpy(self._ckpt[ckpt_name]["dofs_vel"][0])
         self.dyn_state.dofs.acc.from_numpy(self._ckpt[ckpt_name]["dofs_acc"][0])
+        self.dyn_state.links.cfrc_coupling_ang.from_numpy(self._ckpt[ckpt_name]["links_cfrc_coupling_ang"][0])
+        self.dyn_state.links.cfrc_coupling_vel.from_numpy(self._ckpt[ckpt_name]["links_cfrc_coupling_vel"][0])
 
         if not self._enable_mujoco_compatibility:
             # Mirror the post-integrate refresh of kernel_step_2: the replayed substeps skip their own cartesian /
@@ -3656,6 +3716,7 @@ def func_step_2(
     dyn_info: array_class.DynInfo,
     rigid_info: array_class.RigidInfo,
     rigid_config: qd.template(),
+    is_reversed: qd.template(),
     is_backward: qd.template(),
     errno: qd.Tensor,
 ):
@@ -3664,12 +3725,15 @@ def func_step_2(
     # because the acceleration at the end of the step is unknown for now as it may change discontinuous between
     # before and after integration under the effect of external forces and constraints. This means that
     # acceleration data will be shifted one timestep in the past, but there isn't really any way around.
-    func_update_acc(dyn_state, dyn_info, rigid_info, rigid_config, update_cacc=True, is_backward=is_backward)
+    # The midpoint integration overwrites the acceleration the link accelerations read, which a launch that autodiff
+    # reverses cannot do, so the backward pass reverses them as a launch of their own (see substep_pre_coupling_grad).
+    if qd.static(not is_reversed):
+        func_update_acc(dyn_state, dyn_info, rigid_info, rigid_config, update_cacc=True, is_backward=is_backward)
 
     if qd.static(rigid_config.integrator != gs.integrator.approximate_implicitfast):
         func_implicit_damping(dyn_state, dyn_info, rigid_info, rigid_config)
 
-    func_integrate(dyn_state, dyn_info, rigid_info, rigid_config, is_backward)
+    func_integrate(dyn_state, dyn_info, rigid_info, rigid_config, is_reversed, is_backward)
 
     if qd.static(not is_backward):
         func_copy_next_to_curr(dyn_state, rigid_info, rigid_config, errno)
@@ -3688,11 +3752,12 @@ def kernel_step_2(
     dyn_info: array_class.DynInfo,
     rigid_info: array_class.RigidInfo,
     rigid_config: qd.template(),
+    is_reversed: qd.template(),
     is_backward: qd.template(),
     errno: qd.Tensor,
 ):
     """Run the second half of a substep on its own (see func_step_2)."""
-    func_step_2(dyn_state, constraint_state, dyn_info, rigid_info, rigid_config, is_backward, errno)
+    func_step_2(dyn_state, constraint_state, dyn_info, rigid_info, rigid_config, is_reversed, is_backward, errno)
 
 
 @qd.kernel(graph=True, fastcache=True)
@@ -3764,4 +3829,13 @@ def kernel_substep_post(
         func_resolve_post(
             dyn_state, collider_state, constraint_state, dyn_info, rigid_info, rigid_config, noslip, errno
         )
-    func_step_2(dyn_state, constraint_state, dyn_info, rigid_info, rigid_config, is_backward, errno)
+    func_step_2(
+        dyn_state,
+        constraint_state,
+        dyn_info,
+        rigid_info,
+        rigid_config,
+        is_reversed=False,
+        is_backward=is_backward,
+        errno=errno,
+    )
