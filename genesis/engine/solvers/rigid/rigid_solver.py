@@ -12,6 +12,7 @@ import genesis.utils.array_class as array_class
 import genesis.utils.geom as gu
 from genesis.constants import link_ref_frame
 from genesis.engine.entities import DroneEntity, RigidEntity, TerrainEntity
+from genesis.engine.entities.rigid_entity.description import check_friction_coefficient
 from genesis.engine.states import RigidSolverState, SolverCheckpoint
 from genesis.engine.system_data.articulated import ArticulatedDescription, RigidGeomData
 from genesis.options.morphs import Drone, Morph, Terrain
@@ -3583,6 +3584,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
 
         The coefficient is selected by `i_component`: 0 for sliding, 1 for torsional and 2 for rolling.
         """
+        check_friction_coefficient(friction, i_component)
         if gs.use_zerocopy:
             mask = (0, *indices_to_mask(geoms_idx)) if self.n_envs == 0 else indices_to_mask(envs_idx, geoms_idx)
             friction_t = qd_to_torch(self.dyn_state.geoms.friction, transpose=True, copy=False)[..., i_component]
@@ -3616,6 +3618,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
 
         The coefficient is selected by `i_component` as in 'set_geoms_friction'.
         """
+        check_friction_coefficient(friction, i_component)
         if gs.use_zerocopy:
             mask = (0, *indices_to_mask(pairs_idx)) if self.n_envs == 0 else indices_to_mask(envs_idx, pairs_idx)
             pairs_friction_t = qd_to_torch(self.dyn_state.geoms.contact_pairs_friction, transpose=True, copy=False)

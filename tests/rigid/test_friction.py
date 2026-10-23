@@ -1074,6 +1074,11 @@ def test_kinetic_friction(n_envs, two_feet_slab, paired_spheres, show_viewer):
     boxes += [masked_box, *slabs]
     scene.build(n_envs=n_envs)
 
+    # A coefficient outside the range the contact model honours is refused, whoever it is set on
+    with pytest.raises(gs.GenesisException):
+        boxes[1].set_friction_torsional(-1.0)
+    with pytest.raises(gs.GenesisException):
+        link_pair.set_friction(-0.3)
     # A coefficient set in one environment leaves the other at the one its material authored
     boxes[1].set_friction(0.4, envs_idx=[1] if n_envs > 0 else None)
     link_pair.set_friction(0.45, envs_idx=[0] if n_envs > 0 else None)

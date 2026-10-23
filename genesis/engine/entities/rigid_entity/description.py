@@ -17,6 +17,7 @@ from itertools import chain
 from typing import Any, Sequence, TypeVar
 
 import numpy as np
+import torch
 import trimesh
 from typing_extensions import Self
 
@@ -263,6 +264,19 @@ class RigidLinkDescription(KinematicLinkDescription):
     geoms: list[RigidGeomDescription] = field(default_factory=list)
 
 
+def check_friction_coefficient(friction, i_component):
+    """Raise unless every given value of one friction coefficient lies in the range the contact model honours.
+
+    The coefficient is the sliding one for `i_component` 0, which lies between 0.01 and 5, and the torsional or rolling
+    one for 1 or 2, which is non-negative.
+    """
+    friction = torch.as_tensor(friction, dtype=gs.tc_float, device=gs.device)
+    lower, upper = (0.01, 5.0) if i_component == 0 else (0.0, math.inf)
+    if not ((friction >= lower - gs.EPS) & (friction <= upper + gs.EPS)).all():
+        name = ("friction", "friction_torsional", "friction_rolling")[i_component]
+        gs.raise_exception(f"The '{name}' coefficient must lie between {lower} and {upper}, got {friction}.")
+
+
 @dataclass
 class ContactParameters:
     """The contact parameters a contact pair states, each None to keep what the geoms of its two targets resolve to.
@@ -280,14 +294,9 @@ class ContactParameters:
     def __post_init__(self):
         if all(value is None for value in astuple(self)):
             gs.raise_exception("A contact pair must state at least one contact parameter.")
-        if self.friction is not None and not 0.01 <= self.friction <= 5.0:
-            gs.raise_exception(f"The friction of a contact pair must lie between 0.01 and 5, got {self.friction}.")
-        for name, value in (
-            ("friction_torsional", self.friction_torsional),
-            ("friction_rolling", self.friction_rolling),
-        ):
-            if value is not None and value < 0.0:
-                gs.raise_exception(f"The '{name}' of a contact pair must be non-negative, got {value}.")
+        for i_component, value in enumerate(self.friction_coefficients):
+            if value is not None:
+                check_friction_coefficient(value, i_component)
 
     @property
     def friction_coefficients(self) -> tuple[float | None, float | None, float | None]:
