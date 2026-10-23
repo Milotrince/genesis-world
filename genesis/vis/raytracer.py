@@ -217,6 +217,8 @@ class Raytracer:
         self.visualizer = scene.visualizer
         if self.rendered_envs_idx is None:
             self.rendered_envs_idx = list(range(self.sim._B))
+        # The environments each variant of a heterogeneous entity is drawn in are fixed at build
+        self.sim.rigid_solver.add_morph_variant_switch_blocker("the ray tracer")
 
         self._scene = LuisaRenderPy.create_scene()
         self._scene.init(

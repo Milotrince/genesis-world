@@ -742,6 +742,11 @@ def test_heterogeneous_object(show_viewer, tol):
     scene.step()
     assert_allclose(lidar.read().distances[:, 0, 0], (0.9, 0.9, 0.8, 0.8, 0.7, 0.7), tol=5e-3)
 
+    # A switch of morph variant regroups the static trees, each env then reading its incoming variant
+    het_obstacle.set_morph_variant((2, 2, 0, 0, 1, 1))
+    scene.step()
+    assert_allclose(lidar.read().distances[:, 0, 0], (0.7, 0.7, 0.9, 0.9, 0.8, 0.8), tol=5e-3)
+
     # Sending the rigid variants out of range leaves the kinematic ones as the nearest hit, cast through one grouped
     # static tree per distinct variant, so each env still reads its own.
     het_obstacle.set_pos((10.0, 0.0, 0.5))

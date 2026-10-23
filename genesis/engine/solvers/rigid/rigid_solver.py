@@ -33,7 +33,6 @@ from genesis.utils.misc import (
 from ..base_solver import GravityMixin, MutatedLinks, StateChange, TimeBasedMixin, mutates
 from ..kinematic_solver import (
     KinematicSolver,
-    _balanced_variant_mapping,
     _fill_base_link_geom_offsets,
     _offset_world_shift,
     _select_links_offset,
@@ -137,8 +136,8 @@ from .abd.misc import (
     kernel_init_link_dynamics,
     kernel_init_vert_fields,
     kernel_reset_hibernation,
+    kernel_set_morph_variant,
     kernel_set_zero,
-    kernel_update_heterogeneous_link_info,
     kernel_wakeup_coupled_links,
 )
 from .collider import Collider
@@ -242,6 +241,9 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         self._box_box_detection = options.box_box_detection
         self._requires_grad = self._sim.options.requires_grad
         self._enable_heterogeneous = False  # Set to True when any entity has heterogeneous morphs
+        # The features that cannot follow a switch of morph variant, each with the entity it blocks, None for any (see
+        # 'add_morph_variant_switch_blocker')
+        self._morph_variant_switch_blockers: list[tuple[str, RigidEntity | None]] = []
 
         # The differentiable solve keeps every body in its iteration trace, so hibernation stays off there (see the
         # use_hibernation option).
@@ -381,7 +383,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         self._init_vert_fields()
         self._init_geom_fields()
         self._init_equality_fields()
-        self._init_dof_length()
+        self._refresh_dof_length()
 
         # Compute the pose of every link in the neutral configuration and update the pose of all the geometries,
         # including inactive variants for a given env: the step updates the active variant alone, so this is the only
@@ -400,29 +402,22 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         self._init_constraint_solver()
         self._refresh_invweight_and_meaninertia(force_update=False, in_place=True)
 
-        # Fill in the default rotor inertia (see 'KinematicVariantDescription'), one variant per environment. It is
-        # written to the armature field from the host once the parsed inverse weights stand, and a second refresh
-        # recomputes the ones it changes: those of every degree of freedom and link of the kinematic trees holding a
-        # defaulted joint. The parsed inverse weights stand everywhere else.
+        # Fill in the default rotor inertia (see 'KinematicVariantDescription') of the homogeneous entities, the
+        # variants of a heterogeneous one carrying their own (see 'KinematicSolver._init_variant_fields'). It is written
+        # to the armature field from the host once the parsed inverse weights stand, and a second refresh recomputes the
+        # ones it changes: those of every degree of freedom and link of the kinematic trees holding a defaulted joint.
+        # The parsed inverse weights stand everywhere else.
         dofs_idx, dofs_default, dofs_link = [], [], []
         for entity in self._entities:
-            rotor_links = [
-                link
-                for link in entity.links
-                if link.n_dofs == 1 and link.joints[0].type in (gs.JOINT_TYPE.REVOLUTE, gs.JOINT_TYPE.PRISMATIC)
-            ]
-            if not rotor_links:
+            rotor_links = [link for link in entity.links if link.is_rotor]
+            if entity.is_heterogeneous or not rotor_links:
                 continue
             # Only a scene or robot description file yields a rotor link, and those morphs state a default armature.
-            if entity.desc.variants:
-                variants_default = np.array([variant.default_armature or 0.0 for variant in entity.desc.variants])
-            else:
-                variants_default = np.array([entity.main_morph.default_armature or 0.0])
-            envs_default = variants_default[_balanced_variant_mapping(variants_default.size, self._B)]
-            if (envs_default <= 0.0).all():
+            default_armature = entity.main_morph.default_armature or 0.0
+            if default_armature <= 0.0:
                 continue
             dofs_idx.extend(link.dof_start for link in rotor_links)
-            dofs_default.extend([envs_default] * len(rotor_links))
+            dofs_default.extend([default_armature] * len(rotor_links))
             dofs_link.extend(rotor_links)
         if dofs_idx:
             # Field layout, batch last, since the arrays are written back as fields.
@@ -430,8 +425,10 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
             is_default = (np.atleast_2d(dofs_armature[dofs_idx].T) <= 0.0).all(axis=0)
             if is_default.any():
                 dofs_idx = np.array(dofs_idx)[is_default]
-                default_armature = np.stack(dofs_default, axis=1)[:, is_default]
-                dofs_armature[dofs_idx] = default_armature.T if self._options.batch_dofs_info else default_armature[0]
+                default_armature = np.array(dofs_default)[is_default]
+                dofs_armature[dofs_idx] = (
+                    default_armature[:, None] if self._options.batch_dofs_info else default_armature
+                )
                 self.dyn_info.dofs.armature.from_numpy(dofs_armature)
                 roots_idx = {link.root_idx for link, is_dof_default in zip(dofs_link, is_default) if is_dof_default}
                 trees_links = [link for link in self.links if link.root_idx in roots_idx]
@@ -1043,60 +1040,35 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         self.rigid_info.dofs_mass_block_start.from_numpy(dofs_mass_block_start)
         self.rigid_info.dofs_mass_block_end.from_numpy(dofs_mass_block_end)
 
-    def _dispatch_heterogeneous_vgeoms(self):
-        """
-        Dispatch per-environment geom/vgeom ranges and inertial properties for heterogeneous links.
+    def _init_variant_fields(self):
+        entities, links_desc = super()._init_variant_fields()
+        if not entities:
+            return [], []
 
-        Extends the base class (which handles vgeom-only dispatch) to also dispatch collision geom
-        ranges and per-variant inertial properties. Per-variant inertial is pre-computed during
-        link._build() from actual geom objects, using analytic formulas for primitives.
-        """
-        for link in self.links:
-            if link._variant_vgeom_ranges is None:
-                continue
-
-            n_variants = len(link._variant_vgeom_ranges)
-            variant_idx = _balanced_variant_mapping(n_variants, self._B)
-
-            # Build per-env arrays from link's variant data
-            geom_starts = np.array([link._variant_geom_ranges[v][0] for v in variant_idx], dtype=gs.np_int)
-            geom_ends = np.array([link._variant_geom_ranges[v][1] for v in variant_idx], dtype=gs.np_int)
-            vgeom_starts = np.array([link._variant_vgeom_ranges[v][0] for v in variant_idx], dtype=gs.np_int)
-            vgeom_ends = np.array([link._variant_vgeom_ranges[v][1] for v in variant_idx], dtype=gs.np_int)
-
-            # Build per-env inertial arrays from pre-computed per-variant inertial
-            links_inertial_mass = np.array([link._variant_inertial[v][0] for v in variant_idx], dtype=gs.np_float)
-            links_inertial_pos = np.array([link._variant_inertial[v][1] for v in variant_idx], dtype=gs.np_float)
-            links_inertial_quat = np.array([link._variant_inertial[v][2] for v in variant_idx], dtype=gs.np_float)
-            links_inertial_i = np.array([link._variant_inertial[v][3] for v in variant_idx], dtype=gs.np_float)
-
-            # Update links_info with per-environment values
-            # Note: when batch_links_info is True, the shape is (n_links, B)
-            kernel_update_heterogeneous_link_info(
-                link.idx,
-                geom_starts,
-                geom_ends,
-                vgeom_starts,
-                vgeom_ends,
-                links_inertial_mass,
-                links_inertial_pos,
-                links_inertial_quat,
-                links_inertial_i,
-                self.dyn_info,
-                self.rigid_config,
-            )
-
-            # Set active_envs on geoms — indicates which environments each geom is active in
-            for geom in link.geoms:
-                active_envs_mask = (geom_starts <= geom.idx) & (geom.idx < geom_ends)
-                geom.active_envs_mask = torch.tensor(active_envs_mask, device=gs.device)
-                (geom.active_envs_idx,) = np.where(active_envs_mask)
-
-            # Set active_envs on vgeoms
-            for vgeom in link.vgeoms:
-                active_envs_mask = (vgeom_starts <= vgeom.idx) & (vgeom.idx < vgeom_ends)
-                vgeom.active_envs_mask = torch.tensor(active_envs_mask, device=gs.device)
-                (vgeom.active_envs_idx,) = np.where(active_envs_mask)
+        links_geom_range = np.array(
+            [
+                link._variant_geom_ranges[i_v]
+                for entity in entities
+                for i_v in range(entity._variants_data.n_variants)
+                for link in entity.links
+            ],
+            dtype=gs.np_int,
+        )
+        self.variants_info.links_geom_start.from_numpy(links_geom_range[:, 0])
+        self.variants_info.links_geom_end.from_numpy(links_geom_range[:, 1])
+        self.variants_info.links_inertial_pos.from_numpy(
+            np.array([l_desc.inertial_pos for l_desc in links_desc], dtype=gs.np_float)
+        )
+        self.variants_info.links_inertial_quat.from_numpy(
+            np.array([l_desc.inertial_quat for l_desc in links_desc], dtype=gs.np_float)
+        )
+        self.variants_info.links_inertial_i.from_numpy(
+            np.array([l_desc.inertia for l_desc in links_desc], dtype=gs.np_float)
+        )
+        self.variants_info.links_inertial_mass.from_numpy(
+            np.array([l_desc.mass for l_desc in links_desc], dtype=gs.np_float)
+        )
+        return entities, links_desc
 
     def _init_link_fields(self):
         # The base initialization ends by dispatching each heterogeneous variant's inertial per environment, which
@@ -1136,24 +1108,42 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 self.rigid_config,
             )
 
-    def _init_dof_length(self):
-        # Characteristic length of each dof (1 for translation, the body radius for rotation), used to weight dof
-        # velocities in the hibernation rest test. Computed here, after geom dispatch, because a heterogeneous entity's
-        # per-variant geoms (and hence body radius) are only assigned to environments at that point. Only needed when
-        # hibernation is on.
+    def _refresh_dof_length(self, entities=None, envs_idx=None):
+        """Compute the characteristic length of some dofs: 1 for translation, the body radius for rotation.
+
+        It weights the dof velocities in the hibernation rest test, so only hibernation needs it. The body radius of a
+        heterogeneous entity depends on the variant each environment carries, so a switch of morph variant refreshes the
+        dofs of 'entities' in the environments of 'envs_idx', which both default to all.
+        """
         if not self._use_hibernation:
             return
 
-        joints = self.joints
+        joints = [joint for entity in (self._entities if entities is None else entities) for joint in entity.joints]
         if sum(joint.n_dofs for joint in joints) == 0:
             return
 
         # dofs_length is per-env only for a heterogeneous entity; broadcast the shared row across envs when dofs_info
         # is batched (always so for a heterogeneous entity, optionally for a homogeneous one).
         dof_length = np.concatenate([joint.dofs_length for joint in joints], axis=0)
-        if self._options.batch_dofs_info and dof_length.ndim == 1:
-            dof_length = np.broadcast_to(dof_length[:, None], (len(dof_length), self._B))
-        self.dyn_info.dofs.dof_length.from_numpy(dof_length)
+        if envs_idx is None:
+            if self._options.batch_dofs_info and dof_length.ndim == 1:
+                dof_length = np.broadcast_to(dof_length[:, None], (len(dof_length), self._B))
+            self.dyn_info.dofs.dof_length.from_numpy(dof_length)
+            return
+
+        # The dofs info of a scene holding a heterogeneous entity is batched (see 'KinematicSolver.describe')
+        dofs_idx = np.concatenate([np.arange(joint.dof_start, joint.dof_end) for joint in joints])
+        if gs.use_zerocopy:
+            envs_dof_length = torch.as_tensor(dof_length.T, dtype=gs.tc_float, device=gs.device)[envs_idx]
+            dof_length_t = qd_to_torch(self.dyn_info.dofs.dof_length, transpose=True, copy=False)
+            assign_indexed_tensor(dof_length_t, indices_to_mask(envs_idx, dofs_idx), envs_dof_length)
+            if gs.backend == gs.metal:
+                torch.mps.synchronize()
+            return
+        envs_idx_np = tensor_to_array(envs_idx)
+        dofs_dof_length = qd_to_numpy(self.dyn_info.dofs.dof_length, transpose=True)
+        dofs_dof_length[np.ix_(envs_idx_np, dofs_idx)] = dof_length.T[envs_idx_np]
+        self.dyn_info.dofs.dof_length.from_numpy(dofs_dof_length.T)
 
     def _init_geom_fields(self):
         self.geoms_init_AABB = self.rigid_info.geoms_init_AABB
@@ -1818,6 +1808,8 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 self.rigid_info,
                 self.rigid_config,
             )
+            if self.variants_info is not None:
+                state.envs_variant.copy_(qd_to_torch(self.variants_state.envs_variant, transpose=True))
             self._queried_states.append(state)
         else:
             state = None
@@ -1827,6 +1819,26 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
     def set_state(self, f, state, envs_idx=None, *, partial: bool = False) -> None:
         if not self.is_active:
             return
+
+        # The variants come first, since they set the pose of the fixed root links that the state may override
+        if self.variants_info is not None:
+            variants_envs_idx = self._scene._sanitize_envs_idx(envs_idx)
+            if variants_envs_idx.dtype == torch.bool:
+                variants_envs_idx = self._scene._envs_idx[variants_envs_idx]
+            # Only the environments whose recorded variants differ from the ones they carry switch
+            envs_variant = state.envs_variant[variants_envs_idx]
+            envs_entities_is_switched = envs_variant != qd_to_torch(
+                self.variants_state.envs_variant, variants_envs_idx, transpose=True
+            )
+            self._assert_morph_variants_restorable(envs_entities_is_switched.any(dim=0))
+            envs_is_switched = envs_entities_is_switched.any(dim=-1)
+            if envs_is_switched.any():
+                variants_start = qd_to_torch(self.variants_info.entities_variant_start)
+                self._apply_morph_variant(
+                    variants_envs_idx[envs_is_switched],
+                    variants_start + envs_variant[envs_is_switched],
+                    [entity for entity in self._entities if entity.is_heterogeneous],
+                )
 
         if partial:
             self.collider.reset(envs_idx)
@@ -1986,9 +1998,18 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
             if isinstance(entity, DroneEntity):
                 entity._prev_prop_t = -1
 
-    @mutates(StateChange.GEOMETRY, StateChange.DYNAMICS)
+    @mutates(StateChange.GEOMETRY, StateChange.DYNAMICS, StateChange.MODEL)
     def __setstate__(self, state: SolverCheckpoint) -> None:
+        # Restoring variants other than the ones the environments carry is a switch, which every feature must follow
+        if self.variants_info is not None and "variants_state.envs_variant" in state.arrays:
+            envs_variant_idx = torch.as_tensor(state.arrays["variants_state.envs_variant"], device=gs.device)
+            self._assert_morph_variants_restorable(
+                (envs_variant_idx != qd_to_torch(self.variants_state.envs_variant)).any(-1)
+            )
         super().__setstate__(state)
+        # The checkpoint carries the model gathered for the variants it records, but not the base-link offsets
+        if self.variants_info is not None:
+            self._update_links_offset(self._scene._envs_idx)
         self._restart()
 
     def save_ckpt(self, ckpt_name):
@@ -2475,6 +2496,115 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
                 self.rigid_config,
                 refresh_position=self._is_forward_pos_updated,
             )
+
+    def add_morph_variant_switch_blocker(self, name: str, entity: RigidEntity | None = None):
+        """Make every later switch of morph variant raise, naming the feature that cannot follow a switch.
+
+        With 'entity', only the switches of that entity raise.
+        """
+        if (name, entity) not in self._morph_variant_switch_blockers:
+            self._morph_variant_switch_blockers.append((name, entity))
+
+    def _assert_morph_variants_restorable(self, entities_is_switched):
+        """Raise unless every heterogeneous entity whose variants a restored state changes may switch them.
+
+        'entities_is_switched' holds one flag per heterogeneous entity, in the order of 'variants_state.envs_variant'.
+        """
+        entities_is_switched = tensor_to_array(entities_is_switched)
+        for entity in self._entities:
+            if entity.is_heterogeneous and entities_is_switched[entity._variants_data.heterogeneous_idx]:
+                self._assert_morph_variant_switchable(entity)
+
+    def _assert_morph_variant_switchable(self, entity: RigidEntity):
+        """Raise unless the entity is heterogeneous and every feature of the scene follows a switch of its variant."""
+        if not entity.is_heterogeneous:
+            gs.raise_exception("Only a heterogeneous entity has morph variants to switch between.")
+        if self._requires_grad:
+            gs.raise_exception("Switching the morph variant of an entity is not supported when requires_grad is True.")
+        blockers_name = [
+            name
+            for name, blocked_entity in self._morph_variant_switch_blockers
+            if blocked_entity is None or blocked_entity is entity
+        ]
+        if blockers_name:
+            gs.raise_exception(f"Switching the morph variant of this entity is not supported by: {blockers_name}.")
+        if any(morph.enable_custom_vverts for morph in entity.morphs):
+            gs.raise_exception("Switching the morph variant of an entity with 'enable_custom_vverts' is not supported.")
+
+    @mutates(StateChange.GEOMETRY, StateChange.MODEL, links="links_idx")
+    def _apply_morph_variant(self, envs_idx, variants_idx, entities: list[RigidEntity], links_idx=None):
+        """Make some environments carry some variants of some entities, keeping their configuration.
+
+        'variants_idx' holds one row per environment of 'envs_idx', each entry being a variant of 'variants_info' of one
+        of 'entities'. The quantities the model of a variant determines are recomputed in those environments: the
+        inverse weights and the mean inertia (which wakes up their hibernated islands), the pose of every geom, the
+        contact caches, the characteristic length of the dofs and the base-link offsets. 'links_idx' holds the links of
+        'entities', which the notification reports, None standing for any link.
+        """
+        kernel_set_morph_variant(
+            envs_idx,
+            variants_idx,
+            self.dyn_state,
+            self.variants_state,
+            self.dyn_info,
+            self.rigid_info,
+            self.variants_info,
+            self.rigid_config,
+            is_dynamic=True,
+        )
+        # The helpers below take a selection of environments in a parallelized scene alone
+        selected_envs_idx = envs_idx if self.n_envs > 0 else None
+        self._refresh_invweight_and_meaninertia(selected_envs_idx, force_update=True)
+        kernel_forward_kinematics_links_geoms(
+            envs_idx, self.dyn_state, self.dyn_info, self.rigid_info, self.rigid_config
+        )
+        self.collider.reset(selected_envs_idx, cache_only=False)
+        self.constraint_solver.reset(selected_envs_idx)
+        self._refresh_dof_length(entities, envs_idx)
+        self._update_links_offset(envs_idx)
+        self._restart()
+
+    def set_morph_variant(self, variants_idx, entity_idx: int, envs_idx=None):
+        """Switch a heterogeneous entity to some of its variants in some environments, keeping their configuration.
+
+        'variants_idx' is a variant of the entity counted from its first morph, or one per environment of 'envs_idx'.
+        The current configuration must lie within the joint limits of the incoming variant, since a switch keeps it.
+        The environments carrying the incoming variant already are left as they are. The scene resets the others to
+        the neutral configuration of the variant they carry from then on.
+        """
+        entity = self._entities[entity_idx]
+        self._assert_morph_variant_switchable(entity)
+        envs_idx = self._scene._sanitize_envs_idx(envs_idx)
+        variants_idx = broadcast_tensor(variants_idx, gs.tc_int, (len(envs_idx),), ("envs_idx",))
+        n_variants = entity._variants_data.n_variants
+        if ((variants_idx < 0) | (variants_idx >= n_variants)).any():
+            gs.raise_exception(f"Morph variant out of range [0, {n_variants}).")
+        variants_row = entity._variants_data.variant_start + variants_idx
+
+        joints = [joint for joint in entity.joints if joint.type in (gs.JOINT_TYPE.REVOLUTE, gs.JOINT_TYPE.PRISMATIC)]
+        if joints:
+            dofs_row = qd_to_torch(self.variants_info.variants_dof_start)[variants_row][:, None] + torch.tensor(
+                [joint.dof_start - entity.dof_start for joint in joints], device=gs.device
+            )
+            dofs_limit = qd_to_torch(self.variants_info.dofs_limit)[dofs_row]
+            qpos = qd_to_torch(self.rigid_info.qpos, envs_idx, [joint.q_start for joint in joints], transpose=True)
+            if ((qpos < dofs_limit[..., 0] - gs.EPS) | (qpos > dofs_limit[..., 1] + gs.EPS)).any():
+                gs.raise_exception("The current configuration lies outside the joint limits of the incoming variant.")
+
+        i_e = entity._variants_data.heterogeneous_idx
+        envs_variant_idx = qd_to_torch(self.variants_state.envs_variant, envs_idx, i_e, keepdim=False, transpose=True)
+        envs_is_switched = variants_idx != envs_variant_idx
+        if not envs_is_switched.any():
+            return
+        self._apply_morph_variant(
+            envs_idx[envs_is_switched],
+            variants_row[envs_is_switched, None],
+            [entity],
+            range(entity.link_start, entity.link_end),
+        )
+
+        # A reset keeps the variant, like any other change of the model, and starts from its neutral configuration
+        self._scene._refresh_init_state(entity, envs_idx[envs_is_switched])
 
     def set_links_mass(self, mass, links_idx=None, envs_idx=None, scale_inertia=False):
         """Set the mass of the given links, in kg.

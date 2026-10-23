@@ -632,6 +632,7 @@ class PointCloudTactileSensorMixin(ProbeSensorMixin[PointCloudTactileSensorMetad
         # BVH growth follows pc_pos_link growth in lockstep: each leaf's leaf_elem_idx is an absolute
         # row into the just-grown pc_pos_link.
         self._shared_metadata.pc_bvh.append_sensor(pc_start_row=pc_start_row, idx_cat=idx_cat, pos_cat=pos_cat)
+        self._block_morph_variant_switch(self._options.track_link_idx)
 
     def _draw_debug_probes(
         self,
@@ -1994,6 +1995,7 @@ class ElastomerTaxelSensor(
         elastomer_geom_idx, elastomer_geom_active_envs_mask = _collect_collision_geom_idx(
             solver, np.asarray((self._link.idx,), dtype=gs.np_int)
         )
+        self._block_morph_variant_switch((self._link.idx,))
         self._shared_metadata.elastomer_geom_idx = concat_with_tensor(
             self._shared_metadata.elastomer_geom_idx, elastomer_geom_idx, expand=(elastomer_geom_idx.shape[0],)
         )

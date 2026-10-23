@@ -4,9 +4,10 @@ import torch
 
 import genesis as gs
 import genesis.utils.geom as gu
+from genesis.recorders.trajectory import TRAJECTORY_FORMAT, Trajectory
 from genesis.utils.misc import tensor_to_array
 
-from ..utils.assertions import assert_allclose
+from ..utils.assertions import assert_allclose, assert_equal
 from ..utils.assets import get_hf_dataset
 
 
@@ -196,12 +197,15 @@ def test_variant_inertia_matches_standalone(undefined_inertia, implicit_inertial
 
 
 @pytest.mark.required
-def test_fewer_envs_than_variants():
+@pytest.mark.parametrize("n_envs", [0, 2])
+def test_fewer_envs_than_variants(n_envs, tol):
     # With n_envs < n_variants, environment i gets variant i and the variants beyond n_envs stay unused.
+    RHO = 500.0
+
     scene = gs.Scene(show_viewer=False)
     scene.add_entity(gs.morphs.Plane())
 
-    # 4 variants with different positions but only 2 environments
+    # 4 variants with different positions but at most 2 environments
     morphs_heterogeneous = [
         gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=(0.0, 0.0, 0.1)),
         gs.morphs.Box(size=(0.03, 0.03, 0.03), pos=(0.1, 0.0, 0.15)),
@@ -210,16 +214,21 @@ def test_fewer_envs_than_variants():
     ]
     het_obj = scene.add_entity(
         morph=morphs_heterogeneous,
+        material=gs.materials.Material(
+            density=RHO,
+        ),
     )
 
-    # Building with only 2 environments should work - each env gets a unique variant
-    scene.build(n_envs=2)
+    scene.build(n_envs=n_envs)
 
-    # Verify mass - env 0 gets variant 0 (0.04 box), env 1 gets variant 1 (0.03 box)
+    variants_idx = het_obj.get_morph_variant()
+    assert_equal(variants_idx, np.arange(n_envs) if n_envs > 0 else 0)
+
+    # Each environment simulates the box of the variant it carries
     mass = het_obj.get_mass()
-    assert mass.shape == (scene.n_envs,)
-    # Different box sizes should have different masses
-    assert mass[0] != mass[1]
+    assert mass.shape == variants_idx.shape == het_obj.get_pos().shape[:-1]
+    variants_mass = RHO * np.array((0.04, 0.03)) ** 3
+    assert_allclose(mass, variants_mass[tensor_to_array(variants_idx)], tol=tol)
 
 
 @pytest.mark.slow  # ~200s
@@ -536,3 +545,269 @@ def test_articulated_structure_mismatch(fixed_base_dual_arm, fixed_base_dual_arm
                 gs.morphs.URDF(file=fixed_base_dual_arm_chained, fixed=True),
             ]
         )
+
+
+@pytest.mark.required
+@pytest.mark.parametrize("n_envs", [0, 2])
+def test_set_morph_variant(
+    n_envs,
+    fixed_base_dual_arm,
+    fixed_base_dual_arm_high_damping,
+    fixed_base_dual_arm_overlapping,
+    tmp_path,
+    show_viewer,
+    tol,
+):
+    N_STEPS = 60
+    REF_OFFSET = (1.0, 0.0, 0.0)
+    FIXED_POSITIONS = ((0.0, 0.5, 0.3), (0.1, 0.5, 0.5))
+    BOX_SIZES = (0.4, 0.05)
+    SPHERE_RADII = (0.02, 0.2)
+
+    scene = gs.Scene(
+        viewer_options=gs.options.ViewerOptions(
+            camera_pos=(3.0, 0.0, 1.5),
+            camera_lookat=(0.0, 0.0, 0.3),
+        ),
+        show_viewer=show_viewer,
+    )
+    scene.add_entity(gs.morphs.Plane())
+    het_obj = scene.add_entity(
+        morph=(
+            gs.morphs.Box(
+                size=(0.1, 0.1, 0.1),
+                pos=(0.0, 0.0, 0.3),
+                euler=(30.0, 0.0, 0.0),
+            ),
+            gs.morphs.Cylinder(
+                radius=0.04,
+                height=0.15,
+                pos=(0.0, 0.0, 0.3),
+                euler=(30.0, 0.0, 0.0),
+            ),
+        ),
+    )
+    # The homogeneous copy of the incoming variant, placed far enough not to interact
+    ref_obj = scene.add_entity(
+        morph=gs.morphs.Cylinder(
+            radius=0.04,
+            height=0.15,
+            pos=np.add((0.0, 0.0, 0.3), REF_OFFSET),
+            euler=(30.0, 0.0, 0.0),
+        ),
+    )
+    # A fixed base stands at the frame of its variant
+    het_fixed = scene.add_entity(
+        morph=(
+            gs.morphs.Box(
+                size=(0.1, 0.1, 0.1),
+                pos=FIXED_POSITIONS[0],
+                fixed=True,
+            ),
+            gs.morphs.Sphere(
+                radius=0.03,
+                pos=FIXED_POSITIONS[1],
+                fixed=True,
+            ),
+        ),
+    )
+    # The first environment carries the large box with the small sphere, so the large sphere it switches to lands on the
+    # large box, a pair of variants that no environment carries together at build
+    scene.add_entity(
+        morph=tuple(
+            gs.morphs.Box(
+                size=(size, size, size),
+                pos=(0.0, 2.0, 0.5 * size),
+            )
+            for size in BOX_SIZES
+        ),
+    )
+    het_sphere = scene.add_entity(
+        morph=tuple(
+            gs.morphs.Sphere(
+                radius=radius,
+                pos=(0.0, 2.0, 0.61),
+            )
+            for radius in SPHERE_RADII
+        ),
+    )
+    # The arms of the last variant overlap in the neutral configuration, and no environment carries it at build
+    het_arm = scene.add_entity(
+        morph=tuple(
+            gs.morphs.URDF(
+                file=file,
+                pos=(0.0, -2.0, 0.5),
+                fixed=True,
+            )
+            for file in (fixed_base_dual_arm, fixed_base_dual_arm_high_damping, fixed_base_dual_arm_overlapping)
+        ),
+    )
+    trajectory_path = tmp_path / f"trajectory{TRAJECTORY_FORMAT}"
+    scene.start_recording(
+        gs.recorders.TrajectoryFile(
+            filename=str(trajectory_path),
+        ),
+    )
+    scene.build(n_envs=n_envs)
+    envs_idx = [0] if n_envs > 0 else None
+    arm_variants_idx = het_arm.get_morph_variant()
+
+    het_obj.set_morph_variant(1)
+    het_fixed.set_morph_variant(1, envs_idx=envs_idx)
+    het_sphere.set_morph_variant(1, envs_idx=envs_idx)
+    assert_equal(het_obj.get_morph_variant(), np.ones(n_envs) if n_envs > 0 else 1)
+    assert_allclose(het_obj.get_mass(), ref_obj.get_mass(), tol=tol)
+    for _ in range(N_STEPS):
+        scene.step()
+    ref_offset = torch.tensor(REF_OFFSET, dtype=gs.tc_float, device=gs.device)
+    het_qpos, ref_qpos = het_obj.get_qpos(), ref_obj.get_qpos()
+    assert_allclose(het_qpos[..., :3] + ref_offset, ref_qpos[..., :3], tol=tol)
+    assert_allclose(het_qpos[..., 3:], ref_qpos[..., 3:], tol=tol)
+    # The geoms of the last variant come last
+    assert_allclose(het_obj.geoms[-1].get_AABB() + ref_offset, ref_obj.geoms[-1].get_AABB(), tol=tol)
+    assert_allclose(
+        np.atleast_2d(tensor_to_array(het_sphere.get_pos()))[0, 2], SPHERE_RADII[1] + BOX_SIZES[0], atol=5e-3
+    )
+
+    # The overlapping arms pass through each other from the first step
+    het_arm.set_morph_variant(2, envs_idx=envs_idx)
+    scene.step()
+    arm_contacts = het_arm.get_contacts(with_entity=het_arm)
+    assert (arm_contacts["valid_mask"][0].sum() if n_envs > 0 else len(arm_contacts["geom_a"])) == 0
+    scene.stop_recording()
+
+    # A reset starts every environment from the neutral configuration of the variants it carries
+    scene.reset()
+    assert_equal(het_obj.get_morph_variant(), np.ones(n_envs) if n_envs > 0 else 1)
+    assert_allclose(het_obj.get_pos(), np.broadcast_to((0.0, 0.0, 0.3), het_obj.get_pos().shape), tol=tol)
+    assert_allclose(np.atleast_2d(tensor_to_array(het_fixed.get_pos()))[0], FIXED_POSITIONS[1], tol=tol)
+    assert_equal(np.atleast_1d(tensor_to_array(het_arm.get_morph_variant()))[0], 2)
+
+    # The frames of the recording hold the variants carried when they were recorded, and a reset keeps the variants a
+    # frame restores. The last step started from the frame before the end.
+    trajectory = Trajectory(trajectory_path, scene=scene)
+    trajectory.seek(-2)
+    assert_equal(np.atleast_1d(tensor_to_array(het_arm.get_morph_variant()))[0], 2)
+    trajectory.seek(-3)
+    assert_equal(het_arm.get_morph_variant(), arm_variants_idx)
+    scene.reset()
+    assert_equal(het_arm.get_morph_variant(), arm_variants_idx)
+
+    # A state the scene resets to records the variants, and the switches that follow leave it as it is
+    state = scene.get_state()
+    qpos, mass = het_obj.get_qpos(), het_obj.get_mass()
+    scene.reset(state)
+    het_obj.set_morph_variant(0)
+    scene.step()
+    scene.reset(state)
+    assert_equal(het_obj.get_morph_variant(), np.ones(n_envs) if n_envs > 0 else 1)
+    assert_allclose(het_obj.get_qpos(), qpos, tol=tol)
+    assert_allclose(het_obj.get_mass(), mass, tol=tol)
+
+    # A state restored in some environments registers the variants it records in all of them, and a switch in another
+    # environment leaves them registered
+    if n_envs > 0:
+        het_obj.set_morph_variant(0, envs_idx=[1])
+        scene.reset(state, envs_idx=[0])
+        het_obj.set_morph_variant(0, envs_idx=[0])
+        scene.reset()
+        assert_equal(het_obj.get_morph_variant(), (0, 1))
+
+
+@pytest.mark.required
+def test_set_morph_variant_raises(fixed_base_dual_arm, fixed_base_dual_arm_high_damping):
+    scene = gs.Scene(show_viewer=False)
+    single_obj = scene.add_entity(
+        morph=gs.morphs.Box(
+            size=(0.1, 0.1, 0.1),
+            pos=(1.0, 0.0, 0.1),
+        ),
+    )
+    het_obj = scene.add_entity(
+        morph=(
+            gs.morphs.Box(
+                size=(0.1, 0.1, 0.1),
+                pos=(2.0, 0.0, 0.1),
+            ),
+            gs.morphs.Sphere(
+                radius=0.05,
+                pos=(2.0, 0.0, 0.1),
+            ),
+        ),
+    )
+    het_custom_vverts = scene.add_entity(
+        morph=(
+            gs.morphs.Box(
+                size=(0.1, 0.1, 0.1),
+                pos=(3.0, 0.0, 0.1),
+                enable_custom_vverts=True,
+            ),
+            gs.morphs.Sphere(
+                radius=0.05,
+                pos=(3.0, 0.0, 0.1),
+                enable_custom_vverts=True,
+            ),
+        ),
+    )
+    het_arm = scene.add_entity(
+        morph=(
+            gs.morphs.URDF(
+                file=fixed_base_dual_arm,
+                pos=(4.0, 0.0, 0.5),
+                fixed=True,
+            ),
+            gs.morphs.URDF(
+                file=fixed_base_dual_arm_high_damping,
+                pos=(4.0, 0.0, 0.5),
+                fixed=True,
+            ),
+        ),
+    )
+    scene.build(n_envs=2)
+
+    with pytest.raises(gs.GenesisException, match="Only a heterogeneous entity"):
+        single_obj.set_morph_variant(0)
+    with pytest.raises(gs.GenesisException, match="out of range"):
+        het_obj.set_morph_variant([0, 2])
+    with pytest.raises(gs.GenesisException, match="out of range"):
+        het_obj.set_morph_variant(-1)
+    with pytest.raises(gs.GenesisException, match="enable_custom_vverts"):
+        het_custom_vverts.set_morph_variant(1)
+    # The arm variants share joint limits of +/-3.14 rad, which a configuration beyond them violates whatever the
+    # incoming variant
+    het_arm.set_dofs_position([3.5, 0.0], envs_idx=[1])
+    het_arm.set_morph_variant(1, envs_idx=[0])
+    with pytest.raises(gs.GenesisException, match="joint limits"):
+        het_arm.set_morph_variant(0, envs_idx=[1])
+    # Restoring a checkpoint that records other variants switches them, which a blocker forbids as well
+    checkpoint = scene.__getstate__()
+    state = scene.get_state()
+    het_obj.set_morph_variant((1, 0))
+    scene.rigid_solver.add_morph_variant_switch_blocker("a sensor")
+    with pytest.raises(gs.GenesisException, match="a sensor"):
+        het_obj.set_morph_variant(0)
+    with pytest.raises(gs.GenesisException, match="a sensor"):
+        scene.__setstate__(checkpoint)
+    with pytest.raises(gs.GenesisException, match="a sensor"):
+        scene.reset(state)
+    assert_equal(het_obj.get_morph_variant(), (1, 0))
+
+    scene_grad = gs.Scene(
+        sim_options=gs.options.SimOptions(
+            requires_grad=True,
+        ),
+        show_viewer=False,
+    )
+    het_grad = scene_grad.add_entity(
+        morph=(
+            gs.morphs.Box(
+                size=(0.1, 0.1, 0.1),
+            ),
+            gs.morphs.Sphere(
+                radius=0.05,
+            ),
+        ),
+    )
+    scene_grad.build()
+    with pytest.raises(gs.GenesisException, match="requires_grad"):
+        het_grad.set_morph_variant(1)

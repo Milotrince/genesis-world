@@ -29,8 +29,9 @@ from .rigid_link import KinematicLink, RigidLink
 
 if TYPE_CHECKING:
     from genesis.engine.scene import Scene
-    from genesis.engine.solvers.rigid.rigid_solver import RigidSolver
     from genesis.engine.solvers.kinematic_solver import KinematicSolver
+    from genesis.engine.solvers.rigid.rigid_solver import RigidSolver
+    from genesis.engine.system_data.variants import VariantsEntityData
 
 
 # Wrapper to track the arguments of a function and save them in the target buffer
@@ -101,6 +102,8 @@ class KinematicEntity(Entity):
         self._is_built: bool = False
         self._is_attached: bool = False
         self._is_vverts_overridden: bool = False
+        # The variants of a heterogeneous entity, set once the solver registers them, None for a homogeneous one
+        self._variants_data: "VariantsEntityData | None" = None
 
         self._load_model()
 
@@ -1217,6 +1220,11 @@ class KinematicEntity(Entity):
     def morphs(self):
         """All morphs of the entity (main morph + heterogeneous variants if any)."""
         return gs.List((self._morph, *self._morph_heterogeneous))
+
+    @property
+    def is_heterogeneous(self) -> bool:
+        """Whether the entity has several morph variants, one of which every environment carries."""
+        return self._enable_heterogeneous
 
     @property
     def desc(self) -> KinematicEntityDescription:
@@ -3393,6 +3401,56 @@ class RigidEntity(KinematicEntity):
         mass_target = broadcast_tensor(mass, gs.tc_float, mass_entity.shape, dim_names)
         # A body brought to a mass behaves as one built at it, so the inertia of every link grows with its share.
         self._solver.set_links_mass(links_mass * mass_target / mass_entity, links_idx, envs_idx, scale_inertia=True)
+
+    @gs.assert_built
+    def get_morph_variant(self, envs_idx=None):
+        """
+        Get the morph variant that each environment carries, the primary morph being variant 0.
+
+        Parameters
+        ----------
+        envs_idx : None | array_like, optional
+            The indices of the environments. If None, all environments are returned. Defaults to None.
+
+        Returns
+        -------
+        variants_idx : torch.Tensor, shape (n_envs,) or scalar
+            The index of the variant in the morphs of the entity, for each environment.
+        """
+        if not self.is_heterogeneous:
+            gs.raise_exception("Only a heterogeneous entity has morph variants.")
+        envs_variant = self._variants_data.data.state.envs_variant
+        tensor = qd_to_torch(envs_variant, envs_idx, self._variants_data.heterogeneous_idx, transpose=True, copy=True)
+        return tensor[0, 0] if self._solver.n_envs == 0 else tensor[..., 0]
+
+    @gs.assert_built
+    def set_morph_variant(self, variants_idx, envs_idx=None):
+        """
+        Switch the morph variant that some environments carry, the primary morph being variant 0.
+
+        The switch takes effect at the next step. The configuration, the velocities and the controls of the entity are
+        kept, which requires the configuration to lie within the joint limits of the incoming variant. The pose of a
+        fixed base and the neutral configuration become those of the incoming variant, and a reset of these
+        environments starts from that neutral configuration. A state taken with 'scene.get_state' records the variants,
+        and restoring it switches them back. A restored checkpoint or trajectory frame brings the variants it records,
+        which a reset keeps likewise.
+
+        A switch waits for the device to read the configuration back, and recomputes the inertial quantities of these
+        environments. It wakes up their entities and forgets their contacts of the last step, so switch between
+        episodes, together with a reset, rather than within one. Cameras rendered by the rasterizer, raycasting sensors
+        and trajectory recordings follow a switch. A switch raises while the scene holds a feature that cannot follow
+        it: the batch renderer, the ray tracer, the SAP coupler, a tactile or surface distance sensor tracking the
+        entity, a differentiable simulation or a morph with custom visual vertices.
+
+        Parameters
+        ----------
+        variants_idx : int | array_like, shape (n_envs,)
+            The index of the variant in the morphs of the entity, one for every selected environment, or one per
+            environment of 'envs_idx'.
+        envs_idx : None | array_like, optional
+            The indices of the environments. If None, all environments will be considered. Defaults to None.
+        """
+        self._solver.set_morph_variant(variants_idx, self._idx_in_solver, envs_idx)
 
     @gs.assert_built
     def get_mass(self, envs_idx=None):

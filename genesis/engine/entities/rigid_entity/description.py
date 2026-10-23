@@ -400,6 +400,11 @@ class KinematicEntityDescription(EntityDescription):
     variants: list[KinematicVariantDescription] = field(default_factory=list)
     attachment: KinematicAttachmentDescription | None = None
 
+    @property
+    def variants_links(self) -> list[list[KinematicLinkDescription | KinematicVariantLinkDescription]]:
+        """The links of every variant, the first variant, or the only one of a homogeneous entity, being 'links'."""
+        return [self.links, *(variant.links for variant in self.variants[1:])]
+
     @classmethod
     def resolve(
         cls, options: EntityOptions, surface: Surface, solver_options: Options, enable_mujoco_compatibility: bool
@@ -1205,6 +1210,7 @@ class KinematicEntityDescription(EntityDescription):
         """
         links = self.links
         variants = self.variants
+        variants_links = self.variants_links
         for i_root, root in enumerate(links):
             if root.parent_idx != -1 or not root.is_aligned:
                 continue
@@ -1231,7 +1237,7 @@ class KinematicEntityDescription(EntityDescription):
             # and principal axes. It re-expresses the variant geoms, so the geometry keeps its world pose, and folds
             # into the variant offset and init_qpos.
             for i_v in range(len(resolution.links_inertial_info[i_root])):
-                variant_links = links if i_v == 0 else variants[i_v].links
+                variant_links = variants_links[i_v]
                 pose_in_root = {i_root: (gu.zero_pos(), gu.identity_quat())}
                 for i_l in subtree[1:]:
                     pose_in_root[i_l] = gu.transform_pos_quat_by_trans_quat(
