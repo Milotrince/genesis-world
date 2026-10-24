@@ -19,7 +19,6 @@ from genesis.repr_base import RBC
 from genesis.utils.misc import (
     assign_indexed_tensor,
     broadcast_tensor,
-    data_to_array,
     indices_to_mask,
     qd_to_torch,
     sanitize_index,
@@ -393,19 +392,16 @@ class Solver(RBC):
         """Return a SolverCheckpoint of this solver, for '__setstate__' to restore.
 
         The state is what 'data' yields of the kinds a checkpoint carries (see 'CHECKPOINT_KINDS'), copied where it
-        lives: on the device as torch tensors when zero-copy views exist, which keeps a save and a restore within one
-        process off the host, and as numpy arrays otherwise.
+        lives (see 'read_data').
         """
-        arrays = {}
+        items = []
         configs = {}
         for item in self.data:
             if isinstance(item, array_class.ConfigItem):
                 configs[item.name] = item.config
             elif item.kind in array_class.CHECKPOINT_KINDS:
-                if isinstance(item, array_class.ScalarItem):
-                    arrays[item.name] = np.array(getattr(item.owner, item.attr))
-                else:
-                    arrays[item.name] = data_to_array(item.array, to_torch=gs.use_zerocopy, copy=True)
+                items.append(item)
+        arrays = array_class.read_data(items)
         return SolverCheckpoint(arrays=arrays, configs=configs, kinds=array_class.CHECKPOINT_KINDS)
 
     def __setstate__(self, state: SolverCheckpoint) -> None:

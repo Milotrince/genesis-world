@@ -42,6 +42,7 @@ from genesis.options import (
     ViewerOptions,
     VisOptions,
 )
+from genesis.options.behaviors import BehaviorOptions
 from genesis.options.morphs import Morph
 from genesis.options.recorders import RecorderOptions, TrajectoryFile
 from genesis.options.renderers import RendererOptions
@@ -317,6 +318,7 @@ class Scene(RBC):
         visualize_contact: bool = ...,
         vis_mode: str | None = ...,
         name: str | None = ...,
+        behaviors: dict[str, BehaviorOptions] | None = ...,
     ) -> "RigidEntity": ...
 
     @overload
@@ -328,6 +330,7 @@ class Scene(RBC):
         visualize_contact: bool = ...,
         vis_mode: str | None = ...,
         name: str | None = ...,
+        behaviors: dict[str, BehaviorOptions] | None = ...,
     ) -> EntityT: ...
 
     @gs.assert_unbuilt
@@ -339,6 +342,7 @@ class Scene(RBC):
         visualize_contact: bool = False,
         vis_mode: str | None = None,
         name: str | None = None,
+        behaviors: dict[str, BehaviorOptions] | None = None,
     ) -> "Entity":
         """
         Add an entity to the scene.
@@ -365,6 +369,12 @@ class Scene(RBC):
         name : str | None, optional
             User-specified name for the entity. If not provided, an auto-generated name will be assigned
             based on the morph type and entity UID (e.g., "box_a1b2c3d4"). Must be unique within the scene.
+        behaviors : dict[str, gs.behaviors.BehaviorOptions] | None, optional
+            The behaviors of the entity (rigid and kinematic entities only), keyed by the name 'entity.get_behavior'
+            looks them up by. A behavior acts on the simulation at the start of every step and is restored to its
+            declared state by 'scene.reset'. Each behavior type is a class deriving from
+            'genesis.engine.behaviors.Behavior', which must be defined or imported before the entity is added.
+            Defaults to None, meaning no behavior.
 
         Returns
         -------
@@ -463,7 +473,15 @@ class Scene(RBC):
         else:
             gs.raise_exception()
 
-        entity = self._sim._add_entity(morph, material, surface, visualize_contact, name)
+        if behaviors is not None:
+            for behavior_name, behavior_options in behaviors.items():
+                if not isinstance(behavior_name, str) or not isinstance(behavior_options, BehaviorOptions):
+                    gs.raise_exception(
+                        "'behaviors' maps a behavior name to its options, got "
+                        f"{type(behavior_name).__name__} -> {type(behavior_options).__name__}."
+                    )
+
+        entity = self._sim._add_entity(morph, material, surface, visualize_contact, name, behaviors)
 
         return entity
 
@@ -905,7 +923,7 @@ class Scene(RBC):
             self._visualizer.build()
 
         # recorders, which lay out the phases a step times once (see 'StepTimer.add_phases')
-        self._sim.step_timer.add_phases("recorders", "rendering", "video")
+        self._sim.step_timer.add_phases("behaviors", "recorders", "rendering", "video")
         self._recorder_manager.build()
 
     def _parallelize(
@@ -1081,7 +1099,10 @@ class Scene(RBC):
             if not self._sim.is_forward_ready:
                 gs.raise_exception("Forward simulation not allowed after backward pass. Please reset scene state.")
             # The recorders read the state a step starts from, with the inputs the step consumes: 'Simulator.step'
-            # zeroes the applied forces at its end. The pre-step callbacks ran, so their inputs are read as well.
+            # zeroes the applied forces at its end. The pre-step callbacks and the behaviors ran, so their inputs are
+            # read as well.
+            with step_timer.phase("behaviors"):
+                self._sim._behavior_manager.step()
             with step_timer.phase("recorders"):
                 self._recorder_manager.step(self._sim.cur_step_global)
             self._sim.step()
@@ -1841,6 +1862,8 @@ class Scene(RBC):
             record = state.sim.solvers[name]
             items = (item for item in solver.data if isinstance(item, DataItem) and item.kind in record.kinds)
             check_data(items, record.arrays)
+        behaviors_items = (item for item in self._sim._behavior_manager.data if item.kind in state.sim.behaviors.kinds)
+        check_data(behaviors_items, state.sim.behaviors.arrays)
         # The recorders finish the run first (see 'reset'), and the restart follows the state, so the visualizer draws
         # the state put back.
         self._recorder_manager.record(self._sim.cur_step_global)
@@ -1901,6 +1924,7 @@ class Scene(RBC):
 
         The phases are:
 
+        - behaviors: the behaviors of the entities acting on the simulation (see 'Behavior.step').
         - physics: the solvers advancing the state over the substeps.
         - sensors: the sensor updates, and sensors/<class name> the share of each sensor class.
         - rendering: the viewer refresh.
