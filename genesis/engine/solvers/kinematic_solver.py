@@ -8,6 +8,7 @@ import torch
 import genesis as gs
 import genesis.utils.array_class as array_class
 import genesis.utils.geom as gu
+from genesis.engine.behaviors import Behavior
 from genesis.engine.entities.rigid_entity import KinematicEntity
 from genesis.engine.materials import Kinematic
 from genesis.engine.solvers.rigid.abd.inverse_kinematics import (
@@ -194,7 +195,7 @@ class KinematicSolver(Solver):
     # ------------------------------------------------------------------------------------
 
     def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name=None, desc=None
+        self, idx, material, morph, surface, visualize_contact=False, name=None, behaviors=None, desc=None
     ) -> "KinematicEntity":
         """Create an entity from its description.
 
@@ -206,7 +207,14 @@ class KinematicSolver(Solver):
             morphs = (morph,) if isinstance(morph, Morph) else tuple(morph)
             entity_cls = next(cls for morph_cls, cls in self._entity_classes if isinstance(morphs[0], morph_cls))
             desc = entity_cls._description_cls.resolve(
-                morphs, material, surface, self._options, self._enable_mujoco_compatibility, visualize_contact, name
+                morphs,
+                material,
+                surface,
+                self._options,
+                self._enable_mujoco_compatibility,
+                visualize_contact,
+                name,
+                behaviors,
             )
         else:
             for _, entity_cls in self._entity_classes:
@@ -214,6 +222,12 @@ class KinematicSolver(Solver):
                     break
             else:
                 gs.raise_exception(f"{type(self).__name__} simulates no entity described by {type(desc).__name__}.")
+        for behavior_options in desc.behaviors.values():
+            if type(behavior_options) not in Behavior.TYPES_MAP:
+                gs.raise_exception(
+                    f"No behavior class registered for {type(behavior_options).__name__}. Define or import the class "
+                    f"deriving from 'Behavior[{type(behavior_options).__name__}]' before adding the entity."
+                )
         self._enable_heterogeneous |= bool(desc.variants)
         entity = entity_cls(self._scene, self, idx, desc)
         self._entities.append(entity)

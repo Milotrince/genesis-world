@@ -24,6 +24,7 @@ import genesis as gs
 from genesis.constants import EQUALITY_TYPE, GEOM_TYPE, JOINT_TYPE
 from genesis.engine.materials.base import Material
 from genesis.engine.mesh import InertialProperties
+from genesis.options.behaviors import BehaviorOptions
 from genesis.options.morphs import Morph
 from genesis.options.options import Options
 from genesis.options.surfaces import Surface
@@ -384,13 +385,15 @@ class KinematicEntityDescription(EntityDescription):
     The morphs, material and surface it was given stand here as well, since a link states none of them: the material
     carries the physics the geoms are simulated under, the surface how they are drawn, and a morph what a kind of
     entity needs beyond its links - the propeller links of a drone, the grid of a terrain. 'morphs' lists every
-    morph the entity dispatches, the primary first, and a homogeneous entity lists exactly one.
+    morph the entity dispatches, the primary first, and a homogeneous entity lists exactly one. 'behaviors' holds the
+    declaration of every behavior of the entity, keyed by the name it is looked up by.
     """
 
     morphs: list[Morph]
     surface: Surface
     visualize_contact: bool = False
     name: str | None = None
+    behaviors: dict[str, BehaviorOptions] = field(default_factory=dict)
     links: list[KinematicLinkDescription] = field(default_factory=list)
     variants: list[KinematicVariantDescription] = field(default_factory=list)
     attachment: KinematicAttachmentDescription | None = None
@@ -405,6 +408,7 @@ class KinematicEntityDescription(EntityDescription):
         enable_mujoco_compatibility: bool,
         visualize_contact: bool = False,
         name: str | None = None,
+        behaviors: dict[str, BehaviorOptions] | None = None,
     ) -> Self:
         """Resolve what an entity is created with into the description it is built from.
 
@@ -452,7 +456,14 @@ class KinematicEntityDescription(EntityDescription):
                 ):
                     morph.default_armature = None
 
-        desc = cls(morphs=morphs, material=material, surface=surface, visualize_contact=visualize_contact, name=name)
+        desc = cls(
+            morphs=morphs,
+            material=material,
+            surface=surface,
+            visualize_contact=visualize_contact,
+            name=name,
+            behaviors={} if behaviors is None else dict(behaviors),
+        )
         desc._load_morph(morphs[0], Resolution(options, enable_mujoco_compatibility))
         return desc
 

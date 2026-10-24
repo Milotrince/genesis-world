@@ -28,9 +28,10 @@ from .rigid_joint import RigidJoint
 from .rigid_link import KinematicLink, RigidLink
 
 if TYPE_CHECKING:
+    from genesis.engine.behaviors import Behavior
     from genesis.engine.scene import Scene
-    from genesis.engine.solvers.rigid.rigid_solver import RigidSolver
     from genesis.engine.solvers.kinematic_solver import KinematicSolver
+    from genesis.engine.solvers.rigid.rigid_solver import RigidSolver
 
 
 # Wrapper to track the arguments of a function and save them in the target buffer
@@ -122,6 +123,11 @@ class KinematicEntity(Entity):
         self._tgt_buffer = list()
         self._ckpt = dict()
         self._update_tgt_while_set = self._solver._requires_grad
+
+        self._behaviors: dict[str, "Behavior"] = {
+            name: self._sim._behavior_manager.create_behavior(options, self, name)
+            for name, options in desc.behaviors.items()
+        }
 
     def _update_tgt(self, key, value):
         # Set [self._tgt] value while keeping the insertion order between keys. When a new key is inserted or an existing
@@ -654,6 +660,29 @@ class KinematicEntity(Entity):
         #     gs.raise_exception("`idx_local` exceeds valid range.")
 
         return idx_global
+
+    def get_behavior(self, name: str) -> "Behavior":
+        """
+        Get the behavior declared under a given name when adding this entity.
+
+        The same object is returned before and after the scene is built.
+
+        Parameters
+        ----------
+        name : str
+            The name the behavior was declared under in 'scene.add_entity(behaviors=...)'.
+
+        Returns
+        -------
+        behavior : genesis.engine.behaviors.Behavior
+            The runtime behavior.
+        """
+        behavior = self._behaviors.get(name)
+        if behavior is None:
+            gs.raise_exception(
+                f"Behavior not found for name: {name}. Available behavior names: {list(self._behaviors)}."
+            )
+        return behavior
 
     def get_joint(self, name=None, uid=None):
         """

@@ -292,6 +292,21 @@ def check_data(items: Iterable[DataItem], values: Mapping[str, np.ndarray | torc
     return writes
 
 
+def read_data(items: Iterable[DataItem]) -> dict[str, np.ndarray | torch.Tensor]:
+    """Return a copy of the value of every item under its name, for 'fill_data' to write back.
+
+    An array is copied where it lives: on the device as a torch tensor when zero-copy views exist, which keeps a save
+    and a restore within one process off the host, and as a numpy array otherwise.
+    """
+    values = {}
+    for item in items:
+        if isinstance(item, ScalarItem):
+            values[item.name] = np.array(getattr(item.owner, item.attr))
+        else:
+            values[item.name] = data_to_array(item.array, to_torch=gs.use_zerocopy, copy=True)
+    return values
+
+
 def fill_data(items: Iterable[DataItem], values: Mapping[str, np.ndarray | torch.Tensor]) -> None:
     """Write back into each item the value recorded under its name, once every value passed 'check_data', so that a
     record made for another scene leaves the scene as it was.
