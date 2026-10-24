@@ -85,6 +85,8 @@ class ArticulatedDescription(SystemDataDescription[ArticulatedData]):
     n_free_verts_: int = 0
     n_fixed_verts_: int = 0
     n_candidate_equalities_: int = 0
+    n_contact_classes_: int = 1
+    n_contact_pairs_: int = 1
     is_dynamic: bool = False
     requires_grad: bool
     is_batch_links_info: bool

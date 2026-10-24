@@ -2592,9 +2592,10 @@ class GeomsInfo:
     data: qd.Tensor
     link_idx: qd.Tensor
     type: qd.Tensor
-    friction: qd.Tensor
-    friction_torsional: qd.Tensor
-    friction_rolling: qd.Tensor
+    # The class of the geom among those sharing the same contact pairs (see 'resolve_contact_pairs' in contact_pair.py)
+    contact_class: qd.Tensor
+    # The contact pair stating each friction coefficient between two contact classes, -1 for none (see 'contact_class')
+    contact_classes_pair_idx: qd.Tensor
     sol_params: qd.Tensor
     vert_num: qd.Tensor
     vert_start: qd.Tensor
@@ -2629,9 +2630,12 @@ def get_geoms_info(description, is_active=True):
         data=V(dtype=gs.qd_vec7, shape=shape),
         link_idx=V(dtype=gs.qd_int, shape=shape),
         type=V(dtype=gs.qd_int, shape=shape),
-        friction=V(dtype=gs.qd_float, shape=shape),
-        friction_torsional=V(dtype=gs.qd_float, shape=shape),
-        friction_rolling=V(dtype=gs.qd_float, shape=shape),
+        contact_class=V(dtype=gs.qd_int, shape=shape),
+        contact_classes_pair_idx=V_VEC(
+            3,
+            dtype=gs.qd_int,
+            shape=(description.n_contact_classes_, description.n_contact_classes_) if is_active else (),
+        ),
         sol_params=V(dtype=gs.qd_vec7, shape=shape),
         vert_num=V(dtype=gs.qd_int, shape=shape),
         vert_start=V(dtype=gs.qd_int, shape=shape),
@@ -2667,7 +2671,11 @@ class GeomsState:
     aabb_max: qd.Tensor
     verts_updated: qd.Tensor
     is_hibernated: qd.Tensor = of_kind(DataKind.STATE)
-    friction_ratio: qd.Tensor = of_kind(DataKind.INFO)
+    # Sliding, torsional and rolling friction coefficients, per environment so that each can be randomized
+    friction: qd.Tensor = of_kind(DataKind.INFO)
+    # The friction coefficients of each contact pair, per environment, replacing those the two geoms of a contact
+    # combine (see 'GeomsInfo.contact_classes_pair_idx')
+    contact_pairs_friction: qd.Tensor = of_kind(DataKind.INFO)
 
 
 def get_geoms_state(description, is_active=True):
@@ -2681,7 +2689,10 @@ def get_geoms_state(description, is_active=True):
         aabb_max=V(dtype=gs.qd_vec3, shape=shape),
         verts_updated=V(dtype=gs.qd_bool, shape=shape),
         is_hibernated=V(dtype=gs.qd_int, shape=shape),
-        friction_ratio=V(dtype=gs.qd_float, shape=shape),
+        friction=V_VEC(3, dtype=gs.qd_float, shape=shape),
+        contact_pairs_friction=V_VEC(
+            3, dtype=gs.qd_float, shape=(description.n_contact_pairs_, description._B) if is_active else ()
+        ),
     )
 
 

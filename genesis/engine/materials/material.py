@@ -18,8 +18,10 @@ class Material(BaseMaterial):
         otherwise 1000 kg/m^3 under MuJoCo compatibility (see ``RigidOptions.enable_mujoco_compatibility``), 1500
         kg/m^3 for an articulated robot and 600 kg/m^3 for a basic object such as a mug or a table. Default is None.
     friction : float | None, optional
-        The sliding friction coefficient, which a rigid entity bounds (see ``RigidEntityOptions``). If None, the asset
-        decides where it states one, and otherwise 1.0 for a rigid entity and 0 for a tool. Default is None.
+        The sliding friction coefficient, which a rigid entity bounds (see ``RigidEntityOptions``). A contact takes the
+        larger coefficient of its two geoms, unless a contact pair states the coefficient of the two surfaces (see
+        ``Scene.add_contact_pair``). If None, the asset decides where it states one, and otherwise 1.0 for a rigid
+        entity and 0 for a tool. Default is None.
     friction_torsional : float | None, optional
         The torsional friction coefficient, resisting the relative spin about the contact normal. Expressed in meters,
         as it stands for the radius of the contact patch over which sliding friction acts. Only effective when

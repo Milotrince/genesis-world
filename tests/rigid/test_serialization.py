@@ -82,7 +82,15 @@ def checkpoint_scene(mimic_hinges, requires_grad, show_viewer):
 @pytest.mark.parametrize("model_name", ["free_boxes_and_slider"])
 @pytest.mark.parametrize("n_envs", [0, pytest.param(2, marks=pytest.mark.required)])
 def test_export_and_load_rigid(
-    n_envs, xml_path, mimic_hinges, urdf_with_external_assets, xacro_robot, tmp_path, show_viewer, caplog
+    n_envs,
+    xml_path,
+    mimic_hinges,
+    sphere_plane_pair,
+    urdf_with_external_assets,
+    xacro_robot,
+    tmp_path,
+    show_viewer,
+    caplog,
 ):
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
@@ -154,6 +162,8 @@ def test_export_and_load_rigid(
             color=(0.8, 0.2, 0.2),
         ),
     )
+    # A contact pair travels by the names of its targets, here an entity and one geom of another
+    scene.add_contact_pair(between=(box, mesh_set.geoms[1]), friction=0.3, is_collision_enabled=True)
     # A link whose frame is anchored on the geometry it holds, given a pose offset as well
     anchored = scene.add_entity(
         morph=gs.morphs.Mesh(
@@ -275,6 +285,13 @@ def test_export_and_load_rigid(
             file_meshes_are_zup=True,
         ),
     )
+    # A pair an asset states travels with the description of its entity
+    scene.add_entity(
+        morph=gs.morphs.MJCF(
+            file=ET.tostring(sphere_plane_pair, encoding="unicode"),
+            pos=(100.0, 100.0, 0.0),
+        ),
+    )
     # A sensor and a recorder observe the scene rather than taking part in it, and a file holds no code to run.
     # All three are written without.
     scene.add_sensor(
@@ -331,6 +348,10 @@ def test_export_and_load_rigid(
     assert_equal(restored.options.sim.dt, scene.options.sim.dt)
     assert_equal(restored.options.rigid.dt, scene.options.rigid.dt)
     assert [entity.name for entity in restored.entities] == [entity.name for entity in scene.entities]
+    assert restored.desc.contact_pairs == scene.desc.contact_pairs
+    assert {pair.geoms_idx for pair in restored.sim.rigid_solver.contact_pairs} == {
+        pair.geoms_idx for pair in scene.sim.rigid_solver.contact_pairs
+    }
     assert_equal(restored.entities[1].material.friction, box.material.friction)
     # A texture is drawn from its pixels, which travel, and the name of the image is all that is kept of its path.
     assert_equal(restored.entities[1].surface.diffuse_texture.image_array, box.surface.diffuse_texture.image_array)

@@ -257,8 +257,9 @@ def parse_xml(morph, surface, rigid_options=None):
     # Re-order kinematic tree info
     l_infos, links_j_infos, links_g_infos, _ = uu.order_links_depth_first(l_infos, links_j_infos, links_g_infos)
 
-    # Parsing all equality constraints
+    # Parsing all equality constraints and explicit contact pairs
     eqs_info = parse_equalities(mj, morph.scale)
+    pairs_info = parse_pairs(mj)
 
     # Friction features the model declares but the rigid options leave disabled parse to inert values; warn so their
     # absence in the simulation is no surprise. rigid_options is None on the secondary URDF parse, whose compiled
@@ -281,7 +282,7 @@ def parse_xml(morph, surface, rigid_options=None):
                 "'enable_rolling_friction' to honor the parsed coefficients."
             )
 
-    return l_infos, links_j_infos, links_g_infos, eqs_info
+    return l_infos, links_j_infos, links_g_infos, eqs_info, pairs_info
 
 
 def parse_link(mj, i_l, scale):
@@ -510,11 +511,13 @@ def parse_links(mj, scale):
     return l_infos, j_infos
 
 
-def parse_geom(mj, i_g, scale, surface, xml_path):
+def parse_geom(mj, i_g, scale, surface, xml_path, is_paired=False):
     mj_geom = mj.geom(i_g)
 
     geom_size = mj_geom.size
-    is_col = mj_geom.contype or mj_geom.conaffinity
+    # A geom whose collision masks are both zero collides through the explicit contact pairs naming it alone
+    is_pair_only = is_paired and not (mj_geom.contype or mj_geom.conaffinity)
+    is_col = mj_geom.contype or mj_geom.conaffinity or is_pair_only
     metadata = {}
 
     # Store geom name in metadata
@@ -732,7 +735,7 @@ def parse_geom(mj, i_g, scale, surface, xml_path):
     g_infos = []
     if is_col:
         mesh = gs.Mesh.from_trimesh(tmesh, scale=scale, surface=gs.surfaces.Collision(), metadata=metadata.copy())
-        g_infos.append({**info, "mesh": mesh})
+        g_infos.append({**info, "mesh": mesh, "is_pair_only": is_pair_only})
 
     # Geometries of visual groups (0, 1 or 2) are rendered in accordance with MuJoCo, collision ones included
     if not is_col or info["group"] in (0, 1, 2):
@@ -744,6 +747,7 @@ def parse_geom(mj, i_g, scale, surface, xml_path):
 
 def parse_geoms(mj, scale, surface, xml_path):
     links_g_info = [[] for _ in range(mj.nbody)]
+    paired_geoms_idx = {*mj.pair_geom1, *mj.pair_geom2}
 
     # Loop over all geometries sequentially
     is_any_col = False
@@ -752,7 +756,7 @@ def parse_geoms(mj, scale, surface, xml_path):
             continue
 
         # Parse a given geometry as its collision and visual geometries
-        g_infos = parse_geom(mj, i_g, scale, surface, xml_path)
+        g_infos = parse_geom(mj, i_g, scale, surface, xml_path, is_paired=i_g in paired_geoms_idx)
 
         # Ignore world when looking for collision geometries
         if mj.geom_bodyid[i_g] == 0:
@@ -820,6 +824,50 @@ def parse_geoms(mj, scale, surface, xml_path):
         )
 
     return links_g_info
+
+
+def parse_pairs(mj):
+    """Parse the explicit contact pairs, each stating the friction of the contacts between two named geoms.
+
+    A pair keeps the coefficients it resolves to in MuJoCo, torsional friction from condim 4 and rolling friction from
+    condim 6. A pair whose friction differs between the two contact tangents, a frictionless one (condim 1) and one
+    whose sliding friction lies below 0.01 raise, since the contact model of Genesis honours none of them.
+    """
+    pairs_info = []
+    mismatched_names = []
+    for i_p in range(mj.npair):
+        i_ga, i_gb = mj.pair_geom1[i_p], mj.pair_geom2[i_p]
+        geoms_name = (mj.geom(i_ga).name, mj.geom(i_gb).name)
+        name = f"'{geoms_name[0]}' / '{geoms_name[1]}'"
+        friction, condim = mj.pair_friction[i_p], mj.pair_dim[i_p]
+        if condim == 1:
+            gs.raise_exception(f"(MJCF) The frictionless contact pair {name} (condim 1) is not supported.")
+        if not np.isclose(friction[0], friction[1]) or (condim == 6 and not np.isclose(friction[3], friction[4])):
+            gs.raise_exception(f"(MJCF) The contact pair {name} states anisotropic friction, which is not supported.")
+        if friction[0] < 0.01:
+            gs.raise_exception(
+                f"(MJCF) The contact pair {name} states a sliding friction of {friction[0]}, below the smallest "
+                "coefficient Genesis applies (0.01)."
+            )
+        # MuJoCo solves the contacts of a pair with its own solver parameters, Genesis with those its geoms combine
+        pair_sol_params = np.concatenate((mj.pair_solref[i_p], mj.pair_solimp[i_p]))
+        geoms_sol_params = np.concatenate((mj.geom_solref[[i_ga, i_gb]], mj.geom_solimp[[i_ga, i_gb]]), axis=1)
+        if not np.allclose(pair_sol_params, geoms_sol_params.mean(axis=0)):
+            mismatched_names.append(name)
+        pairs_info.append(
+            dict(
+                geoms_name=geoms_name,
+                friction=friction[0],
+                friction_torsional=friction[2] if condim >= 4 else 0.0,
+                friction_rolling=friction[3] if condim >= 6 else 0.0,
+            )
+        )
+    if mismatched_names:
+        gs.logger.warning(
+            f"(MJCF) The contact pairs {', '.join(mismatched_names)} state solver parameters of their own, which "
+            "Genesis ignores: their contacts combine the solver parameters of their two geoms."
+        )
+    return pairs_info
 
 
 def parse_equalities(mj, scale):

@@ -99,7 +99,8 @@ def kernel_get_state(
     acc: qd.types.ndarray(),
     links_pos: qd.types.ndarray(),
     links_quat: qd.types.ndarray(),
-    friction_ratio: qd.types.ndarray(),
+    geoms_friction: qd.types.ndarray(),
+    contact_pairs_friction: qd.types.ndarray(),
     dyn_state: array_class.DynState,
     rigid_info: array_class.RigidInfo,
     rigid_config: qd.template(),
@@ -107,7 +108,7 @@ def kernel_get_state(
     n_qs = qpos.shape[1]
     n_dofs = vel.shape[1]
     n_links = links_pos.shape[1]
-    n_geoms = friction_ratio.shape[1]
+    n_geoms = geoms_friction.shape[1]
     _B = qpos.shape[0]
 
     qd.loop_config(serialize=rigid_config.para_level < gs.PARA_LEVEL.PARTIAL)
@@ -127,8 +128,14 @@ def kernel_get_state(
             links_quat[i_b, i_l, j] = dyn_state.links.quat[i_l, i_b][j]
 
     qd.loop_config(serialize=rigid_config.para_level < gs.PARA_LEVEL.PARTIAL)
-    for i_l, i_b in qd.ndrange(n_geoms, _B):
-        friction_ratio[i_b, i_l] = dyn_state.geoms.friction_ratio[i_l, i_b]
+    for i_g, i_b in qd.ndrange(n_geoms, _B):
+        for j in qd.static(range(3)):
+            geoms_friction[i_b, i_g, j] = dyn_state.geoms.friction[i_g, i_b][j]
+
+    qd.loop_config(serialize=rigid_config.para_level < gs.PARA_LEVEL.PARTIAL)
+    for i_p, i_b in qd.ndrange(contact_pairs_friction.shape[1], _B):
+        for j in qd.static(range(3)):
+            contact_pairs_friction[i_b, i_p, j] = dyn_state.geoms.contact_pairs_friction[i_p, i_b][j]
 
 
 @qd.kernel(fastcache=True)
@@ -139,7 +146,8 @@ def kernel_set_state(
     dofs_acc: qd.types.ndarray(),
     links_pos: qd.types.ndarray(),
     links_quat: qd.types.ndarray(),
-    friction_ratio: qd.types.ndarray(),
+    geoms_friction: qd.types.ndarray(),
+    contact_pairs_friction: qd.types.ndarray(),
     dyn_state: array_class.DynState,
     rigid_info: array_class.RigidInfo,
     rigid_config: qd.template(),
@@ -147,7 +155,7 @@ def kernel_set_state(
     n_qs = qpos.shape[1]
     n_dofs = dofs_vel.shape[1]
     n_links = links_pos.shape[1]
-    n_geoms = friction_ratio.shape[1]
+    n_geoms = geoms_friction.shape[1]
     _B = envs_idx.shape[0]
 
     qd.loop_config(serialize=rigid_config.para_level < gs.PARA_LEVEL.PARTIAL)
@@ -173,8 +181,16 @@ def kernel_set_state(
             dyn_state.links.quat[i_l, envs_idx[i_b_]][j] = links_quat[envs_idx[i_b_], i_l, j]
 
     qd.loop_config(serialize=rigid_config.para_level < gs.PARA_LEVEL.PARTIAL)
-    for i_l, i_b_ in qd.ndrange(n_geoms, _B):
-        dyn_state.geoms.friction_ratio[i_l, envs_idx[i_b_]] = friction_ratio[envs_idx[i_b_], i_l]
+    for i_g, i_b_ in qd.ndrange(n_geoms, _B):
+        i_b = envs_idx[i_b_]
+        for j in qd.static(range(3)):
+            dyn_state.geoms.friction[i_g, i_b][j] = geoms_friction[i_b, i_g, j]
+
+    qd.loop_config(serialize=rigid_config.para_level < gs.PARA_LEVEL.PARTIAL)
+    for i_p, i_b_ in qd.ndrange(contact_pairs_friction.shape[1], _B):
+        i_b = envs_idx[i_b_]
+        for j in qd.static(range(3)):
+            dyn_state.geoms.contact_pairs_friction[i_p, i_b][j] = contact_pairs_friction[i_b, i_p, j]
 
 
 @qd.kernel(fastcache=True)
@@ -616,16 +632,39 @@ def kernel_set_links_inertia(
 
 
 @qd.kernel(fastcache=True)
-def kernel_set_geoms_friction_ratio(
+def kernel_set_geoms_friction(
     geoms_idx: qd.types.ndarray(),
     envs_idx: qd.types.ndarray(),
-    friction_ratio: qd.types.ndarray(),
+    i_component: int,
+    friction: qd.types.ndarray(),
     dyn_state: array_class.DynState,
     rigid_config: qd.template(),
 ):
     qd.loop_config(serialize=rigid_config.para_level < gs.PARA_LEVEL.PARTIAL)
     for i_g_, i_b_ in qd.ndrange(geoms_idx.shape[0], envs_idx.shape[0]):
-        dyn_state.geoms.friction_ratio[geoms_idx[i_g_], envs_idx[i_b_]] = friction_ratio[i_b_, i_g_]
+        i_g = geoms_idx[i_g_]
+        i_b = envs_idx[i_b_]
+        for j in qd.static(range(3)):
+            if j == i_component:
+                dyn_state.geoms.friction[i_g, i_b][j] = friction[i_b_, i_g_]
+
+
+@qd.kernel(fastcache=True)
+def kernel_set_contact_pairs_friction(
+    pairs_idx: qd.types.ndarray(),
+    envs_idx: qd.types.ndarray(),
+    i_component: int,
+    friction: qd.types.ndarray(),
+    dyn_state: array_class.DynState,
+    rigid_config: qd.template(),
+):
+    qd.loop_config(serialize=rigid_config.para_level < gs.PARA_LEVEL.PARTIAL)
+    for i_p_, i_b_ in qd.ndrange(pairs_idx.shape[0], envs_idx.shape[0]):
+        i_p = pairs_idx[i_p_]
+        i_b = envs_idx[i_b_]
+        for j in qd.static(range(3)):
+            if j == i_component:
+                dyn_state.geoms.contact_pairs_friction[i_p, i_b][j] = friction[i_b_, i_p_]
 
 
 @qd.kernel(fastcache=True)
@@ -1318,57 +1357,6 @@ def kernel_update_drone_propeller_vgeoms(
         dyn_state.vgeoms.quat[i_vg, i_b] = gu.qd_transform_quat_by_quat(
             gu.qd_rotvec_to_quat(qd.Vector([0.0, 0.0, rad], dt=gs.qd_float), EPS), dyn_state.vgeoms.quat[i_vg, i_b]
         )
-
-
-@qd.kernel(fastcache=True)
-def kernel_set_geom_friction(geoms_idx: qd.i32, friction: float, dyn_info: array_class.DynInfo):
-    dyn_info.geoms.friction[geoms_idx] = friction
-
-
-@qd.kernel(fastcache=True)
-def kernel_set_geom_friction_torsional(geoms_idx: qd.i32, friction_torsional: float, dyn_info: array_class.DynInfo):
-    dyn_info.geoms.friction_torsional[geoms_idx] = friction_torsional
-
-
-@qd.kernel(fastcache=True)
-def kernel_set_geom_friction_rolling(geoms_idx: qd.i32, friction_rolling: float, dyn_info: array_class.DynInfo):
-    dyn_info.geoms.friction_rolling[geoms_idx] = friction_rolling
-
-
-@qd.kernel(fastcache=True)
-def kernel_set_geoms_friction(
-    geoms_idx: qd.types.ndarray(),
-    friction: qd.types.ndarray(),
-    dyn_info: array_class.DynInfo,
-    rigid_config: qd.template(),
-):
-    qd.loop_config(serialize=qd.static(rigid_config.para_level < gs.PARA_LEVEL.PARTIAL))
-    for i_g_ in range(geoms_idx.shape[0]):
-        dyn_info.geoms.friction[geoms_idx[i_g_]] = friction[i_g_]
-
-
-@qd.kernel(fastcache=True)
-def kernel_set_geoms_friction_torsional(
-    geoms_idx: qd.types.ndarray(),
-    friction_torsional: qd.types.ndarray(),
-    dyn_info: array_class.DynInfo,
-    rigid_config: qd.template(),
-):
-    qd.loop_config(serialize=qd.static(rigid_config.para_level < gs.PARA_LEVEL.PARTIAL))
-    for i_g_ in range(geoms_idx.shape[0]):
-        dyn_info.geoms.friction_torsional[geoms_idx[i_g_]] = friction_torsional[i_g_]
-
-
-@qd.kernel(fastcache=True)
-def kernel_set_geoms_friction_rolling(
-    geoms_idx: qd.types.ndarray(),
-    friction_rolling: qd.types.ndarray(),
-    dyn_info: array_class.DynInfo,
-    rigid_config: qd.template(),
-):
-    qd.loop_config(serialize=qd.static(rigid_config.para_level < gs.PARA_LEVEL.PARTIAL))
-    for i_g_ in range(geoms_idx.shape[0]):
-        dyn_info.geoms.friction_rolling[geoms_idx[i_g_]] = friction_rolling[i_g_]
 
 
 @qd.kernel(fastcache=True)

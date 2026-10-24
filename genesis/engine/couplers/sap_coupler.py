@@ -256,6 +256,8 @@ class SAPCoupler(RBC):
         for equality in self.rigid_solver.equalities:
             if equality.type == gs.EQUALITY_TYPE.JOINT and equality.eq_obj2id < 0:
                 gs.raise_exception("SAPCoupler does not support JOINT equality constraints without `joint2`.")
+        if self.rigid_solver.contact_pairs:
+            gs.raise_exception("SAPCoupler resolves rigid contacts itself and does not support contact pairs.")
 
         init_tet_tables = False
 
@@ -632,6 +634,7 @@ class SAPCoupler(RBC):
             verts_info=self.rigid_solver.dyn_info.verts,
             free_verts_state=self.rigid_solver.dyn_state.free_verts,
             fixed_verts_state=self.rigid_solver.dyn_state.fixed_verts,
+            geoms_state=self.rigid_solver.dyn_state.geoms,
             geoms_info=self.rigid_solver.dyn_info.geoms,
             dofs_state=self.rigid_solver.dyn_state.dofs,
             links_state=self.rigid_solver.dyn_state.links,
@@ -680,6 +683,7 @@ class SAPCoupler(RBC):
         verts_info: array_class.VertsInfo,
         free_verts_state: array_class.VertsState,
         fixed_verts_state: array_class.VertsState,
+        geoms_state: array_class.GeomsState,
         geoms_info: array_class.GeomsInfo,
         dofs_state: array_class.DofsState,
         links_state: array_class.LinksState,
@@ -698,6 +702,7 @@ class SAPCoupler(RBC):
                 faces_info=faces_info,
                 free_verts_state=free_verts_state,
                 fixed_verts_state=fixed_verts_state,
+                geoms_state=geoms_state,
                 geoms_info=geoms_info,
                 contact_queries_state=contact_queries_state,
             )
@@ -2592,6 +2597,7 @@ class FEMFloorTetContactHandler(FEMContactHandler):
         faces_info: array_class.FacesInfo,
         free_verts_state: array_class.VertsState,
         fixed_verts_state: array_class.VertsState,
+        geoms_state: array_class.GeomsState,
         geoms_info: array_class.GeomsInfo,
         contact_queries_state: array_class.SAPContactQueriesState,
     ):
@@ -2991,6 +2997,7 @@ class FEMSelfTetContactHandler(FEMContactHandler):
         faces_info: array_class.FacesInfo,
         free_verts_state: array_class.VertsState,
         fixed_verts_state: array_class.VertsState,
+        geoms_state: array_class.GeomsState,
         geoms_info: array_class.GeomsInfo,
         contact_queries_state: array_class.SAPContactQueriesState,
     ):
@@ -3130,6 +3137,7 @@ class FEMFloorVertContactHandler(FEMContactHandler):
         faces_info: array_class.FacesInfo,
         free_verts_state: array_class.VertsState,
         fixed_verts_state: array_class.VertsState,
+        geoms_state: array_class.GeomsState,
         geoms_info: array_class.GeomsInfo,
         contact_queries_state: array_class.SAPContactQueriesState,
     ):
@@ -3223,6 +3231,7 @@ class RigidFloorVertContactHandler(RigidContactHandler):
         faces_info: array_class.FacesInfo,
         free_verts_state: array_class.VertsState,
         fixed_verts_state: array_class.VertsState,
+        geoms_state: array_class.GeomsState,
         geoms_info: array_class.GeomsInfo,
         contact_queries_state: array_class.SAPContactQueriesState,
     ):
@@ -3293,6 +3302,7 @@ class RigidFloorTetContactHandler(RigidContactHandler):
         faces_info: array_class.FacesInfo,
         free_verts_state: array_class.VertsState,
         fixed_verts_state: array_class.VertsState,
+        geoms_state: array_class.GeomsState,
         geoms_info: array_class.GeomsInfo,
         contact_queries_state: array_class.SAPContactQueriesState,
     ):
@@ -3636,6 +3646,7 @@ class RigidFemTriTetContactHandler(RigidFEMContactHandler):
         faces_info: array_class.FacesInfo,
         free_verts_state: array_class.VertsState,
         fixed_verts_state: array_class.VertsState,
+        geoms_state: array_class.GeomsState,
         geoms_info: array_class.GeomsInfo,
         contact_queries_state: array_class.SAPContactQueriesState,
     ):
@@ -3855,7 +3866,7 @@ class RigidRigidTetContactHandler(RigidRigidContactHandler):
         return overflow
 
     @qd.func
-    def compute_pairs(self, i_step: qd.i32, geoms_info: array_class.GeomsInfo):
+    def compute_pairs(self, i_step: qd.i32, geoms_state: array_class.GeomsState, geoms_info: array_class.GeomsInfo):
         overflow = False
         candidates = qd.static(self.contact_candidates)
         pairs = qd.static(self.contact_pairs)
@@ -3987,7 +3998,7 @@ class RigidRigidTetContactHandler(RigidRigidContactHandler):
                 pairs[i_p].link_idx1 = i_l1
                 sap_info[i_p].k = rigid_k
                 sap_info[i_p].phi0 = rigid_phi0
-                sap_info[i_p].mu = qd.sqrt(geoms_info.friction[i_g0] * geoms_info.friction[i_g1])
+                sap_info[i_p].mu = qd.sqrt(geoms_state.friction[i_g0, i_b][0] * geoms_state.friction[i_g1, i_b][0])
             else:
                 overflow = True
         return overflow
@@ -4001,6 +4012,7 @@ class RigidRigidTetContactHandler(RigidRigidContactHandler):
         faces_info: array_class.FacesInfo,
         free_verts_state: array_class.VertsState,
         fixed_verts_state: array_class.VertsState,
+        geoms_state: array_class.GeomsState,
         geoms_info: array_class.GeomsInfo,
         contact_queries_state: array_class.SAPContactQueriesState,
     ):
@@ -4011,5 +4023,5 @@ class RigidRigidTetContactHandler(RigidRigidContactHandler):
             contact_queries_state.rigid_tet.results.count[0] > contact_queries_state.rigid_tet.results.triplets.shape[0]
         )
         overflow |= self.compute_candidates(f, contact_queries_state.rigid_tet.results)
-        overflow |= self.compute_pairs(f, geoms_info)
+        overflow |= self.compute_pairs(f, geoms_state, geoms_info)
         return overflow

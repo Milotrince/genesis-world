@@ -1845,6 +1845,17 @@ class RigidEntity(KinematicEntity):
         for e_desc in self._desc.equalities:
             self._add_equality(e_desc)
 
+        # A geom name of the asset stands for every geom its geometry was split into. A pair naming a geom left out of
+        # the collision geometry, such as an excluded ground plane, governs no contact.
+        for p_desc in self._desc.contact_pairs:
+            geoms_idx = tuple(
+                frozenset(geom.idx for geom in self.geoms if geom.metadata.get("name") == name)
+                for name in p_desc.geoms_name
+            )
+            if all(geoms_idx):
+                name = ", ".join(f"'{self.name}':'{geom_name}'" for geom_name in p_desc.geoms_name)
+                self._solver.add_contact_pair(geoms_idx, p_desc.parameters, f"({name})")
+
     def attach(
         self,
         parent_entity,
@@ -3213,98 +3224,63 @@ class RigidEntity(KinematicEntity):
     # ----------------------------------- friction ---------------------------------------
     # ------------------------------------------------------------------------------------
 
-    def set_friction_ratio(self, friction_ratio, links_idx_local=None, envs_idx=None):
-        """
-        Set the friction ratio of the geoms of the specified links.
-
-        Parameters
-        ----------
-        friction_ratio : torch.Tensor, shape (n_envs, n_links)
-            The friction ratio
-        links_idx_local : array_like
-            The indices of the links to set friction ratio.
-        envs_idx : None | array_like, optional
-            The indices of the environments. If None, all environments will be considered. Defaults to None.
-        """
+    def _set_friction(self, friction, links_idx_local, envs_idx, i_component):
+        """Set one friction coefficient of every geom of the given links, per environment (see 'set_friction')."""
         links_idx_local = self._get_global_idx(links_idx_local, self.n_links, 0, unsafe=True)
-
         links_n_geoms = torch.tensor(
             [self._links[i_l].n_geoms for i_l in links_idx_local], dtype=gs.tc_int, device=gs.device
         )
-        links_friction_ratio = torch.as_tensor(friction_ratio, dtype=gs.tc_float, device=gs.device)
-        geoms_friction_ratio = torch.repeat_interleave(links_friction_ratio, links_n_geoms, dim=-1)
+        links_friction = torch.as_tensor(friction, dtype=gs.tc_float, device=gs.device)
+        links_friction = torch.broadcast_to(links_friction, (*links_friction.shape[:-1], len(links_n_geoms)))
+        geoms_friction = torch.repeat_interleave(links_friction, links_n_geoms, dim=-1)
         geoms_idx = [
             i_g for i_l in links_idx_local for i_g in range(self._links[i_l].geom_start, self._links[i_l].geom_end)
         ]
+        self._solver.set_geoms_friction(geoms_friction, geoms_idx, envs_idx, i_component=i_component)
 
-        self._solver.set_geoms_friction_ratio(geoms_friction_ratio, geoms_idx, envs_idx)
-
-    def set_friction(self, friction):
+    @gs.assert_built
+    def set_friction(self, friction, links_idx_local=None, envs_idx=None):
         """
-        Set the friction coefficient of all the links (and in turn, geometries) of the rigid entity.
+        Set the sliding friction coefficient of the geoms of the given links, per environment.
 
         Note
         ----
-        The friction coefficient associated with a pair of geometries in contact is defined as the maximum between
-        their respective values, so one must be careful the set the friction coefficient properly for both of them.
-
-        Warning
-        -------
-        The friction coefficient must be in range [1e-2, 5.0] for simulation stability.
+        The friction coefficient of a contact is the maximum between those of the two geoms, floored at 0.01, so the
+        coefficients of both geoms matter. A contact pair stating the coefficient overrides it (see
+        'Scene.add_contact_pair').
 
         Parameters
         ----------
-        friction : float
-            The friction coefficient to set.
+        friction : float | array_like
+            The friction coefficient of each link, broadcast over the links and the environments.
+        links_idx_local : None | array_like, optional
+            The local indices of the links to set. If None, every link of the entity. Defaults to None.
+        envs_idx : None | array_like, optional
+            The indices of the environments. If None, all environments will be considered. Defaults to None.
         """
+        self._set_friction(friction, links_idx_local, envs_idx, i_component=0)
 
-        if friction < 1e-2 or friction > 5.0:
-            gs.raise_exception("`friction` must be in the range [1e-2, 5.0] for simulation stability.")
-
-        for link in self._links:
-            link.set_friction(friction)
-
-    def set_friction_torsional(self, friction_torsional):
+    @gs.assert_built
+    def set_friction_torsional(self, friction_torsional, links_idx_local=None, envs_idx=None):
         """
-        Set the torsional friction coefficient of all the links (and in turn, geometries) of the rigid entity.
+        Set the torsional friction coefficient of the geoms of the given links, per environment.
 
-        Note
-        ----
-        The torsional friction coefficient associated with a pair of geometries in contact is defined as the maximum
-        between their respective values (see 'gs.materials.Material'). Only effective when torsional friction is enabled
-        at the scene level (see 'RigidOptions.enable_torsional_friction').
-
-        Parameters
-        ----------
-        friction_torsional : float
-            The torsional friction coefficient to set.
+        The coefficient of a contact is the maximum between those of the two geoms (see 'gs.materials.Material'). It is
+        only effective when torsional friction is enabled (see 'RigidOptions.enable_torsional_friction'). Parameters
+        follow 'set_friction'.
         """
-        if friction_torsional < 0:
-            gs.raise_exception("`friction_torsional` must be non-negative.")
+        self._set_friction(friction_torsional, links_idx_local, envs_idx, i_component=1)
 
-        for link in self._links:
-            link.set_friction_torsional(friction_torsional)
-
-    def set_friction_rolling(self, friction_rolling):
+    @gs.assert_built
+    def set_friction_rolling(self, friction_rolling, links_idx_local=None, envs_idx=None):
         """
-        Set the rolling friction coefficient of all the links (and in turn, geometries) of the rigid entity.
+        Set the rolling friction coefficient of the geoms of the given links, per environment.
 
-        Note
-        ----
-        The rolling friction coefficient associated with a pair of geometries in contact is defined as the maximum
-        between their respective values (see 'gs.materials.Material'). Only effective when rolling friction is enabled
-        at the scene level (see 'RigidOptions.enable_rolling_friction').
-
-        Parameters
-        ----------
-        friction_rolling : float
-            The rolling friction coefficient to set.
+        The coefficient of a contact is the maximum between those of the two geoms (see 'gs.materials.Material'). It is
+        only effective when rolling friction is enabled (see 'RigidOptions.enable_rolling_friction'). Parameters follow
+        'set_friction'.
         """
-        if friction_rolling < 0:
-            gs.raise_exception("`friction_rolling` must be non-negative.")
-
-        for link in self._links:
-            link.set_friction_rolling(friction_rolling)
+        self._set_friction(friction_rolling, links_idx_local, envs_idx, i_component=2)
 
     # ------------------------------------------------------------------------------------
     # --------------------------------- mass / inertia -----------------------------------

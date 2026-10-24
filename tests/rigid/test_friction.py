@@ -1,3 +1,5 @@
+import xml.etree.ElementTree as ET
+
 import numpy as np
 import pytest
 import torch
@@ -420,7 +422,7 @@ def test_static_hold_unaffected_by_press_on_separate_body(show_viewer):
     geom = presser.geoms[0]
     geom.set_friction(0.37)
     geom.set_friction_rolling(0.02)
-    assert_allclose(geom.get_friction(), scene.rigid_solver.get_geoms_friction(geom.idx), tol=gs.EPS)
+    assert_allclose(geom.get_friction(), scene.rigid_solver.get_geoms_friction(geom.idx)[..., 0, 0], tol=gs.EPS)
     assert_allclose(geom.get_friction(), 0.37, tol=gs.EPS)
     assert_allclose(geom.get_friction_rolling(), 0.02, tol=gs.EPS)
     assert_allclose(geom.desc.friction, FRICTION, tol=gs.EPS)
@@ -957,14 +959,27 @@ def test_elliptic_cone_push_isotropy(is_box_mesh, scale, precision, show_viewer,
 
 
 @pytest.mark.parametrize("n_envs", [0, pytest.param(2, marks=pytest.mark.required)])
-def test_kinetic_friction(n_envs, show_viewer):
+def test_kinetic_friction(n_envs, two_feet_slab, paired_spheres, show_viewer):
     GRAVITY = 9.81
     SIZE = 0.1
     # A cube resting flat tips once friction can torque it over its leading edge, from mu = width / (2 * com_height).
     TIP_FRICTION = SIZE / (2.0 * 0.5 * SIZE)
     # Friction coefficient and launch speed per box, spanning both sides of that threshold. 0.01 is the smallest
-    # coefficient the contact model applies, and the plane wears it so the pairwise max leaves each box its own.
-    BOXES = ((0.01, 6.0), (0.25, 6.0), (0.5, 2.0), (0.5, 6.0), (0.5, 20.0), (0.9, 6.0), (1.2, 6.0), (2.0, 6.0))
+    # coefficient the contact model applies, and the plane wears it so the pairwise max leaves each box its own. The
+    # last two boxes take the coefficient of a contact pair with the plane instead, as do the boxes added below, which
+    # are all launched at 6 m/s.
+    BOXES = (
+        (0.01, 6.0),
+        (0.25, 6.0),
+        (0.5, 2.0),
+        (0.5, 6.0),
+        (0.5, 20.0),
+        (0.9, 6.0),
+        (1.2, 6.0),
+        (2.0, 6.0),
+        (0.9, 6.0),
+        (0.9, 6.0),
+    )
     N_SETTLE = 40
     N_SLIDE = 40
 
@@ -982,7 +997,7 @@ def test_kinetic_friction(n_envs, show_viewer):
         ),
         show_viewer=show_viewer,
     )
-    scene.add_entity(
+    plane = scene.add_entity(
         gs.morphs.Plane(),
         material=gs.materials.Material(
             friction=0.01,
@@ -1001,13 +1016,78 @@ def test_kinetic_friction(n_envs, show_viewer):
         )
         for i_box, (friction, _) in enumerate(BOXES)
     ]
+    # Collision masks keeping a box off the plane, whose masks hold the lower 16 bits, give way to a pair asking for
+    # their contact, and a pair keeps a box off the plane that its masks let collide
+    masked_box = scene.add_entity(
+        gs.morphs.Box(
+            pos=(0.0, 4.0 * SIZE * len(BOXES), 0.5 * SIZE),
+            size=(SIZE, SIZE, SIZE),
+            contype=1 << 16,
+            conaffinity=1 << 16,
+        ),
+        material=gs.materials.Material(
+            friction=0.5,
+        ),
+    )
+    ghost_box = scene.add_entity(
+        gs.morphs.Box(
+            pos=(0.0, 4.0 * SIZE * (len(BOXES) + 1), 0.5 * SIZE),
+            size=(SIZE, SIZE, SIZE),
+        ),
+    )
+    # Geoms whose masks are both zero collide through the pairs of their asset alone, here with each other
+    pair_only_spheres = scene.add_entity(
+        gs.morphs.MJCF(
+            file=ET.tostring(paired_spheres, encoding="unicode"),
+            pos=(0.0, 4.0 * SIZE * (len(BOXES) + 4), 0.0),
+        ),
+    )
+    scene.add_contact_pair(between=(plane, masked_box), is_collision_enabled=True)
+    scene.add_contact_pair(between=(plane, ghost_box), is_collision_enabled=False)
+    # A pair replaces the coefficient the two geoms would combine, even with one below both of theirs
+    scene.add_contact_pair(between=(plane, boxes[8]), friction=0.3)
+    link_pair = scene.add_contact_pair(between=(plane, boxes[9].base_link), friction=0.6)
+    # Two cubes made of two geoms each. The pairs between two geoms lie within the pair between their entities, so they
+    # state the coefficient of the first cube. Each coefficient goes to the narrowest pair stating it, which leaves the
+    # sliding one of the second cube to the pair between the entities.
+    slabs = [
+        scene.add_entity(
+            gs.morphs.MJCF(
+                file=ET.tostring(two_feet_slab, encoding="unicode"),
+                pos=(0.0, 4.0 * SIZE * i_slab, 0.0),
+            ),
+        )
+        for i_slab in range(len(BOXES) + 2, len(BOXES) + 4)
+    ]
+    scene.add_contact_pair(between=(plane, slabs[0]), friction=0.2)
+    scene.add_contact_pair(between=(plane, slabs[1]), friction=0.3)
+    for geom in slabs[0].geoms:
+        scene.add_contact_pair(between=(plane.geoms[0], geom), friction=0.7)
+    for geom in slabs[1].geoms:
+        scene.add_contact_pair(between=(plane.geoms[0], geom), friction_torsional=0.0)
+    with pytest.raises(gs.GenesisException):
+        scene.add_contact_pair(between=(boxes[8], plane), friction=0.5)
+    with pytest.raises(gs.GenesisException):
+        scene.add_contact_pair(between=(plane, boxes[0]), friction=0.001)
+    with pytest.raises(gs.GenesisException):
+        scene.add_contact_pair(between=(plane, boxes[0]))
+    boxes += [masked_box, *slabs]
     scene.build(n_envs=n_envs)
+
+    # A coefficient outside the range the contact model honours is refused, whoever it is set on
+    with pytest.raises(gs.GenesisException):
+        boxes[1].set_friction_torsional(-1.0)
+    with pytest.raises(gs.GenesisException):
+        link_pair.set_friction(-0.3)
+    # A coefficient set in one environment leaves the other at the one its material authored
+    boxes[1].set_friction(0.4, envs_idx=[1] if n_envs > 0 else None)
+    link_pair.set_friction(0.45, envs_idx=[0] if n_envs > 0 else None)
 
     for _ in range(N_SETTLE):
         scene.step()
 
     height_0 = torch.stack([box.get_pos()[..., 2] for box in boxes])
-    for box, (_, speed) in zip(boxes, BOXES):
+    for box, speed in zip(boxes, [speed for _, speed in BOXES] + [6.0] * (len(boxes) - len(BOXES))):
         velocity = box.get_dofs_velocity()
         velocity[..., 0] = speed
         box.set_dofs_velocity(velocity)
@@ -1025,25 +1105,48 @@ def test_kinetic_friction(n_envs, show_viewer):
         tilt_max = torch.maximum(tilt_max, torch.rad2deg(torch.arccos(up_z.clamp(-1.0, 1.0))))
     speed_1 = torch.stack([box.get_dofs_velocity()[..., 0] for box in boxes])
 
-    friction = torch.tensor([friction for friction, _ in BOXES], device=gs.device).reshape(-1, *(1,) * (n_envs > 0))
+    friction = torch.tensor([*(friction for friction, _ in BOXES), 0.5, 0.7, 0.3], device=gs.device)
+    friction[8:10] = torch.tensor([0.3, 0.6])
+    friction = friction.reshape(-1, *(1,) * (n_envs > 0)).expand_as(height_0).clone()
+    friction[(1, 1) if n_envs > 0 else 1] = 0.4
+    friction[(9, 0) if n_envs > 0 else 9] = 0.45
     is_sliding = (friction < TIP_FRICTION).expand_as(height_0)
 
     # Below the threshold the box slides flat; above it, friction torques it over its leading edge.
     assert_allclose(tilt_max[is_sliding], 0.0, atol=0.1)
     assert (tilt_max[~is_sliding] > 45.0).all()
 
-    # Penetration answers to the load alone, so a sliding box sits exactly as deep as a resting one. Every box here
-    # carries the same weight, so holding all of them to their common resting height pins the penetration against
-    # both the friction coefficient and the sliding speed at once. The bound is set by the box closest to the
-    # tipping threshold, whose contact force genuinely leans toward its leading edge and lifts the centre of mass.
+    # Penetration answers to the load alone, so a sliding box sits exactly as deep as a resting one. Holding each box
+    # to its resting height pins the penetration against both the friction coefficient and the sliding speed at once.
+    # The bound is set by the box closest to the tipping threshold, whose contact force genuinely leans toward its
+    # leading edge and lifts the centre of mass.
     assert_allclose(height_min[is_sliding], height_0[is_sliding], atol=5e-7)
     assert_allclose(height_max[is_sliding], height_0[is_sliding], atol=5e-7)
 
     # The height above measures this through the geometry; the contact force states it directly. A sliding contact
     # carries the weight and nothing more, however much tangential force the slide is asking of it.
     normal_force = torch.stack([box.get_links_net_contact_force().sum(dim=-2)[..., 2] for box in boxes])
-    assert_allclose(normal_force[is_sliding], boxes[0].get_mass() * GRAVITY, rtol=0.01)
+    weight = torch.tensor([box.get_mass() for box in boxes], device=gs.device) * GRAVITY
+    weight = weight.reshape(-1, *(1,) * (n_envs > 0)).expand_as(height_0)
+    assert_allclose(normal_force[is_sliding], weight[is_sliding], rtol=0.01)
 
     # Each box decelerates at its own mu * g, independently of how fast it was launched.
     deceleration = (speed_0 - speed_1) / (N_SLIDE * scene.sim.dt)
     assert_allclose(deceleration[is_sliding], (friction * GRAVITY).expand_as(height_0)[is_sliding], rtol=0.01)
+
+    # The box and the spheres kept out of contact fall through the plane freely
+    n_steps = N_SETTLE + N_SLIDE
+    fall_height = GRAVITY * scene.sim.dt**2 * 0.5 * n_steps * (n_steps + 1)
+    assert_allclose(ghost_box.get_pos()[..., 2], 0.5 * SIZE - fall_height, tol=1e-3)
+    spheres_z = torch.stack([link.get_pos()[..., 2] for link in pair_only_spheres.links if link.geoms])
+    assert_allclose(spheres_z, 0.1 - fall_height, tol=1e-3)
+
+    # Two pairs stating one coefficient for a contact where neither lies within the other leave it undecided
+    scene_with_tied_pairs = gs.Scene()
+    slab_mjcf = ET.tostring(two_feet_slab, encoding="unicode")
+    slab_a = scene_with_tied_pairs.add_entity(gs.morphs.MJCF(file=slab_mjcf))
+    slab_b = scene_with_tied_pairs.add_entity(gs.morphs.MJCF(file=slab_mjcf, pos=(0.0, 1.0, 0.0)))
+    scene_with_tied_pairs.add_contact_pair(between=(slab_a, slab_b.geoms[0]), friction=0.5)
+    scene_with_tied_pairs.add_contact_pair(between=(slab_a.geoms[0], slab_b), friction=0.6)
+    with pytest.raises(gs.GenesisException):
+        scene_with_tied_pairs.build()

@@ -558,6 +558,14 @@ def test_sap_rigid_rigid_hydroelastic_contact(show_viewer):
     assert robot_1_max_corner[2] > 2 * BOX_HALFHEIGHT
     assert robot_2_max_corner[2] > robot_1_max_corner[2] + 0.05
 
+    # SAP resolves rigid contacts itself, so it refuses contact pairs
+    scene_with_pair = gs.Scene(coupler_options=gs.options.SAPCouplerOptions(), show_viewer=False)
+    box_a = scene_with_pair.add_entity(gs.morphs.Box(size=(0.1, 0.1, 0.1)))
+    box_b = scene_with_pair.add_entity(gs.morphs.Box(size=(0.1, 0.1, 0.1), pos=(0.0, 0.0, 0.2)))
+    scene_with_pair.add_contact_pair(between=(box_a, box_b), friction=0.5)
+    with pytest.raises(gs.GenesisException, match="contact pairs"):
+        scene_with_pair.build()
+
 
 @pytest.mark.required
 @pytest.mark.parametrize("precision", ["64"])

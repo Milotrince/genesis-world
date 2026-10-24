@@ -12,11 +12,12 @@ that object returns the value the simulation currently uses.
 import math
 import os
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, field, fields
+from dataclasses import astuple, dataclass, field, fields
 from itertools import chain
 from typing import Any, Sequence, TypeVar
 
 import numpy as np
+import torch
 import trimesh
 from typing_extensions import Self
 
@@ -261,6 +262,54 @@ class RigidLinkDescription(KinematicLinkDescription):
     mass: float | None
     invweight: np.ndarray
     geoms: list[RigidGeomDescription] = field(default_factory=list)
+
+
+def check_friction_coefficient(friction, i_component):
+    """Raise unless every given value of one friction coefficient lies in the range the contact model honours.
+
+    The coefficient is the sliding one for `i_component` 0, which lies between 0.01 and 5, and the torsional or rolling
+    one for 1 or 2, which is non-negative.
+    """
+    friction = torch.as_tensor(friction, dtype=gs.tc_float, device=gs.device)
+    lower, upper = (0.01, 5.0) if i_component == 0 else (0.0, math.inf)
+    if not ((friction >= lower - gs.EPS) & (friction <= upper + gs.EPS)).all():
+        name = ("friction", "friction_torsional", "friction_rolling")[i_component]
+        gs.raise_exception(f"The '{name}' coefficient must lie between {lower} and {upper}, got {friction}.")
+
+
+@dataclass
+class ContactParameters:
+    """The contact parameters a contact pair states, each None to keep what the geoms of its two targets resolve to.
+
+    'friction', 'friction_torsional' and 'friction_rolling' replace the coefficients that the two geoms of a contact
+    would otherwise combine (see 'gs.materials.Material'). 'is_collision_enabled' set to True lets the geoms of the two
+    targets collide whatever their collision masks say, and False keeps them from colliding.
+    """
+
+    friction: float | None = None
+    friction_torsional: float | None = None
+    friction_rolling: float | None = None
+    is_collision_enabled: bool | None = None
+
+    def __post_init__(self):
+        if all(value is None for value in astuple(self)):
+            gs.raise_exception("A contact pair must state at least one contact parameter.")
+        for i_component, value in enumerate(self.friction_coefficients):
+            if value is not None:
+                check_friction_coefficient(value, i_component)
+
+    @property
+    def friction_coefficients(self) -> tuple[float | None, float | None, float | None]:
+        """The sliding, torsional and rolling friction coefficients, in the order of the geom friction vectors."""
+        return (self.friction, self.friction_torsional, self.friction_rolling)
+
+
+@dataclass
+class RigidContactPairDescription:
+    """Describe a contact pair an asset states between two of its collision geoms, named as the asset names them."""
+
+    geoms_name: tuple[str, str]
+    parameters: ContactParameters
 
 
 @dataclass
@@ -514,7 +563,12 @@ class KinematicEntityDescription(EntityDescription):
         for morph in self.morphs[1:]:
             if isinstance(morph, (gs.morphs.URDF, gs.morphs.MJCF)):
                 # Parse variant scene file
-                v_l_infos, v_links_j_infos, v_links_g_infos, _ = self._parse_scene(morph, resolution)
+                v_l_infos, v_links_j_infos, v_links_g_infos, _, v_pairs_info = self._parse_scene(morph, resolution)
+                if v_pairs_info:
+                    gs.raise_exception(
+                        "A heterogeneous variant states explicit contact pairs, which only the primary morph of an "
+                        "entity may state."
+                    )
 
                 # Validate that the variant has the same joint structure as the primary
                 if len(v_l_infos) != n_links:
@@ -905,18 +959,21 @@ class KinematicEntityDescription(EntityDescription):
         # initialized undetermined physics parameters.
         if isinstance(morph, gs.morphs.MJCF):
             # Mujoco's unified MJCF+URDF parser systematically for MJCF files
-            l_infos, links_j_infos, links_g_infos, eqs_info = mju.parse_xml(morph, self.surface, resolution.options)
+            l_infos, links_j_infos, links_g_infos, eqs_info, pairs_info = mju.parse_xml(
+                morph, self.surface, resolution.options
+            )
         elif isinstance(morph, (gs.morphs.URDF, gs.morphs.Drone)):
             # Custom "legacy" URDF parser for loading geometries (visual and collision) and equality constraints.
             # This is necessary because Mujoco cannot parse visual geometries (meshes) reliably for URDF.
             l_infos, links_j_infos, links_g_infos, eqs_info = uu.parse_urdf(morph, self.surface)
+            pairs_info = []
 
             # Mujoco's unified MJCF+URDF parser for only link, joints, and collision geometries properties
             morph_ = morph.model_copy(update=dict(visualization=False))
             try:
                 # Mujoco's unified MJCF+URDF parser for URDF files.
                 # Note that Mujoco URDF parser completely ignores equality constraints.
-                l_infos_mj, links_j_infos_mj, links_g_infos_mj, _ = mju.parse_xml(morph_, self.surface)
+                l_infos_mj, links_j_infos_mj, links_g_infos_mj, _, _ = mju.parse_xml(morph_, self.surface)
 
                 # Unset link inertial properties that are actually undefined to force recomputation by genesis
                 if not resolution.is_mujoco_compatible:
@@ -972,6 +1029,7 @@ class KinematicEntityDescription(EntityDescription):
 
             # Unified parser handles both articulations and rigid bodies
             l_infos, links_j_infos, links_g_infos, eqs_info = parse_usd_rigid_entity(morph, self.surface)
+            pairs_info = []
 
         # Make sure that the inertia matrix of all links is valid
         if not morph.recompute_inertia:
@@ -1191,10 +1249,10 @@ class KinematicEntityDescription(EntityDescription):
         # Exclude joints with 0 dofs to align with Mujoco
         links_j_infos = [[j_info for j_info in link_j_infos if j_info["n_dofs"] > 0] for link_j_infos in links_j_infos]
 
-        return l_infos, links_j_infos, links_g_infos, eqs_info
+        return l_infos, links_j_infos, links_g_infos, eqs_info, pairs_info
 
     def _load_scene(self, morph, resolution: Resolution):
-        l_infos, links_j_infos, links_g_infos, _eqs_info = self._parse_scene(morph, resolution)
+        l_infos, links_j_infos, links_g_infos, _eqs_info, _pairs_info = self._parse_scene(morph, resolution)
 
         # Add (link, joints, geoms) tuples sequentially
         for l_info, link_j_infos, link_g_infos in zip(l_infos, links_j_infos, links_g_infos):
@@ -1406,7 +1464,7 @@ class KinematicEntityDescription(EntityDescription):
 
         cg_infos, vg_infos = [], []
         for g_info in g_infos:
-            is_col = g_info["contype"] or g_info["conaffinity"]
+            is_col = g_info["contype"] or g_info["conaffinity"] or g_info.get("is_pair_only", False)
             if morph.collision and is_col:
                 cg_infos.append(g_info)
             if morph.visualization and not is_col:
@@ -1596,6 +1654,7 @@ class RigidEntityDescription(KinematicEntityDescription):
 
     links: list[RigidLinkDescription] = field(default_factory=list)
     equalities: list[RigidEqualityDescription] = field(default_factory=list)
+    contact_pairs: list[RigidContactPairDescription] = field(default_factory=list)
 
     def _describe_variant_link(
         self, i_link, v_l_info, link_pos, link_quat, joints, cg_infos, vg_infos, morph, inertial_info
@@ -1630,14 +1689,26 @@ class RigidEntityDescription(KinematicEntityDescription):
         )
 
     def _load_scene(self, morph, resolution: Resolution):
-        l_infos, links_j_infos, links_g_infos, eqs_info = self._parse_scene(morph, resolution)
+        l_infos, links_j_infos, links_g_infos, eqs_info, pairs_info = self._parse_scene(morph, resolution)
 
         # Add (link, joints, geoms) tuples sequentially
         for l_info, link_j_infos, link_g_infos in zip(l_infos, links_j_infos, links_g_infos):
             self._resolve_link(l_info, link_j_infos, link_g_infos, morph, resolution)
 
-        # Add equality constraints sequentially
+        # Add equality constraints and contact pairs sequentially
         self.equalities.extend(description_from_info(RigidEqualityDescription, e_info) for e_info in eqs_info)
+        self.contact_pairs.extend(
+            RigidContactPairDescription(
+                geoms_name=p_info["geoms_name"],
+                parameters=ContactParameters(
+                    friction=p_info["friction"],
+                    friction_torsional=p_info["friction_torsional"],
+                    friction_rolling=p_info["friction_rolling"],
+                    is_collision_enabled=True,
+                ),
+            )
+            for p_info in pairs_info
+        )
 
     def _describe_geoms(self, cg_infos):
         """Resolve what a parse stated about each collision geom into the description the geom is built from.

@@ -23,9 +23,11 @@ import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
 from genesis.engine.entities.base_entity import Entity, EntityDescription
-from genesis.engine.entities.rigid_entity import KinematicEntity
+from genesis.engine.entities.rigid_entity import KinematicEntity, RigidEntity, RigidGeom, RigidLink
+from genesis.engine.entities.rigid_entity.description import ContactParameters
 from genesis.engine.force_fields import ForceField
 from genesis.engine.materials import BaseMaterial, Cloth, Liquid, Material, Sand, Snow
+from genesis.engine.solvers.rigid.contact_pair import ContactPair, ContactPairDescription, ContactTargetDescription
 from genesis.engine.states.solvers import SimState, SimulatorCheckpoint
 from genesis.options import (
     BaseCouplerOptions,
@@ -98,7 +100,7 @@ STEP_RATE_LOG_INTERVAL = 0.05
 
 @dataclasses.dataclass
 class SceneDescription:
-    """Describe one scene as it was authored: the options it was created with, and every entity added to it.
+    """Describe one scene as it was authored: its options, every entity added to it and every contact pair declared.
 
     Each entity stands as its own description (see 'EntityDescription'), so a scene is created from this alone. A
     scene created from one is built by whoever loads it, with the environment layout they ask for.
@@ -106,6 +108,7 @@ class SceneDescription:
 
     options: SceneOptions
     entities: list[EntityDescription] = dataclasses.field(default_factory=list)
+    contact_pairs: list[ContactPairDescription] = dataclasses.field(default_factory=list)
 
 
 @dataclasses.dataclass
@@ -876,6 +879,96 @@ class Scene(RBC):
         emitter.set_entity(entity)
         self._emitters.append(emitter)
         return emitter
+
+    @gs.assert_unbuilt
+    def add_contact_pair(
+        self,
+        between: tuple[RigidEntity | RigidLink | RigidGeom, RigidEntity | RigidLink | RigidGeom],
+        friction: float | None = None,
+        friction_torsional: float | None = None,
+        friction_rolling: float | None = None,
+        is_collision_enabled: bool | None = None,
+    ) -> ContactPair:
+        """
+        Declare the contact parameters of the contacts between the collision geoms of two targets.
+
+        A contact otherwise takes the larger friction coefficient of its two geoms, which cannot express a coefficient
+        measured between two surfaces, such as rubber on steel. Every contact between a geom of one target and a geom
+        of the other takes each coefficient the pair states, and keeps the larger one for the coefficients it leaves at
+        None. A target is a rigid entity, one of its links or one of its collision geoms, and both targets may belong
+        to one entity. Where several pairs state a coefficient for one contact, the pair whose two targets lie within
+        those of the others wins, so a pair between two geoms refines a pair between their entities. Two pairs stating
+        one coefficient for one contact where neither lies within the other raise at build, and so does the SAP
+        coupler, which resolves rigid contacts itself.
+
+        Parameters
+        ----------
+        between : tuple[RigidEntity | RigidLink | RigidGeom, RigidEntity | RigidLink | RigidGeom]
+            The two targets.
+        friction : float | None, optional
+            The sliding friction coefficient, between 0.01 and 5. Defaults to None.
+        friction_torsional : float | None, optional
+            The torsional friction coefficient, in meters (see 'gs.materials.Material'). Defaults to None.
+        friction_rolling : float | None, optional
+            The rolling friction coefficient, in meters (see 'gs.materials.Material'). Defaults to None.
+        is_collision_enabled : bool | None, optional
+            Whether the geoms of the two targets collide. True makes them collide where their collision masks or the
+            self-collision options would leave them apart, and False keeps them apart. If None, those filters decide.
+            Defaults to None.
+
+        Returns
+        -------
+        pair : ContactPair
+            The declared pair, whose friction coefficients can be set per environment once the scene is built.
+        """
+        if len(between) != 2:
+            gs.raise_exception(f"A contact pair ties exactly two targets, got {len(between)}.")
+        targets_desc = []
+        for target in between:
+            if isinstance(target, RigidGeom):
+                entity = target.entity
+                target_desc = ContactTargetDescription(entity.name, target.link.name, target.link.geoms.index(target))
+            elif isinstance(target, RigidLink):
+                entity = target.entity
+                target_desc = ContactTargetDescription(entity.name, target.name)
+            elif isinstance(target, RigidEntity):
+                entity = target
+                target_desc = ContactTargetDescription(entity.name)
+            else:
+                gs.raise_exception(
+                    f"A contact pair target is a rigid entity, link or geom, got {type(target).__name__}."
+                )
+            if entity.scene is not self:
+                gs.raise_exception(f"Contact pair target '{entity.name}' belongs to another scene.")
+            targets_desc.append(target_desc)
+        parameters = ContactParameters(friction, friction_torsional, friction_rolling, is_collision_enabled)
+        return self._add_contact_pair(ContactPairDescription(tuple(targets_desc), parameters))
+
+    def _add_contact_pair(self, desc: ContactPairDescription) -> ContactPair:
+        """Resolve the targets a contact pair description names into geoms, and declare the pair on the rigid solver."""
+        targets_geoms_idx = []
+        targets_name = []
+        for target in desc.targets:
+            entity = self.get_entity(target.entity_name)
+            if not isinstance(entity, RigidEntity):
+                gs.raise_exception(f"Contact pair target '{target.entity_name}' is not a rigid entity.")
+            geoms = entity.geoms
+            name = f"'{entity.name}'"
+            if target.link_name is not None:
+                geoms = entity.get_link(name=target.link_name).geoms
+                name = f"{name}:'{target.link_name}'"
+                if target.geom_idx_local is not None:
+                    geoms = (geoms[target.geom_idx_local],)
+                    name = f"{name}[{target.geom_idx_local}]"
+            if not geoms:
+                gs.raise_exception(f"Contact pair target {name} has no collision geom.")
+            targets_geoms_idx.append(frozenset(geom.idx for geom in geoms))
+            targets_name.append(name)
+        pair = self._sim.rigid_solver.add_contact_pair(
+            tuple(targets_geoms_idx), desc.parameters, f"({', '.join(targets_name)})"
+        )
+        self._desc.contact_pairs.append(desc)
+        return pair
 
     @gs.assert_unbuilt
     def add_force_field(self, force_field: ForceField):
@@ -1791,6 +1884,8 @@ class Scene(RBC):
         # replaces.
         for desc in described.entities:
             scene._sim._add_entity(desc=desc)
+        for pair_desc in described.contact_pairs:
+            scene._add_contact_pair(pair_desc)
         return scene
 
     @gs.assert_built

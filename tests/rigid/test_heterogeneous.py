@@ -1,3 +1,5 @@
+import xml.etree.ElementTree as ET
+
 import numpy as np
 import pytest
 import torch
@@ -438,7 +440,7 @@ def test_pick_heterogenous_objects(show_viewer):
 
 
 @pytest.mark.required
-def test_invalid_variant_specification_raises():
+def test_invalid_variant_specification_raises(paired_spheres):
     # Restricting variants to a single family is what keeps the inertial parsed per variant aligned with the variant
     # index: only URDF and MJCF variants record one, so admitting a basic object among them would shift every
     # subsequent lookup onto the wrong variant.
@@ -471,6 +473,15 @@ def test_invalid_variant_specification_raises():
     with pytest.raises(gs.GenesisException, match="must be consistent"):
         scene.add_entity(
             morph=(gs.morphs.Box(size=(1.0, 1.0, 1.0)), gs.morphs.MJCF(file=MJCF_SPHERE)),
+        )
+
+    # Explicit contact pairs stated by a variant other than the primary one
+    with pytest.raises(gs.GenesisException, match="explicit contact pairs"):
+        scene.add_entity(
+            morph=(
+                gs.morphs.MJCF(file=MJCF_SPHERE),
+                gs.morphs.MJCF(file=ET.tostring(paired_spheres, encoding="unicode")),
+            ),
         )
 
 

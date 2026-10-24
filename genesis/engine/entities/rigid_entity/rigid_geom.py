@@ -213,69 +213,59 @@ class RigidGeom(VariantGeomMixin, RBC):
             self._solver.scene.draw_debug_mesh(boundary_mesh, T=T)
 
     @gs.assert_built
-    def set_friction(self, friction):
+    def set_friction(self, friction, envs_idx=None):
         """
-        Set the friction coefficient of this geometry.
+        Set the sliding friction coefficient of this geom, per environment (see 'RigidEntity.set_friction').
         """
-        if friction < 0:
-            gs.raise_exception("`friction` must be non-negative.")
-        self._solver.set_geom_friction(friction, self._idx)
+        friction = torch.as_tensor(friction, dtype=gs.tc_float, device=gs.device)
+        self._solver.set_geoms_friction(friction[..., None], [self._idx], envs_idx, i_component=0)
 
     @gs.assert_built
-    def get_friction(self):
+    def set_friction_torsional(self, friction_torsional, envs_idx=None):
         """
-        Get the friction coefficient the simulation is currently using for this geom.
+        Set the torsional friction coefficient of this geom, per environment (see 'RigidEntity.set_friction_torsional').
+        """
+        friction_torsional = torch.as_tensor(friction_torsional, dtype=gs.tc_float, device=gs.device)
+        self._solver.set_geoms_friction(friction_torsional[..., None], [self._idx], envs_idx, i_component=1)
+
+    @gs.assert_built
+    def set_friction_rolling(self, friction_rolling, envs_idx=None):
+        """
+        Set the rolling friction coefficient of this geom, per environment (see 'RigidEntity.set_friction_rolling').
+        """
+        friction_rolling = torch.as_tensor(friction_rolling, dtype=gs.tc_float, device=gs.device)
+        self._solver.set_geoms_friction(friction_rolling[..., None], [self._idx], envs_idx, i_component=2)
+
+    @gs.assert_built
+    def get_friction(self, envs_idx=None):
+        """
+        Get the sliding friction coefficient the simulation is currently using for this geom.
+
+        Parameters
+        ----------
+        envs_idx : None | array_like, optional
+            The indices of the environments. If None, all environments will be considered. Defaults to None.
 
         Returns
         -------
-        friction : torch.Tensor, shape ()
+        friction : torch.Tensor, shape () or (n_envs,)
             The friction coefficient of the geom.
         """
-        return self._solver.get_geoms_friction(self._idx)[0]
+        return self._solver.get_geoms_friction(self._idx, envs_idx)[..., 0, 0]
 
     @gs.assert_built
-    def get_friction_torsional(self):
+    def get_friction_torsional(self, envs_idx=None):
         """
-        Get the torsional friction coefficient the simulation is currently using for this geom (see
-        'gs.materials.Material').
-
-        Returns
-        -------
-        friction_torsional : torch.Tensor, shape ()
-            The torsional friction coefficient of the geom.
+        Get the torsional friction coefficient the simulation is currently using for this geom (see 'get_friction').
         """
-        return self._solver.get_geoms_friction_torsional(self._idx)[0]
+        return self._solver.get_geoms_friction(self._idx, envs_idx)[..., 0, 1]
 
     @gs.assert_built
-    def get_friction_rolling(self):
+    def get_friction_rolling(self, envs_idx=None):
         """
-        Get the rolling friction coefficient the simulation is currently using for this geom (see
-        'gs.materials.Material').
-
-        Returns
-        -------
-        friction_rolling : torch.Tensor, shape ()
-            The rolling friction coefficient of the geom.
+        Get the rolling friction coefficient the simulation is currently using for this geom (see 'get_friction').
         """
-        return self._solver.get_geoms_friction_rolling(self._idx)[0]
-
-    @gs.assert_built
-    def set_friction_torsional(self, friction_torsional):
-        """
-        Set the torsional friction coefficient of this geometry (see 'gs.materials.Material').
-        """
-        if friction_torsional < 0:
-            gs.raise_exception("`friction_torsional` must be non-negative.")
-        self._solver.set_geom_friction_torsional(friction_torsional, self._idx)
-
-    @gs.assert_built
-    def set_friction_rolling(self, friction_rolling):
-        """
-        Set the rolling friction coefficient of this geometry (see 'gs.materials.Material').
-        """
-        if friction_rolling < 0:
-            gs.raise_exception("`friction_rolling` must be non-negative.")
-        self._solver.set_geom_friction_rolling(friction_rolling, self._idx)
+        return self._solver.get_geoms_friction(self._idx, envs_idx)[..., 0, 2]
 
     # ------------------------------------------------------------------------------------
     # -------------------------------- real-time state -----------------------------------
