@@ -13,6 +13,7 @@ from pydantic import AfterValidator, BeforeValidator, ConfigDict, Field, Instanc
 import genesis as gs
 from genesis.typing import FrozenDictType, NonNegativeFloat, PositiveFloat, PositiveInt, StrictInt, ValidFloat
 
+from .behaviors import BehaviorOptions
 from .indices import GeomIndex, LinkIndex, VertexIndex, VGeomIndex
 from .materials import BaseMaterial, Cloth, Elastic, ElastoPlastic, Liquid, Material, Muscle, Sand, Snow
 from .morphs import URDF, Mesh, Morph, Primitive
@@ -291,6 +292,7 @@ class _ArticulatedEntityOptions(EntityOptions[EntityT]):
     use_visual_raycasting: StrictBool = False
     links: Annotated[FrozenDictType[LinkIndex, LinkOptions], BeforeValidator(_key_links_by_index)] = {}
     vgeoms: FrozenDictType[VGeomIndex, VGeomOptions] = {}
+    behaviors: FrozenDictType[str, BehaviorOptions] = {}
 
     @model_validator(mode="after")
     def _check_vgeoms(self) -> "_ArticulatedEntityOptions":
@@ -523,6 +525,11 @@ class KinematicEntityOptions(_ArticulatedEntityOptions["KinematicEntity"]):
         ``gs.VGeomIndex.named`` and ``gs.VGeomIndex.with_material`` select those of the given names or asset materials
         in any of its links, raising if no link has one. A selection by ordinal requires a mesh or a primitive morph,
         whose entity has a single link. Default is no visual geom options.
+    behaviors : dict[str, gs.behaviors.BehaviorOptions], optional
+        The behaviors of the entity, keyed by the name ``entity.get_behavior`` looks them up by. A behavior acts on the
+        simulation at the start of every step and is restored to its declared state by ``scene.reset``. Each behavior
+        type is a class deriving from ``genesis.engine.behaviors.Behavior``, which must be defined or imported before
+        the entity is added. Default is no behavior.
     """
 
     _solver_options_cls = KinematicOptions

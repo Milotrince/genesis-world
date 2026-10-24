@@ -826,13 +826,14 @@ def test_trajectory_replay(n_envs, checkpoint_scene, tmp_path, show_viewer, tol)
     # A frame holds the wall time of every phase of the step that reached its state, which a vetoed step in between
     # leaves as it is. No step led to the first frame, and no step ran between the reset and the stop, which leave the
     # timings as they were.
+    phases = {"step", "period", "behaviors", "physics", "sensors", "recorders", "rendering", "video"}
     for trajectory in trajectories:
-        assert set(trajectory.timings(0)) == {"step", "period", "physics", "sensors", "recorders", "rendering", "video"}
+        assert set(trajectory.timings(0)) == phases
         assert np.isnan(list(trajectory.timings(0).values())).all()
         assert_equal(list(trajectory.timings(-1).values()), list(trajectory.timings(-2).values()))
         for index in range(1, N_STEPS + 1):
             timings = trajectory.timings(index)
-            assert set(timings) == {"step", "period", "physics", "sensors", "recorders", "rendering", "video"}
+            assert set(timings) == phases
             assert (
                 timings["step"] >= sum(time for phase, time in timings.items() if phase not in ("step", "period")) > 0
             )

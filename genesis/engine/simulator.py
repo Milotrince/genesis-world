@@ -10,10 +10,11 @@ from genesis.grad.bridge import LaunchRecorder, Operation, RolloutGraph
 from genesis.options.morphs import Morph
 from genesis.options.solvers import IPCCouplerOptions, LegacyCouplerOptions, SAPCouplerOptions
 from genesis.repr_base import RBC
-from genesis.utils.array_class import DataItem, DataKind, ErrorCode, iter_data
+from genesis.utils.array_class import CHECKPOINT_KINDS, DataItem, DataKind, ErrorCode, fill_data, iter_data, read_data
 from genesis.utils.misc import indices_to_mask, qd_to_numpy, qd_to_torch
 from genesis.utils.tools import StepTimer
 
+from .behaviors import BehaviorManager
 from .couplers import IPCCoupler, LegacyCoupler, SAPCoupler
 from .entities import HybridEntity
 from .entities.hybrid_entity import HybridEntityDescription
@@ -145,6 +146,9 @@ class Simulator(RBC):
 
         # entities
         self._entities: list["Entity"] = gs.List()
+
+        # behaviors
+        self._behavior_manager = BehaviorManager(self)
 
         # sensors
         self._sensor_manager = SensorManager(self)
@@ -301,6 +305,8 @@ class Simulator(RBC):
                 if solver._errno is not None
             ]
 
+        self._behavior_manager.build()
+
         self._step_timer.add_phases("physics", "sensors")
         self._sensor_manager.build()
 
@@ -318,6 +324,7 @@ class Simulator(RBC):
         else:
             self._steps[indices_to_mask(envs_idx)] = 0
         self._restart(envs_idx)
+        self._behavior_manager.reset(envs_idx)
 
     def _restart(self, envs_idx=None):
         """Restart the coupler, the autograd graph of the rollout and the sensors."""
@@ -337,7 +344,8 @@ class Simulator(RBC):
     def data(self, kinds: frozenset[DataKind]) -> Iterator[DataItem]:
         """Yield every item of the requested kinds that the simulator and its active solvers hold.
 
-        The items of the simulator are named under 'Simulator', and the ones of a solver under its class name.
+        The items of the simulator are named under 'Simulator', the ones of a solver under its class name, and the ones
+        of the behaviors under 'BehaviorManager'.
         """
         if isinstance(self._coupler, IPCCoupler):
             gs.raise_exception(
@@ -351,6 +359,9 @@ class Simulator(RBC):
             for item in solver.data:
                 if isinstance(item, DataItem) and item.kind in kinds:
                     yield item._replace(name=f"{prefix}.{item.name}")
+        for item in self._behavior_manager.data:
+            if item.kind in kinds:
+                yield item._replace(name=f"BehaviorManager.{item.name}")
 
     def __getstate__(self) -> SimulatorCheckpoint:
         """Return a SimulatorCheckpoint of the simulation, for '__setstate__' to restore."""
@@ -358,9 +369,15 @@ class Simulator(RBC):
             gs.raise_exception(
                 "A scene coupled by IPC cannot be checkpointed yet: the IPC world holds state of its own."
             )
+        behaviors_items = [item for item in self._behavior_manager.data if item.kind in CHECKPOINT_KINDS]
         return SimulatorCheckpoint(
             steps=self._steps.clone(),
             solvers={type(solver).__name__: solver.__getstate__() for solver in self._active_solvers},
+            behaviors=SolverCheckpoint(
+                arrays=read_data(behaviors_items, to_torch=gs.use_zerocopy.is_supported),
+                configs={},
+                kinds=CHECKPOINT_KINDS,
+            ),
         )
 
     def __setstate__(self, state: SimulatorCheckpoint) -> None:
@@ -368,15 +385,17 @@ class Simulator(RBC):
 
         Everything around the state restarts as under a reset.
 
-        The clock of each environment comes back as recorded, since simulated time is state. The autograd graph of the
-        rollout, the gradients, the coupler and the sensors are restarted (see 'reset'): they describe the run that led
-        here.
+        The clock of each environment and the state of the behaviors come back as recorded, since both are state. The
+        autograd graph of the rollout, the gradients, the coupler and the sensors are restarted (see 'reset'): they
+        describe the run that led here.
         """
         # The record was checked against every solver by the scene (see 'Scene.__setstate__'). The restart precedes the
         # state, whose gradients it would zero otherwise.
         self._restart()
         for solver in self._active_solvers:
             solver.__setstate__(state.solvers[type(solver).__name__])
+        behaviors_items = (item for item in self._behavior_manager.data if item.kind in state.behaviors.kinds)
+        fill_data(behaviors_items, state.behaviors.arrays)
         self._steps[:] = torch.as_tensor(state.steps, device=gs.device)
         # Flush the zero-copy writes of fill_data on Metal.
         if gs.use_zerocopy.is_supported and gs.backend == gs.metal:

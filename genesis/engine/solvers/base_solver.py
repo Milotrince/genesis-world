@@ -19,7 +19,6 @@ from genesis.repr_base import RBC
 from genesis.utils.misc import (
     assign_indexed_tensor,
     broadcast_tensor,
-    data_to_array,
     drop_repeated_index,
     indices_to_mask,
     qd_add_grad,
@@ -636,15 +635,9 @@ class Solver(RBC):
             items = self._boundary_items.items_copied
         else:
             items = [item for item in self.data if not isinstance(item, array_class.ConfigItem) and item.kind in kinds]
-        for item in items:
-            if isinstance(item, array_class.ScalarItem):
-                arrays[item.name] = np.array(getattr(item.owner, item.attr))
-            elif boundary_only and self.has_frames:
-                arrays[item.name] = qd_to_torch(item.array, row_mask=0, keepdim=False, copy=True)
-            else:
-                arrays[item.name] = data_to_array(
-                    item.array, to_torch=boundary_only or gs.use_zerocopy.is_supported, copy=True
-                )
+        arrays |= array_class.read_data(
+            items, to_torch=boundary_only or gs.use_zerocopy.is_supported, frame_only=boundary_only and self.has_frames
+        )
         # The static configs are provenance, which a boundary checkpoint never leaving the process does without
         configs = {}
         if not boundary_only:

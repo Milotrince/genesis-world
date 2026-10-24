@@ -8,6 +8,7 @@ import torch
 import genesis as gs
 import genesis.utils.array_class as array_class
 import genesis.utils.geom as gu
+from genesis.engine.behaviors import Behavior
 from genesis.engine.entities.rigid_entity import KinematicEntity
 from genesis.engine.solvers.rigid.abd.inverse_kinematics import (
     kernel_forward_kinematics_query,
@@ -227,6 +228,12 @@ class KinematicSolver(Solver):
                     break
             else:
                 gs.raise_exception(f"{type(self).__name__} simulates no entity described by {type(desc).__name__}.")
+        for behavior_options in desc.options.behaviors.values():
+            if type(behavior_options) not in Behavior.TYPES_MAP:
+                gs.raise_exception(
+                    f"No behavior class registered for {type(behavior_options).__name__}. Define or import the class "
+                    f"deriving from 'Behavior[{type(behavior_options).__name__}]' before adding the entity."
+                )
         self._enable_heterogeneous |= bool(desc.variants)
         entity = entity_cls(self._scene, self, idx, desc)
         self._entities.append(entity)

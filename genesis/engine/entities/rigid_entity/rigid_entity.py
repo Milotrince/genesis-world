@@ -28,10 +28,11 @@ from .rigid_link import KinematicLink, RigidLink
 
 if TYPE_CHECKING:
     from genesis.constants import TEXTURE_SLOT
+    from genesis.engine.behaviors import Behavior
     from genesis.engine.dynamic_texture import DynamicTextureHandle
     from genesis.engine.scene import Scene
-    from genesis.engine.solvers.rigid.rigid_solver import RigidSolver
     from genesis.engine.solvers.kinematic_solver import KinematicSolver
+    from genesis.engine.solvers.rigid.rigid_solver import RigidSolver
 
 
 class KinematicEntity(Entity):
@@ -77,6 +78,11 @@ class KinematicEntity(Entity):
         )
 
         self._load_model()
+
+        self._behaviors: dict[str, "Behavior"] = {
+            name: self._sim._behavior_manager.create_behavior(options, self, name)
+            for name, options in desc.options.behaviors.items()
+        }
 
     def _add_heterogeneous_variant(self, link, v_link):
         """Give a link the geoms one variant describes for it. A kinematic entity holds visual geoms alone.
@@ -419,6 +425,29 @@ class KinematicEntity(Entity):
             solver_state.links_pos[:, self.base_link_idx],
             solver_state.links_quat[:, self.base_link_idx],
         )
+
+    def get_behavior(self, name: str) -> "Behavior":
+        """
+        Get the behavior declared under a given name when adding this entity.
+
+        The same object is returned before and after the scene is built.
+
+        Parameters
+        ----------
+        name : str
+            The name the behavior was declared under in the 'behaviors' of the entity options.
+
+        Returns
+        -------
+        behavior : genesis.engine.behaviors.Behavior
+            The runtime behavior.
+        """
+        behavior = self._behaviors.get(name)
+        if behavior is None:
+            gs.raise_exception(
+                f"Behavior not found for name: {name}. Available behavior names: {list(self._behaviors)}."
+            )
+        return behavior
 
     def get_joint(self, name=None, uid=None):
         """

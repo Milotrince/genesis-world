@@ -13,7 +13,7 @@ import quadrants as qd
 from quadrants.lang import impl
 
 import genesis as gs
-from genesis.utils.misc import data_to_array
+from genesis.utils.misc import data_to_array, qd_to_torch
 
 
 def _tensor_backend():
@@ -319,6 +319,25 @@ def check_data(
             gs.raise_exception(f"'{item.name}' holds {dtype} values here where {value.dtype} ones were recorded.")
         writes.append(item)
     return writes
+
+
+def read_data(
+    items: Iterable[DataItem], *, to_torch: bool, frame_only: bool = False
+) -> dict[str, np.ndarray | torch.Tensor]:
+    """Return a copy of the value of every item under its name, for 'fill_data' to write back.
+
+    An array is copied as a torch tensor on the device with `to_torch`, and as a numpy array otherwise. With
+    `frame_only`, the frame 0 alone of each array is copied, as a torch tensor.
+    """
+    values = {}
+    for item in items:
+        if isinstance(item, ScalarItem):
+            values[item.name] = np.array(getattr(item.owner, item.attr))
+        elif frame_only:
+            values[item.name] = qd_to_torch(item.array, row_mask=0, keepdim=False, copy=True)
+        else:
+            values[item.name] = data_to_array(item.array, to_torch=to_torch, copy=True)
+    return values
 
 
 def fill_data(

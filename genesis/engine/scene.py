@@ -971,7 +971,7 @@ class Scene(RBC):
             self._visualizer.build()
 
         # recorders, which lay out the phases a step times once (see 'StepTimer.add_phases')
-        self._sim.step_timer.add_phases("recorders", "rendering", "video")
+        self._sim.step_timer.add_phases("behaviors", "recorders", "rendering", "video")
         self._recorder_manager.build()
 
     def _parallelize(
@@ -1158,8 +1158,11 @@ class Scene(RBC):
             if not self._sim.is_forward_ready:
                 gs.raise_exception("Forward simulation not allowed after backward pass. Please reset scene state.")
             # The recorders read the state a step starts from, with the inputs the step consumes: 'Simulator.step'
-            # zeroes the applied forces at its end. The pre-step callbacks ran, so their inputs are read as well.
-            # The recorders read the state for themselves, outside of the autograd graph of a differentiable rollout
+            # zeroes the applied forces at its end. The pre-step callbacks and the behaviors ran, so their inputs are
+            # read as well. The recorders read the state for themselves, outside of the autograd graph of a
+            # differentiable rollout.
+            with step_timer.phase("behaviors"):
+                self._sim._behavior_manager.step()
             with step_timer.phase("recorders"), torch.no_grad():
                 self._recorder_manager.step(self._sim.cur_step_global)
             self._sim.step()
@@ -1933,6 +1936,8 @@ class Scene(RBC):
             record = state.sim.solvers[name]
             items = (item for item in solver.data if isinstance(item, DataItem) and item.kind in record.kinds)
             check_data(items, record.arrays)
+        behaviors_items = (item for item in self._sim._behavior_manager.data if item.kind in state.sim.behaviors.kinds)
+        check_data(behaviors_items, state.sim.behaviors.arrays)
         # The recorders finish the run first (see 'reset'), and the restart follows the state, so the visualizer draws
         # the state put back.
         self._recorder_manager.record(self._sim.cur_step_global)
@@ -1993,6 +1998,7 @@ class Scene(RBC):
 
         The phases are:
 
+        - behaviors: the behaviors of the entities acting on the simulation (see 'Behavior.step').
         - physics: the solvers advancing the state over the substeps.
         - sensors: the sensor updates, and sensors/<class name> the share of each sensor class.
         - rendering: the viewer refresh.
