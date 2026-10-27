@@ -41,10 +41,12 @@ def main():
                 pos=(0.3, 0.0, 0.4),
                 radius=0.1,
             ),
-            material=gs.materials.FEM.Elastic(
-                E=1.0e5,
-                nu=0.45,
-                rho=1000.0,
+            material=gs.materials.Elastic(
+                density=1000.0,
+                youngs_modulus=1.0e5,
+                poisson_ratio=0.45,
+            ),
+            solver_options=gs.options.FEMEntitySolverOptions(
                 model="stable_neohookean",
             ),
         ),
@@ -53,18 +55,22 @@ def main():
     # Rigid bodies (added to both Genesis rigid solver AND IPC as ABD objects)
     # This enables contact between rigid bodies and FEM bodies through IPC
     rigid_cube = scene.add_entity(
-        morph=gs.morphs.Box(
-            pos=(0.0, 0.0, 0.4),
-            size=(0.1, 0.1, 0.1),
-            euler=(0, 0, 0),
-        ),
-        material=gs.materials.Rigid(
-            rho=1000,
-            friction=0.3,
-            coup_type="two_way_soft_constraint",
-        ),
-        surface=gs.surfaces.Plastic(
-            color=(0.8, 0.2, 0.2, 0.8),
+        options=gs.options.RigidEntityOptions(
+            morph=gs.morphs.Box(
+                pos=(0.0, 0.0, 0.4),
+                size=(0.1, 0.1, 0.1),
+                euler=(0, 0, 0),
+            ),
+            surface=gs.surfaces.Plastic(
+                color=(0.8, 0.2, 0.2, 0.8),
+            ),
+            material=gs.materials.Material(
+                density=1000,
+                friction=0.3,
+            ),
+            solver_options=gs.options.RigidEntitySolverOptions(
+                coup_type="two_way_soft_constraint",
+            ),
         ),
     )
     scene.build()
@@ -78,7 +84,7 @@ def main():
     # Get FEM blob total mass from material properties
     # For a sphere: mass = (4/3) * pi * r^3 * rho
     blob_radius = blob.morph.radius
-    blob_rho = blob.material.rho
+    blob_rho = blob.material.density
     blob_mass = (4.0 / 3.0) * np.pi * (blob_radius**3) * blob_rho
     cube_mass = tensor_to_array(rigid_cube.get_mass())
 

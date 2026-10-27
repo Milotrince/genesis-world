@@ -8,10 +8,11 @@ import genesis.utils.geom as gu
 class Mesh:
     def __init__(self, entity, desc):
         self.entity = entity
-        self.material = desc.material
-        self.collision = desc.material.collision
-        self.friction = desc.material.friction
-        self.sdf_res = desc.material.sdf_res if desc.sdf_voxels is None else desc.sdf_voxels.shape[0]
+        solver_options = desc.options.solver_options
+        self.collision = solver_options.collision
+        self.coup_softness = solver_options.coup_softness
+        self.friction = desc.options.friction
+        self.sdf_res = solver_options.sdf_res if desc.sdf_voxels is None else desc.sdf_voxels.shape[0]
         self.raw_vertices = desc.init_positions
         self.raw_vertex_normals = desc.normals
         self.faces_np = desc.faces
@@ -95,7 +96,7 @@ class Mesh:
         if qd.static(self.collision):
             signed_dist = self.sdf(f, pos_world, i_b)
             # bigger coup_softness implies that the coupling influence extends further away from the object.
-            influence = qd.min(qd.exp(-signed_dist / max(gs.EPS, self.material.coup_softness)), 1)
+            influence = qd.min(qd.exp(-signed_dist / max(gs.EPS, self.coup_softness)), 1)
             if signed_dist <= 0.0 or influence > 0.1:
                 vel_collider = self.vel_collider(f, pos_world, i_b)
 

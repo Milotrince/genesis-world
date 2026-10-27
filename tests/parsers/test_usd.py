@@ -390,7 +390,7 @@ def test_physics_material_friction_and_density(usd_scene, physics_material_usd):
     # An explicitly authored dynamic_friction = 0 is honored (frictionless collider).
     assert_allclose(entities["/root/frictionless_body"].geoms[0].desc.friction, 0.0, tol=gs.EPS)
 
-    # The explicitly set entity material density (rho=1000 in build_usd_scene) overrides the authored
+    # The explicitly set entity material density (density=1000 in build_usd_scene) overrides the authored
     # per-geom densities, as material friction does for authored frictions: unit cubes weigh 1000 kg.
     assert_allclose(entities["/root/material_body"].get_mass(), 1000.0, tol=gs.EPS)
     assert_allclose(entities["/root/density_body"].get_mass(), 1000.0, tol=gs.EPS)
@@ -472,7 +472,7 @@ def test_align_requires_all_or_none_geom_densities(density_align_usd, align, rho
         with pytest.raises(gs.GenesisException, match="with and without an authored density"):
             scene.add_entity(
                 gs.morphs.USD(file=density_align_usd, prim_path="/root/mixed_body", align=align),
-                material=gs.materials.Rigid(rho=rho),
+                material=gs.materials.Material(density=rho),
             )
         return
 
@@ -482,8 +482,8 @@ def test_align_requires_all_or_none_geom_densities(density_align_usd, align, rho
             prim_path="/root/mixed_body",
             align=align,
         ),
-        material=gs.materials.Rigid(
-            rho=rho,
+        material=gs.materials.Material(
+            density=rho,
         ),
     )
 
@@ -575,7 +575,17 @@ def test_filtered_entity_still_collides_with_ground(collision_filtering_usd, sho
             pos=(0.0, 0.0, 0.05),
         ),
     )
+    floating_entities = scene.add_stage(
+        options=gs.options.RigidEntityOptions(
+            morph=gs.morphs.USD(
+                file=collision_filtering_usd,
+                pos=(5.0, 0.0, 1.0),
+            ),
+            gravity_compensation=1.0,
+        ),
+    )
     scene.build()
+    floating_aabb_min = [tensor_to_array(entity.get_AABB())[0] for entity in floating_entities]
 
     for _ in range(50):
         scene.step()
@@ -584,6 +594,9 @@ def test_filtered_entity_still_collides_with_ground(collision_filtering_usd, sho
     for entity in entities:
         aabb_min, _aabb_max = tensor_to_array(entity.get_AABB())
         assert -5e-4 < aabb_min[-1] < 0.0
+    # Every entity of a stage takes the options of the stage, so the gravity-compensated copy keeps its height
+    for entity, aabb_min in zip(floating_entities, floating_aabb_min, strict=True):
+        assert_allclose(tensor_to_array(entity.get_AABB())[0], aabb_min, tol=gs.EPS)
 
 
 @pytest.mark.required
@@ -609,8 +622,8 @@ def test_oriented_capsule(oriented_capsule_usd, show_viewer, tol):
             file=oriented_capsule_usd,
             pos=(0, 0, 0.5),
         ),
-        material=gs.materials.Rigid(
-            rho=1000.0,
+        material=gs.materials.Material(
+            density=1000.0,
         ),
     )
     scene.build()
@@ -649,8 +662,8 @@ def test_ant_capsule_axis_collision(show_viewer):
             file=os.path.join(asset_path, "usd/Ant/ant.usd"),
             pos=(0, 0, 0.75),
         ),
-        material=gs.materials.Rigid(
-            rho=1000.0,
+        material=gs.materials.Material(
+            density=1000.0,
         ),
     )
     scene.build()

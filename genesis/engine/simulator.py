@@ -5,6 +5,7 @@ import torch
 
 import genesis as gs
 from genesis.grad.bridge import ReadNode, StepNode
+from genesis.options.entities import HybridEntityOptions, KinematicEntityOptions, RigidEntityOptions
 from genesis.options.morphs import Morph
 from genesis.options.solvers import IPCCouplerOptions, LegacyCouplerOptions, SAPCouplerOptions
 from genesis.repr_base import RBC
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
     from genesis.engine.scene import Scene
     from genesis.options.entities import EntityOptions
     from genesis.options.scene import SceneOptions
+    from genesis.options.surfaces import Surface
 
     from .solvers.base_solver import Solver
 
@@ -130,26 +132,24 @@ class Simulator(RBC):
 
     def _add_entity(
         self,
-        morph: Morph | None = None,
-        material=None,
-        surface=None,
-        visualize_contact=False,
-        name: str | None = None,
         options: "EntityOptions | None" = None,
+        surface: "Surface | None" = None,
         desc: "EntityDescription | None" = None,
     ):
+        """Add an entity resolved from its options and the surface the scene resolved, or created from a description."""
         if desc is not None:
-            material = desc.material
             options = desc.options
         # Only a kinematic or rigid entity takes several morphs, one per variant. The other solvers resolve their
         # description from the morph before the entity exists, so the check runs here.
-        elif not isinstance(morph, Morph) and not isinstance(material, gs.materials.Kinematic):
-            gs.raise_exception(f"An entity is created from one morph, got {type(morph).__name__}.")
-        if isinstance(material, gs.materials.Hybrid):
+        elif not isinstance(options.morph, Morph) and not isinstance(
+            options, (KinematicEntityOptions, RigidEntityOptions)
+        ):
+            gs.raise_exception(f"An entity is created from one morph, got {type(options.morph).__name__}.")
+        if isinstance(options, HybridEntityOptions):
             # A hybrid entity has no solver of its own, since its parts are entities of their own. Resolution adds both
             # parts to the scene first, so the hybrid entity comes after them, authored or loaded.
             if desc is None:
-                desc = HybridEntityDescription.resolve(self.scene, material, morph, surface, name, options)
+                desc = HybridEntityDescription.resolve(self.scene, options, surface)
             entity = HybridEntity(self.n_entities, self.scene, desc)
         else:
             # The options decide the solver, by naming the class of the options configuring it
@@ -158,9 +158,7 @@ class Simulator(RBC):
                     break
             else:
                 gs.raise_exception(f"No solver simulates entities of options {type(options).__name__}.")
-            entity = solver.add_entity(
-                self.n_entities, material, morph, surface, visualize_contact, name=name, options=options, desc=desc
-            )
+            entity = solver.add_entity(self.n_entities, options, surface, desc=desc)
         self._entities.append(entity)
         self.scene._desc.entities.append(entity.desc)
         return entity

@@ -43,18 +43,20 @@ def main():
 
     scene.add_entity(gs.morphs.Plane())
 
-    franka_material_kwargs = dict(
-        coup_friction=0.8,
-        coup_type=args.coup_type,
-    )
-    if args.coup_type == "two_way_soft_constraint":
-        franka_material_kwargs["coup_links"] = ("left_finger", "right_finger")
-    franka_material = gs.materials.Rigid(**franka_material_kwargs) if not args.no_ipc else None
+    franka_solver_options = gs.options.RigidEntitySolverOptions()
+    if not args.no_ipc:
+        franka_solver_options = gs.options.RigidEntitySolverOptions(
+            coup_friction=0.8,
+            coup_type=args.coup_type,
+            coup_links=("left_finger", "right_finger") if args.coup_type == "two_way_soft_constraint" else None,
+        )
     franka = scene.add_entity(
-        gs.morphs.MJCF(
-            file="xml/franka_emika_panda/panda_non_overlap.xml",
+        options=gs.options.RigidEntityOptions(
+            morph=gs.morphs.MJCF(
+                file="xml/franka_emika_panda/panda_non_overlap.xml",
+            ),
+            solver_options=franka_solver_options,
         ),
-        material=franka_material,
     )
 
     cube_morph = gs.morphs.Box(
@@ -67,14 +69,16 @@ def main():
     if not args.no_ipc:
         cube_options = gs.options.FEMEntityOptions(
             morph=cube_morph,
-            material=gs.materials.FEM.Elastic(
-                E=5.0e4,
-                nu=0.45,
-                rho=1000.0,
-                friction_mu=0.5,
+            surface=cube_surface,
+            material=gs.materials.Elastic(
+                density=1000.0,
+                friction=0.5,
+                youngs_modulus=5.0e4,
+                poisson_ratio=0.45,
+            ),
+            solver_options=gs.options.FEMEntitySolverOptions(
                 model="stable_neohookean",
             ),
-            surface=cube_surface,
         )
     else:
         cube_options = gs.options.RigidEntityOptions(

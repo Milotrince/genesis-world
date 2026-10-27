@@ -104,7 +104,7 @@ def test_export_and_load_rigid(
             pos=(0.0, 0.0, 0.5),
             size=(0.2, 0.2, 0.2),
         ),
-        material=gs.materials.Rigid(
+        material=gs.materials.Material(
             friction=0.7,
         ),
         surface=gs.surfaces.Default(
@@ -380,7 +380,7 @@ def test_export_and_load_rigid(
     # A kinematic entity's description holds its frames, the geoms that render it, and no dynamics. The restored
     # entity keeps the same links and degrees of freedom, with nothing simulated behind them.
     ghost = restored.entities[10]
-    assert isinstance(ghost.material, gs.materials.Kinematic)
+    assert ghost.material is None
     assert (ghost.n_links, ghost.n_dofs) == (kinematic_arm.n_links, kinematic_arm.n_dofs)
     # At the configuration it was authored at rather than the one it was driven to, as every restored entity is.
     assert_equal(ghost.get_dofs_position(), 0.0)
@@ -580,6 +580,16 @@ def test_load_rejects_damaged_file(checkpoint_scene, tmp_path):
     # reaching a constructor.
     manifest = deepcopy(original)
     manifest["held"]["scene"] = 3
+    members[MANIFEST_NAME] = json.dumps(manifest).encode()
+    with zipfile.ZipFile(exported, "w") as archive:
+        for name, content in members.items():
+            archive.writestr(name, content)
+    with pytest.raises(gs.GenesisException, match="values a Genesis scene is not made of"):
+        gs.Scene.load(exported)
+
+    # Every entity is constructed from options, so a description holding none is rejected.
+    manifest = deepcopy(original)
+    del manifest["held"]["scene"]["entities"][0]["options"]
     members[MANIFEST_NAME] = json.dumps(manifest).encode()
     with zipfile.ZipFile(exported, "w") as archive:
         for name, content in members.items():

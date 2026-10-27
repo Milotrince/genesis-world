@@ -43,10 +43,10 @@ def test_particle_constraints(tmp_path, show_viewer, tol):
                 pos=(0, 0, 0.35),
                 size=(0.15, 0.15, 0.15),
             ),
-            material=gs.materials.MPM.Elastic(
-                E=5e4,
-                nu=0.3,
-                rho=1000,
+            material=gs.materials.Elastic(
+                density=1000,
+                youngs_modulus=5e4,
+                poisson_ratio=0.3,
             ),
         ),
     )
@@ -61,19 +61,22 @@ def test_particle_constraints(tmp_path, show_viewer, tol):
                 poss=((0.5, 0.5, 0.3), (-0.5, 0.5, 0.3)),
                 eulers=((0.0, 0.0, 90.0), (90.0, 0.0, 0.0)),
             ),
-            material=gs.materials.MPM.Elastic(
+            material=gs.materials.Elastic(),
+            solver_options=gs.options.MPMEntitySolverOptions(
                 sampler="regular",
             ),
         ),
     )
     with pytest.raises(gs.GenesisException):
-        scene.add_entity(morph=gs.morphs.MeshSet(files=()), material=gs.materials.MPM.Elastic())
+        scene.add_entity(
+            options=gs.options.MPMEntityOptions(morph=gs.morphs.MeshSet(files=()), material=gs.materials.Elastic())
+        )
     # The sampled particles and the member poses are resolved into the descriptions that the scene file holds
     exported = tmp_path / f"particle_constraints{SCENE_FORMAT}"
     scene.export(exported)
     scene = gs.Scene.load(exported, show_viewer=show_viewer)
     rigid_box, mpm_cube, mpm_mesh_set = scene.entities[1:]
-    assert isinstance(mpm_cube.material, gs.materials.MPM.Elastic)
+    assert isinstance(mpm_cube.material, gs.materials.Elastic)
     scene.build(n_envs=2)
 
     # Each member is rotated about its own position: the box offset lands at -x for the member rotated about z and at
@@ -121,10 +124,11 @@ def test_particle_constraints(tmp_path, show_viewer, tol):
 def test_perf_dispatch(variant, show_viewer):
     if variant == "svd":
         elastic_model = "corotation"
-        liquid_viscous = True
+        # The shear modulus 1e6 / (2 * (1 + 0.2)) Pa applied over one substep of 2e-3 / 10 s
+        liquid_viscosity = 1e6 / (2.0 * (1.0 + 0.2)) * (2e-3 / 10)
     else:
         elastic_model = "neohooken"
-        liquid_viscous = False
+        liquid_viscosity = None
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
@@ -147,10 +151,12 @@ def test_perf_dispatch(variant, show_viewer):
                 pos=(-0.1, 0.0, 0.2),
                 size=(0.08, 0.08, 0.08),
             ),
-            material=gs.materials.MPM.Elastic(
-                E=3e5,
-                nu=0.2,
-                rho=200.0,
+            material=gs.materials.Elastic(
+                density=200.0,
+                youngs_modulus=3e5,
+                poisson_ratio=0.2,
+            ),
+            solver_options=gs.options.MPMEntitySolverOptions(
                 model=elastic_model,
             ),
         ),
@@ -161,8 +167,8 @@ def test_perf_dispatch(variant, show_viewer):
                 pos=(0.15, 0.0, 0.2),
                 size=(0.08, 0.08, 0.08),
             ),
-            material=gs.materials.MPM.Liquid(
-                viscous=liquid_viscous,
+            material=gs.materials.Liquid(
+                viscosity=liquid_viscosity,
             ),
         ),
     )
