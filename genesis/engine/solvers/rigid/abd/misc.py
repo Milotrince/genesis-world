@@ -434,57 +434,77 @@ def kernel_init_link_dynamics(
 
 
 @qd.kernel(fastcache=True)
-def kernel_update_heterogeneous_links_vgeom(
-    i_l: qd.i32,
-    links_vgeom_start: qd.types.ndarray(),
-    links_vgeom_end: qd.types.ndarray(),
-    # Quadrants variables
+def kernel_set_morph_variant(
+    envs_idx: qd.types.ndarray(),
+    variants_idx: qd.types.ndarray(),
+    dyn_state: array_class.DynState,
+    variants_state: array_class.VariantsState,
     dyn_info: array_class.DynInfo,
+    rigid_info: array_class.RigidInfo,
+    variants_info: array_class.VariantsInfo,
     rigid_config: qd.template(),
+    is_dynamic: qd.template(),
 ):
-    """Update per-environment links vgeom for heterogeneous entities."""
-    _B = links_vgeom_start.shape[0]
+    """Make some environments carry some variants, gathering the rows of each into the batched model of its entity.
 
-    qd.loop_config(serialize=rigid_config.para_level < gs.PARA_LEVEL.ALL)
-    for i_b in range(_B):
-        dyn_info.links.vgeom_start[i_l, i_b] = links_vgeom_start[i_b]
-        dyn_info.links.vgeom_end[i_l, i_b] = links_vgeom_end[i_b]
+    'variants_idx' holds one row per environment of 'envs_idx', each entry being a variant of 'variants_info' for its
+    entity to carry. The link frames, visual geom ranges, the joint and dof parameters and the neutral configuration of
+    the entity take the values of that variant, and so does the state of its fixed root links, which forward kinematics
+    leaves as set. With 'is_dynamic', so do the collision geom ranges and the inertial values. Heterogeneous entities
+    batch the link, joint and dof info.
+    """
+    qd.loop_config(serialize=qd.static(rigid_config.para_level < gs.PARA_LEVEL.PARTIAL))
+    for i_b_, i_e_ in qd.ndrange(envs_idx.shape[0], variants_idx.shape[1]):
+        i_b = envs_idx[i_b_]
+        i_v = variants_idx[i_b_, i_e_]
+        i_e = variants_info.variants_entity_idx[i_v]
+        variants_state.envs_variant[i_e, i_b] = i_v - variants_info.entities_variant_start[i_e]
 
+        link_start = variants_info.entities_link_start[i_e]
+        i_r_link_start = variants_info.variants_link_start[i_v]
+        for i_l in range(link_start, variants_info.entities_link_end[i_e]):
+            i_r = i_r_link_start + i_l - link_start
+            dyn_info.links.pos[i_l, i_b] = variants_info.links_pos[i_r]
+            dyn_info.links.quat[i_l, i_b] = variants_info.links_quat[i_r]
+            dyn_info.links.vgeom_start[i_l, i_b] = variants_info.links_vgeom_start[i_r]
+            dyn_info.links.vgeom_end[i_l, i_b] = variants_info.links_vgeom_end[i_r]
+            if qd.static(is_dynamic):
+                dyn_info.links.geom_start[i_l, i_b] = variants_info.links_geom_start[i_r]
+                dyn_info.links.geom_end[i_l, i_b] = variants_info.links_geom_end[i_r]
+                dyn_info.links.inertial_pos[i_l, i_b] = variants_info.links_inertial_pos[i_r]
+                dyn_info.links.inertial_quat[i_l, i_b] = variants_info.links_inertial_quat[i_r]
+                dyn_info.links.inertial_i[i_l, i_b] = variants_info.links_inertial_i[i_r]
+                dyn_info.links.inertial_mass[i_l, i_b] = variants_info.links_inertial_mass[i_r]
+            if dyn_info.links.parent_idx[i_l, i_b] == -1 and dyn_info.links.is_fixed[i_l, i_b]:
+                dyn_state.links.pos[i_l, i_b] = variants_info.links_pos[i_r]
+                dyn_state.links.quat[i_l, i_b] = variants_info.links_quat[i_r]
 
-@qd.kernel(fastcache=True)
-def kernel_update_heterogeneous_link_info(
-    i_l: qd.i32,
-    links_geom_start: qd.types.ndarray(),
-    links_geom_end: qd.types.ndarray(),
-    links_vgeom_start: qd.types.ndarray(),
-    links_vgeom_end: qd.types.ndarray(),
-    links_inertial_mass: qd.types.ndarray(),
-    links_inertial_pos: qd.types.ndarray(),
-    links_inertial_quat: qd.types.ndarray(),
-    links_inertial_i: qd.types.ndarray(),
-    # Quadrants variables
-    dyn_info: array_class.DynInfo,
-    rigid_config: qd.template(),
-):
-    """Update per-environment link info for heterogeneous entities."""
-    _B = links_geom_start.shape[0]
+        joint_start = variants_info.entities_joint_start[i_e]
+        i_r_joint_start = variants_info.variants_joint_start[i_v]
+        for i_j in range(joint_start, variants_info.entities_joint_end[i_e]):
+            i_r = i_r_joint_start + i_j - joint_start
+            dyn_info.joints.pos[i_j, i_b] = variants_info.joints_pos[i_r]
+            dyn_info.joints.sol_params[i_j, i_b] = variants_info.joints_sol_params[i_r]
 
-    qd.loop_config(serialize=rigid_config.para_level < gs.PARA_LEVEL.ALL)
-    for i_b in range(_B):
-        dyn_info.links.geom_start[i_l, i_b] = links_geom_start[i_b]
-        dyn_info.links.geom_end[i_l, i_b] = links_geom_end[i_b]
-        dyn_info.links.vgeom_start[i_l, i_b] = links_vgeom_start[i_b]
-        dyn_info.links.vgeom_end[i_l, i_b] = links_vgeom_end[i_b]
-        dyn_info.links.inertial_mass[i_l, i_b] = links_inertial_mass[i_b]
+        dof_start = variants_info.entities_dof_start[i_e]
+        i_r_dof_start = variants_info.variants_dof_start[i_v]
+        for i_d in range(dof_start, variants_info.entities_dof_end[i_e]):
+            i_r = i_r_dof_start + i_d - dof_start
+            dyn_info.dofs.motion_ang[i_d, i_b] = variants_info.dofs_motion_ang[i_r]
+            dyn_info.dofs.motion_vel[i_d, i_b] = variants_info.dofs_motion_vel[i_r]
+            dyn_info.dofs.limit[i_d, i_b] = variants_info.dofs_limit[i_r]
+            dyn_info.dofs.stiffness[i_d, i_b] = variants_info.dofs_stiffness[i_r]
+            dyn_info.dofs.damping[i_d, i_b] = variants_info.dofs_damping[i_r]
+            dyn_info.dofs.frictionloss[i_d, i_b] = variants_info.dofs_frictionloss[i_r]
+            dyn_info.dofs.armature[i_d, i_b] = variants_info.dofs_armature[i_r]
+            dyn_info.dofs.act_gain[i_d, i_b] = variants_info.dofs_act_gain[i_r]
+            dyn_info.dofs.act_bias[i_d, i_b] = variants_info.dofs_act_bias[i_r]
+            dyn_info.dofs.force_range[i_d, i_b] = variants_info.dofs_force_range[i_r]
 
-        for j in qd.static(range(3)):
-            dyn_info.links.inertial_pos[i_l, i_b][j] = links_inertial_pos[i_b, j]
-
-        for j in qd.static(range(4)):
-            dyn_info.links.inertial_quat[i_l, i_b][j] = links_inertial_quat[i_b, j]
-
-        for j1, j2 in qd.static(qd.ndrange(3, 3)):
-            dyn_info.links.inertial_i[i_l, i_b][j1, j2] = links_inertial_i[i_b, j1, j2]
+        q_start = variants_info.entities_q_start[i_e]
+        i_r_q_start = variants_info.variants_q_start[i_v]
+        for i_q in range(q_start, variants_info.entities_q_end[i_e]):
+            rigid_info.qpos0[i_q, i_b] = variants_info.qpos0[i_r_q_start + i_q - q_start]
 
 
 @qd.kernel(fastcache=True)

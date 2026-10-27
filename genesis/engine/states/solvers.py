@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 
 import numpy as np
@@ -69,6 +70,14 @@ class SimState(RBC):
     def __iter__(self):
         return iter(self._solvers_state)
 
+    def replace(self, solver_state, new_solver_state) -> "SimState":
+        """Return a copy holding another state in place of the state of one solver, sharing the states of the others."""
+        sim_state = copy.copy(self)
+        sim_state._solvers_state = [
+            new_solver_state if state is solver_state else state for state in self._solvers_state
+        ]
+        return sim_state
+
 
 class KinematicSolverState:
     """
@@ -115,6 +124,12 @@ class RigidSolverState:
         self.links_pos = torch.zeros((_B, scene.sim.rigid_solver.n_links, 3), dtype=gs.tc_float, device=gs.device)
         self.links_quat = torch.zeros((_B, scene.sim.rigid_solver.n_links, 4), dtype=gs.tc_float, device=gs.device)
         self.friction_ratio = torch.ones((_B, scene.sim.rigid_solver.n_geoms), dtype=gs.tc_float, device=gs.device)
+
+        # The variant each environment carries of each heterogeneous entity, None without any
+        self.envs_variant = None
+        if scene.sim.rigid_solver.variants_info is not None:
+            n_entities = scene.sim.rigid_solver.variants_state.envs_variant.shape[0]
+            self.envs_variant = torch.zeros((_B, n_entities), dtype=gs.tc_int, device=gs.device)
 
     @property
     def grad_tensors(self):

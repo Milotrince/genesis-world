@@ -638,9 +638,8 @@ class JITRenderer:
             # A pass drawing one environment draws the instance of that environment of a per-environment instanced
             # primitive, and every instance of any other, which the culling below keeps to its environment
             self.render_flags[i, 7] = not primitive.is_env_instanced
-            if primitive.is_env_instanced and not primitive.envs.all():
-                self.render_flags[i, 8] = 1
-                self.env_active[i, : len(primitive.envs)] = primitive.envs
+            if primitive.is_env_instanced:
+                self._set_primitive_envs(i, primitive)
 
             if primitive.is_floor:
                 floor_existed = True
@@ -1451,6 +1450,24 @@ class JITRenderer:
             if self._update_normal_flat is None:
                 self.gen_func_ptr()
             return self._update_normal_flat(vertices.reshape((-1, 3, 3)))
+
+    def _set_primitive_envs(self, i, primitive):
+        """Make the primitive at index 'i', drawn one instance per environment, appear in those of its 'envs' mask."""
+        self.render_flags[i, 8] = not primitive.envs.all()
+        self.env_active[i, : len(primitive.envs)] = primitive.envs
+
+    def update_envs(self, nodes):
+        """Refresh the environments that the primitives of some nodes, drawn one instance per environment, appear in.
+
+        Each primitive takes them from its 'envs' mask. A primitive yet to be drawn takes them when it joins the
+        renderer.
+        """
+        for node in nodes:
+            primitive = node.mesh.primitives[0]
+            i = self._primitive_index.get(primitive)
+            if i is not None:
+                self._set_primitive_envs(i, primitive)
+        self._has_env_filtered = bool(self.render_flags[:, 8].any() or (self.env_row >= 0).any())
 
     def update_buffer(self, node, buffer_name, data):
         """Queue a single buffer update to be flushed during the next render pass.

@@ -1,4 +1,5 @@
 import collections.abc
+import copy
 import dataclasses
 import gc
 import hashlib
@@ -64,7 +65,7 @@ from genesis.recorders.trajectory import Trajectory, save_checkpoint
 from genesis.repr_base import RBC
 from genesis.utils import serialization
 from genesis.utils.array_class import DataItem, check_data
-from genesis.utils.misc import sanitize_index, tensor_to_array
+from genesis.utils.misc import assign_indexed_tensor, indices_to_mask, qd_to_torch, sanitize_index, tensor_to_array
 from genesis.utils.serialization import ARRAY_MEMBER, MANIFEST_NAME, pixel_less_textures
 from genesis.utils.tools import RunningMean
 from genesis.utils.warnings import warn_once
@@ -1051,6 +1052,51 @@ class Scene(RBC):
             self._init_state = self._get_state()
         self._restart()
 
+    def _refresh_init_state(self, switched_entity: "RigidEntity | None" = None, envs_idx: torch.Tensor | None = None):
+        """Make a reset start heterogeneous entities from the neutral state of the morph variant they carry.
+
+        Only the environments carrying another variant than the one the registered initial state records change: their
+        entry takes the variant, its neutral configuration and the pose of its fixed root links, which forward
+        kinematics leaves as set. 'switched_entity' and 'envs_idx' restrict the refresh to the environments a switch of
+        that entity changed, since a state restored with 'keep_init' or in some environments alone leaves the others
+        carrying variants that a reset rewinds. The registered initial state may be one handed to 'reset', so it is
+        replaced by a copy holding new tensors, never written.
+        """
+        rigid_solver = self._sim.rigid_solver
+        if rigid_solver.variants_info is None:
+            return
+        init_state = self._init_state.solvers_state[self._sim.solvers.index(rigid_solver)]
+        envs_variant_idx = qd_to_torch(rigid_solver.variants_state.envs_variant, transpose=True, copy=True)
+        envs_entities_is_switched = envs_variant_idx != init_state.envs_variant
+        if switched_entity is not None:
+            envs_entities_mask = indices_to_mask(envs_idx, switched_entity._variants_data.heterogeneous_idx)
+            envs_entities_is_selected = torch.zeros_like(envs_entities_is_switched)
+            envs_entities_is_selected[envs_entities_mask] = True
+            envs_entities_is_switched &= envs_entities_is_selected
+        if not envs_entities_is_switched.any():
+            return
+
+        neutral_state = copy.copy(init_state)
+        neutral_state.envs_variant = torch.where(envs_entities_is_switched, envs_variant_idx, init_state.envs_variant)
+        neutral_state.qpos = init_state.qpos.clone()
+        neutral_state.links_pos = init_state.links_pos.clone()
+        neutral_state.links_quat = init_state.links_quat.clone()
+        qpos0 = qd_to_torch(rigid_solver.rigid_info.qpos0, transpose=True)
+        links_pos = qd_to_torch(rigid_solver.dyn_state.links.pos, transpose=True)
+        links_quat = qd_to_torch(rigid_solver.dyn_state.links.quat, transpose=True)
+        for entity in rigid_solver.entities:
+            if not entity.is_heterogeneous:
+                continue
+            envs_is_switched = envs_entities_is_switched[:, entity._variants_data.heterogeneous_idx]
+            qs_mask = indices_to_mask(envs_is_switched, slice(entity.q_start, entity.q_end))
+            assign_indexed_tensor(neutral_state.qpos, qs_mask, qpos0[qs_mask])
+            roots_idx = [link.idx for link in entity.links if link.parent_idx == -1 and link.is_fixed]
+            if roots_idx:
+                roots_mask = indices_to_mask(envs_is_switched, roots_idx)
+                assign_indexed_tensor(neutral_state.links_pos, roots_mask, links_pos[roots_mask])
+                assign_indexed_tensor(neutral_state.links_quat, roots_mask, links_quat[roots_mask])
+        self._init_state = self._init_state.replace(init_state, neutral_state)
+
     def _restart(self, refresh_viewer=True):
         """Restart what surrounds the state: the cache of the visualizer and the emitters.
 
@@ -1900,6 +1946,8 @@ class Scene(RBC):
         self._recorder_manager.record(self._sim.cur_step_global)
         self._recorder_manager.reset()
         self._sim.__setstate__(state.sim)
+        # A reset keeps the variants the state restores, as it keeps those a switch brings
+        self._refresh_init_state()
         # The restored state is rendered at the scheduled framerate without forcing immediate refresh, as after a step
         self._restart(refresh_viewer=False)
 
