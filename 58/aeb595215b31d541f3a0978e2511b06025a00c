@@ -1,0 +1,29 @@
+examples/viewer_plugin/mesh_point_selector.py
+  s_c960e3a1fa9c88::t_352353746a2b25 273-275,287-289
+examples/viewer_plugin/mouse_interaction.py
+  s_c960e3a1fa9c88::t_352353746a2b25 44-46,57-59,72-74
+examples/deformable/fem_hard_and_soft_constraint.py
+  s_c960e3a1fa9c88::t_ae3cf3a1c350e1 78-102
+examples/ipc/ipc_robot_cloth_teleop.py
+  s_c960e3a1fa9c88::t_2b5b31c869df99 86
+examples/ipc/ipc_robot_grasp_cube.py
+  s_c960e3a1fa9c88::t_54b715b0e7e508 56
+tests/ipc/test_deformable.py
+  s_c960e3a1fa9c88::t_f92e58d8aacadf 79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "58aeb595215b31d541f3a0978e2511b06025a00c",
+  "prompts": {},
+  "sessions": {
+    "s_c960e3a1fa9c88": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f85a0b1c-a7f4-49ca-b375-b50c1b840b61",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
