@@ -1,0 +1,19 @@
+pyproject.toml
+  s_c1dc016c968367::t_3df26a30b51faa 87-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8989314c180a0be3c7d0c552d54c03ee6abebe70",
+  "prompts": {},
+  "sessions": {
+    "s_c1dc016c968367": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86ab323e-81f3-4228-b089-ef0637eb6873",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
