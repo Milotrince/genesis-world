@@ -1,0 +1,32 @@
+genesis/engine/entities/rigid_entity/description.py
+  s_c960e3a1fa9c88::t_76fe65a81dc262 466-468
+genesis/engine/solvers/kinematic_solver.py
+  s_c960e3a1fa9c88::t_76fe65a81dc262 844-847,1744
+  s_c960e3a1fa9c88::t_b9012cf70ffe89 1745-1747
+tests/sensors/test_raycaster.py
+  s_c960e3a1fa9c88::t_b9012cf70ffe89 280-281,332-335
+  s_c960e3a1fa9c88::t_36d07d8c87c71b 336
+genesis/options/entities.py
+  s_c960e3a1fa9c88::t_76fe65a81dc262 222-223
+  s_c960e3a1fa9c88::t_956e600febd230 221,231,270-275,279-288,292,439-443
+  s_c960e3a1fa9c88::t_b9012cf70ffe89 289-291
+  s_c960e3a1fa9c88::t_7ea2960b2d2137 444
+genesis/engine/scene.py
+  s_c960e3a1fa9c88::t_76fe65a81dc262 538-539
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d1c0d1b189fe7f51099bb8af0f226e9df95526da",
+  "prompts": {},
+  "sessions": {
+    "s_c960e3a1fa9c88": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f85a0b1c-a7f4-49ca-b375-b50c1b840b61",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
