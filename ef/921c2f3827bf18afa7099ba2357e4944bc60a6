@@ -1,0 +1,34 @@
+examples/manipulation/grasp_env.py
+  s_c960e3a1fa9c88::t_00b45e58758ba3 10,13-14
+genesis/engine/entities/hybrid_entity.py
+  s_c960e3a1fa9c88::t_25b3bb14b6098e 64
+tests/core/test_misc.py
+  s_c960e3a1fa9c88::t_3c1ba9de6bba64 366-369
+  s_c960e3a1fa9c88::t_064a205fe21166 370-381
+genesis/engine/couplers/ipc_coupler/coupler.py
+  s_c960e3a1fa9c88::t_25b3bb14b6098e 237-238
+genesis/engine/entities/rigid_entity/rigid_link.py
+  s_c960e3a1fa9c88::t_25b3bb14b6098e 330-334
+genesis/options/entities.py
+  s_c960e3a1fa9c88::t_3c1ba9de6bba64 1133-1136
+  s_c960e3a1fa9c88::t_25b3bb14b6098e 128-129,176-178,1111-1112,1122,1131-1132,1137-1140
+  s_c960e3a1fa9c88::t_741c87e720c61d 1141
+genesis/engine/entities/rigid_entity/description.py
+  s_c960e3a1fa9c88::t_25b3bb14b6098e 1354
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ef921c2f3827bf18afa7099ba2357e4944bc60a6",
+  "prompts": {},
+  "sessions": {
+    "s_c960e3a1fa9c88": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f85a0b1c-a7f4-49ca-b375-b50c1b840b61",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
