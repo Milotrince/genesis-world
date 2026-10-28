@@ -1,0 +1,72 @@
+genesis/utils/mesh.py
+  s_c960e3a1fa9c88::t_2d2a7e5a623ccf 431,441
+  s_c960e3a1fa9c88::t_76505efbd14fb9 607-610
+tests/core/test_misc.py
+  s_c960e3a1fa9c88::t_08ea45c6c8312b 260-262,266-268,307-309
+  s_c960e3a1fa9c88::t_95622a227742c1 191-259,263-265,269-271,296-306
+  s_c960e3a1fa9c88::t_daec23c15dc23b 310
+genesis/options/__init__.py
+  s_c960e3a1fa9c88::t_8909b8f812eb88 5-6,10,23,28,57,59,66,82,94
+genesis/engine/entities/rigid_entity/description.py
+  s_c960e3a1fa9c88::t_995c4d92acbf81 25,27,651,1668-1670,1674,1676-1689,1691-1696
+  s_c960e3a1fa9c88::t_cd48c70da765a1 466-474
+  s_c960e3a1fa9c88::t_76505efbd14fb9 577,1378,1405,1411-1412,1429-1436
+  s_c960e3a1fa9c88::t_acd8d0d7556fe8 1437
+genesis/__init__.py
+  s_c960e3a1fa9c88::t_649529a934b71b 517
+genesis/engine/couplers/ipc_coupler/coupler.py
+  s_c960e3a1fa9c88::t_a7d99946ced832 221
+  s_c960e3a1fa9c88::t_686c503789bec0 252-263
+  s_c960e3a1fa9c88::t_b575aedf3ccea9 226-233,235
+.github/contributing/ARCHITECTURE.md
+  s_c960e3a1fa9c88::t_bcd0bf347b140f 110-121
+genesis/options/indices.py
+  s_c960e3a1fa9c88::t_cd48c70da765a1 48-51
+  s_c960e3a1fa9c88::t_97764ff85c59ca 1-47,52-67,69-111,115-198
+  s_c960e3a1fa9c88::t_9c3169d12f05d0 112-114
+  s_c960e3a1fa9c88::t_a7d99946ced832 68
+tests/ipc/test_deformable.py
+  s_c960e3a1fa9c88::t_0e478cf4c342a1 74,78-84
+genesis/options/entities.py
+  s_c960e3a1fa9c88::t_f2927d6047139a 166-173,177-223,225-228,234-252
+  s_c960e3a1fa9c88::t_0e478cf4c342a1 335-337,339
+  s_c960e3a1fa9c88::t_52f5fc74cf3a12 224,229-233
+  s_c960e3a1fa9c88::t_9ab5cc7a085420 112-114,124,174-176,328-334,340
+  s_c960e3a1fa9c88::t_a7d99946ced832 317-319,504-505,509
+  s_c960e3a1fa9c88::t_16781085ac6fe4 9,423-454,478-480,487,497-503,506-508,510
+  s_c960e3a1fa9c88::t_752a00a1a27c2e 288-296,305-306,310-316,320-321,323-327,338,341-348,351-381,383-384
+  s_c960e3a1fa9c88::t_ca0996b0b8c04d 6,11,16,18,382
+  s_c960e3a1fa9c88::t_f563747b9984da 10,385,511
+examples/ipc/ipc_robot_grasp_cube.py
+  s_c960e3a1fa9c88::t_0e478cf4c342a1 47,49,51,55-61
+  s_c960e3a1fa9c88::t_3fe8942e3ce00c 68
+genesis/engine/entities/rigid_entity/rigid_entity.py
+  s_c960e3a1fa9c88::t_8b42e3f8b60ae4 1777,1927
+genesis/engine/entities/fem_entity.py
+  s_c960e3a1fa9c88::t_f51abd9b9384e9 478-480
+tests/ipc/test_api.py
+  s_c960e3a1fa9c88::t_3fe8942e3ce00c 118-124,264,267-273,278,357,376-382,394
+genesis/engine/solvers/rigid/collider/collider.py
+  s_c960e3a1fa9c88::t_f51abd9b9384e9 365-366,371-374
+examples/ipc/ipc_robot_cloth_teleop.py
+  s_c960e3a1fa9c88::t_0e478cf4c342a1 81,84-91
+genesis/engine/solvers/fem_solver.py
+  s_c960e3a1fa9c88::t_f51abd9b9384e9 383-386
+  s_c960e3a1fa9c88::t_1d3dfdd2c73810 382
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1e4c955ab66b21b172862964e53b2b13219586e7",
+  "prompts": {},
+  "sessions": {
+    "s_c960e3a1fa9c88": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f85a0b1c-a7f4-49ca-b375-b50c1b840b61",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
