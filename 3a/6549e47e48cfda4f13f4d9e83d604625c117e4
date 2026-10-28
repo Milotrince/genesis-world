@@ -1,0 +1,73 @@
+examples/deformable/fem_hard_and_soft_constraint.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 2
+tests/rendering/test_offscreen.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 8
+  s_c960e3a1fa9c88::t_90cc49456d49f4 9
+examples/coupling/flush_cubes.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 2
+genesis/engine/scene.py
+  s_c960e3a1fa9c88::t_4f0360aeb7c1c0 538-544
+tests/core/test_recorders.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 7
+  s_c960e3a1fa9c88::t_89eb64e25b693d 8
+tests/core/test_misc.py
+  s_c960e3a1fa9c88::t_c4c6028c4154f5 12
+  s_c960e3a1fa9c88::t_d7386604414940 13
+genesis/engine/couplers/ipc_coupler/coupler.py
+  s_c960e3a1fa9c88::t_4f0360aeb7c1c0 254-258
+tests/rendering/test_interactive_viewer.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 9-11
+genesis/options/entities.py
+  s_c960e3a1fa9c88::t_4f0360aeb7c1c0 176,350,352
+  s_c960e3a1fa9c88::t_09478a811ec1f8 177-178
+genesis/options/indices.py
+  s_c960e3a1fa9c88::t_4f0360aeb7c1c0 6,134-135,200
+examples/coupling/cloth_attached_to_rigid.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 5
+examples/coupling/fem_cube_linked_with_arm.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 2
+examples/sap_coupling/fem_fixed_constraint.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 6
+tests/parsers/conftest.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 15
+tests/parsers/test_mesh.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 11
+  s_c960e3a1fa9c88::t_11d468c91c7cf1 12
+tests/particles/test_sph.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 10
+examples/ipc/ipc_momentum.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 5
+examples/deformable/elastic_dragon.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 4
+tests/benchmarks/test_rigid.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 12
+  s_c960e3a1fa9c88::t_0f4929f44a9ef6 13
+tests/particles/test_pbd.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 2
+tests/parsers/test_usd.py
+  s_c960e3a1fa9c88::t_78f1b647aab47e 585-590
+examples/deformable/pbd_liquid.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 4
+tests/rigid/test_serialization.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 13
+examples/coupling/cut_dragon.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 2
+examples/sap_coupling/fem_sphere_and_cube.py
+  s_c960e3a1fa9c88::t_77c9de7b4cbf04 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3a6549e47e48cfda4f13f4d9e83d604625c117e4",
+  "prompts": {},
+  "sessions": {
+    "s_c960e3a1fa9c88": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f85a0b1c-a7f4-49ca-b375-b50c1b840b61",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
