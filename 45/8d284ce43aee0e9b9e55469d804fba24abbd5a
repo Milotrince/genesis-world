@@ -1,0 +1,37 @@
+genesis/engine/solvers/fem_solver.py
+  s_c960e3a1fa9c88::t_60e885809d2f8d 16
+genesis/engine/solvers/kinematic_solver.py
+  s_c960e3a1fa9c88::t_60e885809d2f8d 844
+genesis/engine/couplers/ipc_coupler/coupler.py
+  s_c960e3a1fa9c88::t_60e885809d2f8d 227,235,331,533,705-706,709-710,723-724
+genesis/engine/solvers/mpm_solver.py
+  s_c960e3a1fa9c88::t_60e885809d2f8d 14
+genesis/engine/solvers/mpm_models.py
+  s_c960e3a1fa9c88::t_60e885809d2f8d 11
+genesis/engine/solvers/rigid/collider/collider.py
+  s_c960e3a1fa9c88::t_60e885809d2f8d 366,373
+genesis/options/solvers.py
+  s_c960e3a1fa9c88::t_ceff7fe4a04268 250
+genesis/engine/entities/rigid_entity/rigid_geom.py
+  s_c960e3a1fa9c88::t_60e885809d2f8d 60
+tests/core/test_misc.py
+  s_c960e3a1fa9c88::t_ceff7fe4a04268 37-39
+genesis/engine/entities/fem_entity.py
+  s_c960e3a1fa9c88::t_60e885809d2f8d 474,566
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "458d284ce43aee0e9b9e55469d804fba24abbd5a",
+  "prompts": {},
+  "sessions": {
+    "s_c960e3a1fa9c88": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f85a0b1c-a7f4-49ca-b375-b50c1b840b61",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
