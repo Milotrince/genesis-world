@@ -1,9 +1,10 @@
-"""A duck switching between the images of a dynamic texture at runtime.
+"""A duck switching between the images of a dynamic texture, and drawn on, at runtime.
 
 In parallel environments, the duck of environment i starts on image i. Without the viewer, the textures cycle on their
-own. With it, the keyboard swaps them in every environment:
+own. With it, the keyboard sets them in every environment:
 Right   - Next texture
 Left    - Previous texture
+Space   - Draw a random color per environment
 Esc     - Quit
 """
 
@@ -68,24 +69,30 @@ def main():
             diffuse_texture=gs.textures.DynamicTexture(
                 res=TEXTURE_RES,
                 images=images,
+                is_drawable=True,
             ),
         ),
     )
     scene.build(n_envs=args.n_envs, env_spacing=(0.3, 0.3))
 
-    texture = duck.get_dynamic_texture(gs.TEXTURE_SLOT.DIFFUSE)
-    images_name = texture.images_name
+    images_name = tuple(images)
 
     # The image each environment shows is offset by the index of the environment
     envs_offset = np.arange(max(args.n_envs, 1))
     i_image = 0
     i_image_shown = None
+    is_drawing = False
     is_running = True
 
-    # Keybind callbacks run on the viewer thread, so they only pick the image that the main loop selects between steps
+    # Keybind callbacks run on the viewer thread, so they only pick what the main loop sets between steps
     def swap(offset):
-        nonlocal i_image
+        nonlocal i_image, i_image_shown
         i_image = (i_image + offset) % len(images_name)
+        i_image_shown = None
+
+    def draw():
+        nonlocal is_drawing
+        is_drawing = True
 
     def stop():
         nonlocal is_running
@@ -95,6 +102,7 @@ def main():
         scene.viewer.register_keybinds(
             Keybind("next_texture", Key.RIGHT, KeyAction.PRESS, callback=swap, args=(1,)),
             Keybind("previous_texture", Key.LEFT, KeyAction.PRESS, callback=swap, args=(-1,)),
+            Keybind("draw_texture", Key.SPACE, KeyAction.PRESS, callback=draw),
             Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
         )
         horizon = math.inf
@@ -106,8 +114,11 @@ def main():
         if not args.vis and step % 100 == 99:
             swap(1)
         if i_image != i_image_shown:
-            texture.select((i_image + envs_offset) % len(images_name))
+            duck.set_texture((i_image + envs_offset) % len(images_name))
             i_image_shown = i_image
+        if is_drawing:
+            duck.set_texture(np.random.rand(len(envs_offset), 1, 1, 3))
+            is_drawing = False
         scene.step()
         step += 1
 

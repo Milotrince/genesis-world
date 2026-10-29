@@ -970,10 +970,6 @@ class Scene(RBC):
             self._dynamic_textures = [
                 DynamicTextureHandle(self, texture, bindings) for texture, bindings in bindings_by_texture.items()
             ]
-            textures_name = [handle.name for handle in self._dynamic_textures if handle.name is not None]
-            for name, count in Counter(textures_name).items():
-                if count > 1:
-                    gs.raise_exception(f"Several dynamic textures are named '{name}'.")
 
             # simulator
             self._sim.build()
@@ -1075,12 +1071,8 @@ class Scene(RBC):
             self._recorder_manager.record(self._sim.cur_step_global)
         self._recorder_manager.reset(envs_idx)
         self._reset(state, envs_idx=envs_idx)
-        # A texture shared by every environment is restored with the whole scene alone
         for handle in self._dynamic_textures:
-            if handle.is_batched:
-                handle.reset(envs_idx)
-            elif envs_idx is None:
-                handle.reset()
+            handle.reset(envs_idx)
 
     def _reset(self, state: SimState | None = None, *, envs_idx=None, keep_init: bool = False):
         if self._is_built:
@@ -2145,16 +2137,6 @@ class Scene(RBC):
                 return match
             gs.raise_exception(f"Entity not found for uid: '{uid}'.")
 
-    @gs.assert_built
-    def get_dynamic_texture(self, name: str) -> DynamicTextureHandle:
-        """Return the handle writing the dynamic texture of a given name (see ``gs.textures.DynamicTexture``)."""
-        for handle in self._dynamic_textures:
-            if handle.name == name:
-                return handle
-        gs.raise_exception(
-            f"No dynamic texture is named '{name}'. Existing names: {[h.name for h in self._dynamic_textures]}."
-        )
-
     @property
     def emitters(self):
         """All the emitters in the scene."""
@@ -2162,7 +2144,7 @@ class Scene(RBC):
 
     @property
     def dynamic_textures(self) -> list[DynamicTextureHandle]:
-        """The handles writing the dynamic textures of the scene, one per declaration, once it is built."""
+        """The handles setting the dynamic textures of the scene, one per declaration, once it is built."""
         return self._dynamic_textures
 
     @property
