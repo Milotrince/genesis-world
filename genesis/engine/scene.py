@@ -1064,6 +1064,9 @@ class Scene(RBC):
                 if not keep_init:
                     self._init_state = state
             self._sim.reset(state, envs_idx)
+            # A restore keeping the init resumes the rollout, so the behaviors keep the state they reached
+            if not keep_init:
+                self._sim._behavior_manager.reset(envs_idx)
         else:
             self._init_state = self._get_state()
         self._restart()

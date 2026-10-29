@@ -324,7 +324,6 @@ class Simulator(RBC):
         else:
             self._steps[indices_to_mask(envs_idx)] = 0
         self._restart(envs_idx)
-        self._behavior_manager.reset(envs_idx)
 
     def _restart(self, envs_idx=None):
         """Restart the coupler, the autograd graph of the rollout and the sensors."""

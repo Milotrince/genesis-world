@@ -51,9 +51,7 @@ def test_plugin_behavior(n_envs, thruster, show_viewer, tmp_path, tol):
         sim_options=gs.options.SimOptions(
             dt=DT,
             gravity=(0.0, 0.0, -GRAVITY),
-        ),
-        rigid_options=gs.options.RigidOptions(
-            integrator=gs.integrator.Euler,
+            requires_grad=True,
         ),
         viewer_options=gs.options.ViewerOptions(
             camera_pos=(0.0, -3.0, 1.0),
@@ -132,6 +130,8 @@ def test_plugin_behavior(n_envs, thruster, show_viewer, tmp_path, tol):
     for _ in range(N_STEPS):
         scene.step()
     assert_allclose(lifted_box.get_vel()[..., 2], lifted_vz + lifted_dvz_expected, tol=tol)
+    # The backward pass resumes the rollout, so the checkpoint below still holds the deactivation
+    scene.backward(lifted_box.get_pos()[..., 2].sum())
 
     checkpoint = scene.__getstate__()
     checkpoint_path = tmp_path / f"deactivated{TRAJECTORY_FORMAT}"
