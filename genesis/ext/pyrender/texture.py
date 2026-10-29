@@ -209,7 +209,7 @@ class Texture(object):
             data = np.ascontiguousarray(np.flip(self.source, axis=0))
             height, width = self.source.shape[:2]
             glTexSubImage2D(self.tex_type, 0, 0, 0, width, height, self._gl_format, self.data_format, data)
-        glGenerateMipmap(self.tex_type)
+            glGenerateMipmap(self.tex_type)
         glBindTexture(self.tex_type, 0)
 
     def _add_to_context(self):
@@ -245,7 +245,9 @@ class Texture(object):
             self._pending_layers.clear()
         else:
             glTexImage2D(self.tex_type, 0, internal_fmt, width, height, 0, fmt, self.data_format, data)
-        if self.source is not None:
+        # A texture array has no mipmaps, since generating them covers every layer, which would make the upload of a
+        # single layer cost as much as the whole array
+        if self.source is not None and not is_array:
             glGenerateMipmap(self.tex_type)
 
         if self.sampler.magFilter is not None:
@@ -258,7 +260,9 @@ class Texture(object):
         if self.sampler.minFilter is not None:
             glTexParameteri(self.tex_type, GL_TEXTURE_MIN_FILTER, self.sampler.minFilter)
         else:
-            if self.source is not None:
+            if is_array:
+                glTexParameteri(self.tex_type, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+            elif self.source is not None:
                 glTexParameteri(self.tex_type, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
             else:
                 glTexParameteri(self.tex_type, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
