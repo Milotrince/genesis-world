@@ -205,8 +205,10 @@ def test_emissive_composites(base_plus_emissive_glb, show_viewer, renderer):
 @pytest.mark.required
 def test_dynamic_texture(show_viewer):
     # Three horizontal planes seen from above under flat ambient light, each showing one dynamic texture:
-    #  - screen: an emissive texture of its own per environment, drawn as the color of an Emission surface.
-    #  - label: a diffuse texture of its own per environment, given through the options of the visual geom.
+    #  - screen: an emissive texture switching between two named colors per environment, drawn as the color of an
+    #    Emission surface.
+    #  - label: a diffuse texture of two images drawn at runtime, selected per environment, given through the options
+    #    of the visual geom.
     #  - lamp: an emissive texture shared by every environment, added on top of a dark red base color.
     # A camera sensor renders through a rasterizer of its own, so it uploads the images independently of the camera.
     scene = gs.Scene(
@@ -226,14 +228,18 @@ def test_dynamic_texture(show_viewer):
             pos=(-1.2, 0.0, 0.0),
             plane_size=(1.0, 1.0),
             fixed=True,
-            batch_fixed_verts=True,
         ),
         surface=gs.surfaces.Emission(
             emissive_texture=gs.textures.DynamicTexture(
                 res=(16, 16),
-                initial=gs.textures.ColorTexture(
-                    color=(0.0, 0.0, 1.0),
-                ),
+                images={
+                    "blue": gs.textures.ColorTexture(
+                        color=(0.0, 0.0, 1.0),
+                    ),
+                    "red": gs.textures.ColorTexture(
+                        color=(1.0, 0.0, 0.0),
+                    ),
+                },
                 name="screen",
             ),
         ),
@@ -249,6 +255,7 @@ def test_dynamic_texture(show_viewer):
                     surface=gs.surfaces.Rough(
                         diffuse_texture=gs.textures.DynamicTexture(
                             res=(8, 8),
+                            images=2,
                         ),
                     ),
                 ),
@@ -296,7 +303,7 @@ def test_dynamic_texture(show_viewer):
     def get_colors(rgb):
         return np.stack([[rgb[i_b][mask].mean(axis=0) for mask in masks[i_b]] for i_b in range(2)])
 
-    # The images at build: blue, opaque black, and the dark red base without emission
+    # The images at build: the first color of the screen, opaque black, and the dark red base without emission
     colors = get_colors(rgb)
     assert (colors[:, 0, 2] > 150.0).all() and (colors[:, 0, :2] < 30.0).all()
     assert (colors[:, 1] < 30.0).all()
@@ -307,12 +314,14 @@ def test_dynamic_texture(show_viewer):
     assert scene.get_dynamic_texture("screen") is screen_texture
     label_texture = label.vgeoms[0].get_dynamic_texture(gs.TEXTURE_SLOT.DIFFUSE)
     lamp_texture = lamp.get_dynamic_texture(gs.TEXTURE_SLOT.EMISSIVE)
-    # One image copied to one environment, one image per environment, and an in-place write of one environment
-    screen_texture.set_image(np.array([255, 0, 0], dtype=np.uint8), envs_idx=[1])
-    label_texture.set_image(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None])
-    lamp_texture.image[..., 1] = 255
+    # An image selected by name in one environment, images drawn and selected one per environment, and a shared image
+    # written in place
+    screen_texture.select("red", envs_idx=[1])
+    label_texture.set_image(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None], images_idx=[0, 1])
+    label_texture.select(torch.tensor([0, 1]))
+    lamp_texture.images[..., 1] = 255
     lamp_texture.notify_changed()
-    # The camera shows the images as soon as they are written, while the sensor renders them at the next step
+    # The camera shows the images as soon as they change, while the sensor renders them at the next step
     scene.step()
     for rgb in (camera.render(rgb=True)[0], tensor_to_array(sensor.read().rgb)):
         colors = get_colors(rgb)
@@ -324,20 +333,14 @@ def test_dynamic_texture(show_viewer):
         # The emission adds green on top of the base color, which keeps its red
         assert (colors[:, 2, 0] > 40.0).all() and (colors[:, 2, 1] > 100.0).all() and (colors[:, 2, 2] < 30.0).all()
 
-    # Each environment draws its own node of a batched texture, which follows the pose of its own environment
-    screen.set_pos([[-1.2, 0.0, 0.0], [-1.2, 0.3, 0.0]])
-    rgb, _, segmentation, _ = camera.render(rgb=True, segmentation=True, force_render=True)
-    screen_masks = [segmentation[i_b] == screen.idx + 1 for i_b in range(2)]
-    assert_equal(screen_masks[0], masks[0][0])
-    assert (screen_masks[1] != masks[1][0]).any()
-    assert rgb[1][screen_masks[1]].mean(axis=0)[0] > 100.0
-
-    # An integer image is clamped to the range of a channel, and a texture shared by every environment refuses a
-    # selection of environments
+    # An integer image is clamped to the range of a channel, a texture shared by every environment refuses a selection
+    # of environments, and an image is named by the texture
     lamp_texture.set_image(np.array([300, -5, 128]))
-    assert_equal(lamp_texture.image[..., :3], torch.tensor([255, 0, 128], dtype=torch.uint8).expand(4, 4, 3))
+    assert_equal(lamp_texture.images[0, ..., :3], torch.tensor([255, 0, 128], dtype=torch.uint8).expand(4, 4, 3))
     with pytest.raises(gs.GenesisException, match="envs_idx"):
-        lamp_texture.set_image(np.zeros(3), envs_idx=[0])
+        lamp_texture.select(0, envs_idx=[0])
+    with pytest.raises(gs.GenesisException, match="No image is named"):
+        screen_texture.select("green")
     with pytest.raises(gs.GenesisException, match="custom visual vertices"):
         unsupported_scene = gs.Scene()
         unsupported_scene.add_entity(
@@ -346,7 +349,7 @@ def test_dynamic_texture(show_viewer):
         )
         unsupported_scene.build()
 
-    # A reset restores the images and the poses
+    # A reset restores the images and the selection
     scene.reset()
     colors = get_colors(camera.render(rgb=True)[0])
     assert (colors[:, 0, 2] > 150.0).all() and (colors[:, 0, :2] < 30.0).all()
