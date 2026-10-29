@@ -1,0 +1,47 @@
+genesis/engine/entities/rigid_entity/rigid_entity.py
+  s_33aab527a44173::t_dfb906d481f73a 3017-3018
+genesis/engine/solvers/rigid/collider/collider.py
+  s_33aab527a44173::t_551693783cbad1 423-431,437,442,476,486,505
+genesis/engine/solvers/rigid/collider/contact.py
+  s_33aab527a44173::t_8daca271a93feb 532,534-539
+genesis/engine/solvers/rigid/contact_pair.py
+  s_33aab527a44173::t_a5bc3bdab98bc4 2,4-5,163-168,171-196,205-220,222-240
+  s_33aab527a44173::t_dec0ee77e8aa7e 32-35,169-170,197-204,221
+  s_33aab527a44173::t_ca901b29eb7ae6 145-149
+  s_33aab527a44173::t_421dd9815d4959 1,3,6-31,36-144,150-162
+genesis/engine/system_data/articulated.py
+  s_33aab527a44173::t_8daca271a93feb 88
+genesis/utils/array_class.py
+  s_33aab527a44173::t_8daca271a93feb 2683-2684,2719,2757-2759,2774-2778
+genesis/engine/solvers/rigid/abd/accessor.py
+  s_33aab527a44173::t_650bf96e615516 104,143-149,530-546
+  s_33aab527a44173::t_4d36fb3a1fb03a 547-548
+tests/rigid/test_serialization.py
+  s_33aab527a44173::t_d26dce386eb424 159-160,354-357
+genesis/engine/solvers/rigid/rigid_solver.py
+  s_33aab527a44173::t_5be554a9878470 52,140
+  s_33aab527a44173::t_646aaaa3adb558 226-231,313-317,337,1278-1281,1794,1834-1839,1864,1886,3300-3332,3529-3547
+  s_33aab527a44173::t_3af1e425ada733 3548
+genesis/engine/scene.py
+  s_33aab527a44173::t_646aaaa3adb558 927-929
+  s_33aab527a44173::t_551693783cbad1 27,29-34,96,104,873-926,930-961,1885-1886
+tests/rigid/test_friction.py
+  s_33aab527a44173::t_8ca10aa8bc67b5 972,974-985,1003,1024-1027,1030-1052,1057,1063,1081,1083,1085,1107-1111
+  s_33aab527a44173::t_221cddaa3c307e 973,1022-1023,1028-1029,1082
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2c765f09a525e4edb786960c1687f25588a0c86",
+  "prompts": {},
+  "sessions": {
+    "s_33aab527a44173": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28f96fc5-3905-4f11-a3af-5f67dc372dbe",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
