@@ -226,6 +226,7 @@ def test_dynamic_texture(show_viewer):
             pos=(-1.2, 0.0, 0.0),
             plane_size=(1.0, 1.0),
             fixed=True,
+            batch_fixed_verts=True,
         ),
         surface=gs.surfaces.Emission(
             emissive_texture=gs.textures.DynamicTexture(
@@ -323,9 +324,29 @@ def test_dynamic_texture(show_viewer):
         # The emission adds green on top of the base color, which keeps its red
         assert (colors[:, 2, 0] > 40.0).all() and (colors[:, 2, 1] > 100.0).all() and (colors[:, 2, 2] < 30.0).all()
 
-    # A texture shared by every environment refuses a selection of environments, and a reset restores the images
+    # Each environment draws its own node of a batched texture, which follows the pose of its own environment
+    screen.set_pos([[-1.2, 0.0, 0.0], [-1.2, 0.3, 0.0]])
+    rgb, _, segmentation, _ = camera.render(rgb=True, segmentation=True, force_render=True)
+    screen_masks = [segmentation[i_b] == screen.idx + 1 for i_b in range(2)]
+    assert_equal(screen_masks[0], masks[0][0])
+    assert (screen_masks[1] != masks[1][0]).any()
+    assert rgb[1][screen_masks[1]].mean(axis=0)[0] > 100.0
+
+    # An integer image is clamped to the range of a channel, and a texture shared by every environment refuses a
+    # selection of environments
+    lamp_texture.set_image(np.array([300, -5, 128]))
+    assert_equal(lamp_texture.image[..., :3], torch.tensor([255, 0, 128], dtype=torch.uint8).expand(4, 4, 3))
     with pytest.raises(gs.GenesisException, match="envs_idx"):
         lamp_texture.set_image(np.zeros(3), envs_idx=[0])
+    with pytest.raises(gs.GenesisException, match="custom visual vertices"):
+        unsupported_scene = gs.Scene()
+        unsupported_scene.add_entity(
+            morph=gs.morphs.Mesh(file="meshes/duck.obj", enable_custom_vverts=True),
+            surface=gs.surfaces.Emission(emissive_texture=gs.textures.DynamicTexture(res=(4, 4))),
+        )
+        unsupported_scene.build()
+
+    # A reset restores the images and the poses
     scene.reset()
     colors = get_colors(camera.render(rgb=True)[0])
     assert (colors[:, 0, 2] > 150.0).all() and (colors[:, 0, :2] < 30.0).all()
