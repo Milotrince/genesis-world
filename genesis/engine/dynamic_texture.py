@@ -95,8 +95,7 @@ class DynamicTextureHandle:
         """
         envs_idx = self._sanitize_envs_idx(envs_idx)
         image = torch.as_tensor(image, device=gs.device)
-        if image.is_floating_point():
-            image = (image.clamp(0.0, 1.0) * 255.0).round()
+        image = (image.clamp(0.0, 1.0) * 255.0).round() if image.is_floating_point() else image.clamp(0, 255)
         if image.shape[-1] == 3:
             image = torch.cat((image, torch.full_like(image[..., :1], 255)), dim=-1)
         width, height = self._texture.res

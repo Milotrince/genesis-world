@@ -1065,12 +1065,10 @@ class ImGuiOverlayPlugin(ViewerPlugin):
                 ctx = self.viewer.gs_context
                 geoms = entity.vgeoms if entity.surface.vis_mode == "visual" else entity.geoms
                 for geom in geoms:
-                    node = ctx.rigid_nodes.get(geom.uid)
-                    if node is None:
-                        continue
-                    for primitive in node.mesh.primitives:
-                        if primitive.material is not None:
-                            primitive.material.wireframe = new_wf
+                    for node_key in ctx.get_rigid_nodes_key(geom):
+                        for primitive in ctx.rigid_nodes[node_key].mesh.primitives:
+                            if primitive.material is not None:
+                                primitive.material.wireframe = new_wf
                 ctx._scene._meshes_updated = True
 
             # Visualize contact toggle. Contacts only exist for dynamically simulated rigid entities; for kinematic

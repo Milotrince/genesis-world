@@ -957,6 +957,11 @@ class Scene(RBC):
                         ):
                             texture = surface_textures.get(field_name)
                             if isinstance(texture, DynamicTexture):
+                                if entity.morph.enable_custom_vverts:
+                                    gs.raise_exception(
+                                        "A dynamic texture cannot be drawn on an entity with custom visual vertices, "
+                                        f"got '{entity.name}'."
+                                    )
                                 bindings_by_texture.setdefault(texture, []).append(DynamicTextureBinding(vgeom, slot))
                 elif any(isinstance(texture, DynamicTexture) for _, texture in entity.surface):
                     gs.raise_exception(
