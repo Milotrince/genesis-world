@@ -25,10 +25,20 @@ struct Material {
     sampler2D occlusion_texture;
 #endif
 #ifdef HAS_EMISSIVE_TEX
+#ifdef EMISSIVE_TEX_ARRAY
+    sampler2DArray emissive_texture;
+    float emissive_layer;
+#else
     sampler2D emissive_texture;
 #endif
+#endif
 #ifdef HAS_BASE_COLOR_TEX
+#ifdef BASE_COLOR_TEX_ARRAY
+    sampler2DArray base_color_texture;
+    float base_color_layer;
+#else
     sampler2D base_color_texture;
+#endif
 #endif
 #ifdef HAS_METALLIC_ROUGHNESS_TEX
     sampler2D metallic_roughness_texture;
@@ -115,7 +125,11 @@ void main()
     // Compute albedo
     vec4 base_color = material.base_color_factor;
 #ifdef HAS_BASE_COLOR_TEX
+#ifdef BASE_COLOR_TEX_ARRAY
+    base_color = base_color * texture(material.base_color_texture, vec3(uv_0, material.base_color_layer));
+#else
     base_color = base_color * texture(material.base_color_texture, uv_0);
+#endif
 #endif
 
 #ifdef COLOR_0_LOC

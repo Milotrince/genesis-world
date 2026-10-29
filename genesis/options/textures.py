@@ -1,4 +1,5 @@
 import os
+from collections.abc import Mapping
 from functools import cached_property
 from typing import Annotated, Iterable, Literal, Sequence, cast
 
@@ -6,6 +7,7 @@ import numpy as np
 
 from PIL import Image
 from pydantic import BeforeValidator, Field, StrictBool, computed_field, model_validator
+from typing_extensions import Self
 
 import genesis as gs
 import genesis.utils.mesh as mu
@@ -14,6 +16,7 @@ from genesis.typing import (
     LaxUnitIntervalArrayType,
     NDArrayType,
     PositiveVec2IType,
+    StrictInt,
     UnitIntervalArrayType,
 )
 from genesis.utils.serialization import Exporting, Loading, SerializationMixin
@@ -288,38 +291,120 @@ class ImageTexture(Texture, SerializationMixin):
         )
 
 
+def _texture_to_rgba(texture: "ColorTexture | ImageTexture | None", res: tuple[int, int]) -> np.ndarray:
+    """Return a color or an image texture as an RGBA uint8 array of shape (height, width, 4), opaque black for None.
+
+    An image is resized to 'res', given as (width, height). A gray or gray-alpha color spans the three color channels,
+    as an image of one or two channels does.
+    """
+    width, height = res
+    if isinstance(texture, ImageTexture):
+        image = Image.fromarray(texture.image_array).convert("RGBA")
+        base, channels = np.asarray(image.resize((width, height), Image.Resampling.BILINEAR)), texture.image_color
+    else:
+        base = np.full((height, width, 4), 255, dtype=np.uint8)
+        channels = (0.0,) if texture is None else texture.color
+    rgba = np.ones(4)
+    rgba[:3] = channels[:3] if len(channels) >= 3 else channels[0]
+    if len(channels) in (2, 4):
+        rgba[3] = channels[-1]
+    return (base * rgba).round().astype(np.uint8)
+
+
 class DynamicTexture(Texture):
     """
-    A texture map whose image is written while the simulation runs, such as a screen or an indicator light.
+    A fixed set of images that the simulation switches between and draws into while it runs, such as a screen or an
+    indicator light.
 
     It fills the diffuse or the emissive slot of a surface (see ``gs.TEXTURE_SLOT``), and requires a mesh with texture
-    coordinates. The image is RGBA, its alpha channel standing for the opacity in the diffuse slot in place of the
-    opacity of the surface. Once the scene is built, ``scene.get_dynamic_texture``, ``entity.get_dynamic_texture`` or
-    ``vgeom.get_dynamic_texture`` return the handle writing it. Only the rasterizer draws a dynamic texture.
+    coordinates. Each parallel environment shows one image of the set, which it selects at runtime, and every image can
+    be written at runtime. The images are RGBA, their alpha channel standing for the opacity in the diffuse slot in
+    place of the opacity of the surface. Once the scene is built, ``scene.get_dynamic_texture``,
+    ``entity.get_dynamic_texture`` or ``vgeom.get_dynamic_texture`` return the handle selecting and writing them. Only
+    the rasterizer draws a dynamic texture.
 
     Parameters
     ----------
     res : tuple[int, int]
-        The resolution of the image, as (width, height) in pixels. Rendering uploads the whole image each time it is
-        written, so a larger image costs more per update.
-    encoding : str, optional
-        The encoding of the image, 'srgb' for colors or 'linear'. Default is 'srgb'.
+        The resolution of every image, as (width, height) in pixels. Rendering uploads an image each time it is written,
+        so a larger image costs more per write, while selecting an image costs nothing.
+    images : int | tuple[ColorTexture | ImageTexture | None, ...] | dict[str, ...], optional
+        The images, each a color or an image resized to 'res', or None for opaque black. A number gives that many
+        images, opaque black, and a mapping names them (see 'images_name'). The set is fixed once the scene is built,
+        and its memory is the number of images times the size of one, whatever the number of environments: a screen
+        showing an image of its own in each environment takes one image per environment, which environment i selects.
+        Default is one image.
+    images_name : tuple[str, ...] | None, optional
+        The name of each image, by which the images are selected and written as well as by position. Default is None.
     is_batched : bool, optional
-        Whether each parallel environment shows an image of its own. A batched texture draws its geoms once per
-        environment, at the cost of one draw call per environment, while a shared one draws them once for all.
-        Default is True.
-    initial : ColorTexture | ImageTexture | None, optional
-        The image at build and after a reset, resized to 'res'. If None, opaque black. Default is None.
+        Whether each parallel environment selects an image of its own. Default is True.
+    initial_image : int | str, optional
+        The image every environment selects at build and after a reset, by position or by name, which the texture holds
+        as a position. Default is 0.
+    encoding : str, optional
+        The encoding of the images, 'srgb' for colors or 'linear'. Default is 'srgb'.
     name : str | None, optional
         The name of the texture, unique within the scene, by which ``scene.get_dynamic_texture`` finds it. Default is
         None.
     """
 
     res: PositiveVec2IType
-    encoding: Annotated[Literal["srgb", "linear"], BeforeValidator(lambda e: str(e).lower())] = "srgb"
+    images: Annotated[tuple[ColorTexture | ImageTexture | None, ...], Field(min_length=1, strict=False)] = (None,)
+    images_name: Annotated[tuple[str, ...], Field(min_length=1, strict=False)] | None = None
     is_batched: StrictBool = True
-    initial: ColorTexture | ImageTexture | None = None
+    initial_image: StrictInt = 0
+    encoding: Annotated[Literal["srgb", "linear"], BeforeValidator(lambda e: str(e).lower())] = "srgb"
     name: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _split_images(cls, data: dict) -> dict:
+        images = data.get("images")
+        if isinstance(images, Mapping):
+            if data.get("images_name") is not None:
+                gs.raise_exception("Name the images of a dynamic texture through a mapping or 'images_name', not both.")
+            data["images_name"], data["images"] = tuple(images), tuple(images.values())
+        elif isinstance(images, int):
+            data["images"] = (None,) * images
+        initial_image = data.get("initial_image")
+        if isinstance(initial_image, str):
+            images_name = data.get("images_name") or ()
+            if initial_image not in images_name:
+                gs.raise_exception(f"No image is named '{initial_image}'. Existing names: {list(images_name)}.")
+            data["initial_image"] = images_name.index(initial_image)
+        return data
+
+    @model_validator(mode="after")
+    def _check_images(self) -> Self:
+        if self.images_name is not None and len(self.images_name) != len(self.images):
+            gs.raise_exception(f"{len(self.images_name)} names given for {len(self.images)} images.")
+        if self.images_name is not None and len(set(self.images_name)) != len(self.images_name):
+            gs.raise_exception(f"The images of a dynamic texture take distinct names, got {list(self.images_name)}.")
+        self.get_images_idx(self.initial_image)
+        return self
+
+    def get_images_idx(self, images: "int | str | Sequence[int | str] | np.ndarray") -> np.ndarray:
+        """Return the positions of images given by position or by name, raising on one the set does not hold."""
+        images_name = self.images_name or ()
+        images_idx = []
+        for image in np.atleast_1d(np.asarray(images, dtype=object)).tolist():
+            if isinstance(image, str):
+                if image not in images_name:
+                    gs.raise_exception(f"No image is named '{image}'. Existing names: {list(images_name)}.")
+                image = images_name.index(image)
+            if not 0 <= image < len(self.images):
+                gs.raise_exception(f"Image {image} is out of range for {len(self.images)} images.")
+            images_idx.append(image)
+        return np.array(images_idx, dtype=gs.np_int)
+
+    def get_initial_images(self) -> np.ndarray:
+        """Return the images at build as an RGBA uint8 array of shape (n_images, height, width, 4)."""
+        return np.stack([_texture_to_rgba(texture, self.res) for texture in self.images])
+
+    def get_initial_image(self) -> np.ndarray:
+        """Return the image every environment selects at build, as an RGBA uint8 array of shape (height, width, 4)."""
+        (i_image,) = self.get_images_idx(self.initial_image)
+        return _texture_to_rgba(self.images[i_image], self.res)
 
     def check_dim(self, dim: int) -> Texture | None:
         return None
@@ -339,25 +424,6 @@ class DynamicTexture(Texture):
     @cached_property
     def requires_uv(self) -> bool:
         return True
-
-    def get_initial_image(self) -> np.ndarray:
-        """Return the initial image as an RGBA uint8 array of shape (height, width, 4)."""
-        width, height = self.res
-        if isinstance(self.initial, ImageTexture):
-            image = Image.fromarray(self.initial.image_array).convert("RGBA")
-            base, channels = (
-                np.asarray(image.resize((width, height), Image.Resampling.BILINEAR)),
-                self.initial.image_color,
-            )
-        else:
-            base = np.full((height, width, 4), 255, dtype=np.uint8)
-            channels = (0.0,) if self.initial is None else self.initial.color
-        # A gray or gray-alpha color spans the three color channels, as an image of one or two channels does
-        rgba = np.ones(4)
-        rgba[:3] = channels[:3] if len(channels) >= 3 else channels[0]
-        if len(channels) in (2, 4):
-            rgba[3] = channels[-1]
-        return (base * rgba).round().astype(np.uint8)
 
 
 class BatchTexture(Texture):

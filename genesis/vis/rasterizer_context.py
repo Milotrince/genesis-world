@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 import numpy as np
 import torch
 import trimesh
+from OpenGL.GL import GL_TEXTURE_2D_ARRAY
 
 import genesis as gs
 import genesis.utils.geom as gu
@@ -28,34 +29,31 @@ POSE_MAX_ABS = 1e20
 
 
 class RigidNodeBatch(NamedTuple):
-    """Rigid geoms of one solver drawn in one visual mode, placed together from one conversion of their poses.
-
-    A node is keyed by the uid of its geom, or by the uid of its geom and the position among the rendered environments
-    of the only one it is drawn in, whose poses alone it takes ('envs_slice').
-    """
+    """Rigid geoms of one solver drawn in one visual mode, placed together from one conversion of their poses."""
 
     solver: "RigidSolver | KinematicSolver"
     is_visual: bool
     geoms_idx: list[int]
-    nodes_key: list["gs.UID | tuple[gs.UID, int]"]
-    envs_slice: list[slice]
+    geoms_uid: list[int]
     is_plane: list[bool]
 
 
 class DynamicTextureTargets(NamedTuple):
-    """The nodes drawing one dynamic texture, each showing the image of one environment of it.
+    """The nodes drawing one dynamic texture, and the texture arrays holding its images that they sample.
 
-    'versions_idx' indexes the counters of the handle (see 'DynamicTextureHandle.versions') that each node follows, and
-    'uploaded_versions' holds the counters each node was last written at. 'nodes' holds the node last written, so that a
-    node drawn anew, which starts from the initial image, is written again.
+    A node samples the array of its slot, one per slot the texture fills ('textures', keyed by whether the slot is the
+    base color), at the layer each rendered environment selects. 'nodes' holds the node each visual geom was last bound
+    through, so that a node drawn anew is bound again. 'images_version' and 'selection_version' hold the counters of the
+    handle at the last sync (see 'DynamicTextureHandle').
     """
 
     handle: "DynamicTextureHandle"
-    nodes_key: list["gs.UID | tuple[gs.UID, int]"]
+    textures: dict[bool, "pyrender.Texture"]
+    nodes_key: list["gs.UID"]
     is_base_color: list[bool]
-    versions_idx: np.ndarray
-    uploaded_versions: np.ndarray
     nodes: list["pyrender.Node | None"]
+    images_version: np.ndarray
+    selection_version: np.ndarray
 
 
 class TrackedNodeList:
@@ -221,11 +219,8 @@ class RasterizerContext:
         self.link_frame_nodes = dict()
         self.frustum_nodes = dict()  # nodes camera frustums
         self.rigid_nodes = dict()
-        # The rigid nodes that the dynamic textures of the scene write, synced at update time
+        # The rigid nodes that the dynamic textures of the scene are drawn by, synced at update time
         self._dynamic_texture_targets: list[DynamicTextureTargets] = []
-        # The visual geoms showing a batched dynamic texture, each drawn by one node per rendered environment holding a
-        # texture of its own
-        self._vgeoms_batched_texture_id: set[int] = set()
         # The geoms behind the rigid nodes, grouped by solver and visual mode for placement at update time
         self._rigid_batches: dict[tuple["RigidSolver | KinematicSolver", bool], RigidNodeBatch] = {}
         # (env_idx, geom.uid) -> per-env pyrender node for kinematic entities currently driven by set_vverts
@@ -328,7 +323,6 @@ class RasterizerContext:
             node_registry.clear()
         self._per_env_vverts_entity_uids.clear()
         self._dynamic_texture_targets.clear()
-        self._vgeoms_batched_texture_id.clear()
 
     def reset(self):
         self._t = -1
@@ -356,22 +350,19 @@ class RasterizerContext:
             return np.intersect1d(geom_active_envs_idx, rendered_envs_idx)
         return rendered_envs_idx
 
-    def add_rigid_node(self, geom, obj, track_pose=True, env_i=None, **kwargs):
+    def add_rigid_node(self, geom, obj, track_pose=True, **kwargs):
         """Add the node drawing a geom. With 'track_pose' the node follows the geom pose in every rendered environment at
-        update time, which a node drawn once for all of them does without. 'env_i' is the position among the rendered
-        environments of the only one the node is drawn in, if any (see 'RigidNodeBatch')."""
+        update time, which a node drawn once for all of them does without."""
         rigid_node = self.add_node(obj, **kwargs)
-        node_key = geom.uid if env_i is None else (geom.uid, env_i)
-        self.rigid_nodes[node_key] = rigid_node
+        self.rigid_nodes[geom.uid] = rigid_node
         if track_pose:
             is_visual = geom.entity.surface.vis_mode == "visual"
             batch_key = (geom.solver, is_visual)
             if batch_key not in self._rigid_batches:
-                self._rigid_batches[batch_key] = RigidNodeBatch(geom.solver, is_visual, [], [], [], [])
+                self._rigid_batches[batch_key] = RigidNodeBatch(geom.solver, is_visual, [], [], [])
             batch = self._rigid_batches[batch_key]
             batch.geoms_idx.append(geom.idx)
-            batch.nodes_key.append(node_key)
-            batch.envs_slice.append(slice(None) if env_i is None else slice(env_i, env_i + 1))
+            batch.geoms_uid.append(geom.uid)
             batch.is_plane.append(isinstance(geom.entity._morph, gs.morphs.Plane))
 
         # create segemtation id
@@ -385,21 +376,15 @@ class RasterizerContext:
             gs.raise_exception(f"Unsupported segmentation level: {self.segmentation_level}")
         self.create_node_seg(seg_key, rigid_node)
 
-    def add_geom_node(self, geom, geoms_T, material=None, env_i=None):
+    def add_geom_node(self, geom, geoms_T, material=None):
         """Add the node drawing a rigid geom, one instance per rendered environment and present in the environments
         holding the geom, and return its mesh (None when no rendered environment holds it). 'geoms_T' holds the
-        transforms of every geom of its solver in its visual mode, as 'rigid_geoms_T' returns them. A visual geom
-        showing a batched dynamic texture is drawn by one node per rendered environment instead, each with a material of
-        its own, and None is returned. 'env_i' adds the node of the rendered environment at that position alone.
+        transforms of every geom of its solver in its visual mode, as 'rigid_geoms_T' returns them.
 
         A horizontal plane wider than the environment spacing is one shared floor: one instance where the plane stands,
         in place of one copy per environment fighting over the same depth once laid out on the grid. Drawn where it
         stands, it lies under every environment in a pass drawing one environment as well.
         """
-        if env_i is None and id(geom) in self._vgeoms_batched_texture_id:
-            for env_i in range(len(self.rendered_envs_idx)):
-                self.add_geom_node(geom, geoms_T, env_i=env_i)
-            return None
         geom_envs_idx = self._get_geom_active_envs_idx(geom, self.rendered_envs_idx)
         if len(geom_envs_idx) == 0:
             return None
@@ -409,12 +394,8 @@ class RasterizerContext:
         mesh = geom.sdf_trimesh if "sdf" in vis_mode else geom.trimesh
         geom_T = geoms_T[:, geom.idx]
         envs = np.isin(self.rendered_envs_idx, geom_envs_idx)
-        if env_i is not None:
-            if not envs[env_i]:
-                return None
-            envs, geom_T = env_i, geom_T[env_i : env_i + 1]
         is_shared_floor = False
-        if env_i is None and envs.all() and isinstance(entity.main_morph, gs.morphs.Plane):
+        if envs.all() and isinstance(entity.main_morph, gs.morphs.Plane):
             plane_normal, plane_size = entity.main_morph.normal, entity.main_morph.plane_size
             is_shared_floor = (
                 abs(plane_normal[0]) < gs.EPS
@@ -435,28 +416,25 @@ class RasterizerContext:
             envs=envs,
             material=material,
         )
-        self.add_rigid_node(geom, mesh_node, track_pose=not is_shared_floor, env_i=env_i)
+        self.add_rigid_node(geom, mesh_node, track_pose=not is_shared_floor)
         if isinstance(entity._morph, gs.morphs.Plane):
             self.set_reflection_mat(geom_T)
         return mesh_node
 
-    def get_rigid_nodes_key(self, geom):
-        """Return the keys of the nodes drawing a geom, one per rendered environment for a batched dynamic texture."""
-        return [key for key in self.rigid_nodes if key == geom.uid or (isinstance(key, tuple) and key[0] == geom.uid)]
-
     def remove_rigid_node(self, geom):
-        """Remove the nodes drawing a geom, if any: a geom present in no rendered environment has none."""
-        for node_key in self.get_rigid_nodes_key(geom):
-            rigid_node = self.rigid_nodes.pop(node_key)
-            for batch_key, batch in self._rigid_batches.items():
-                if node_key in batch.nodes_key:
-                    i = batch.nodes_key.index(node_key)
-                    del batch.geoms_idx[i], batch.nodes_key[i], batch.is_plane[i]
-                    if not batch.nodes_key:
-                        del self._rigid_batches[batch_key]
-                    break
-            self.remove_node_seg(rigid_node)
-            self.remove_node(rigid_node)
+        """Remove the node drawing a geom, if any: a geom present in no rendered environment has none."""
+        rigid_node = self.rigid_nodes.pop(geom.uid, None)
+        if rigid_node is None:
+            return
+        for batch_key, batch in self._rigid_batches.items():
+            if geom.uid in batch.geoms_uid:
+                i = batch.geoms_uid.index(geom.uid)
+                del batch.geoms_idx[i], batch.geoms_uid[i], batch.is_plane[i]
+                if not batch.geoms_uid:
+                    del self._rigid_batches[batch_key]
+                break
+        self.remove_node_seg(rigid_node)
+        self.remove_node(rigid_node)
 
     def add_static_node(self, entity, obj, i_b, **kwargs):
         static_node = self.add_node(obj, **kwargs)
@@ -625,12 +603,6 @@ class RasterizerContext:
         # textured submeshes of a GLB, which are kept separate to preserve baked convex decompositions) expose the
         # same Texture instances. The renderer then keeps a single host copy and GPU upload instead of one per geom.
         vis_materials = {}
-        self._vgeoms_batched_texture_id.update(
-            id(binding.vgeom)
-            for handle in self.scene.dynamic_textures
-            if handle.is_batched
-            for binding in handle.bindings
-        )
         for solver in self._rigid_solvers():
             # One conversion of the geom poses per visual mode in use
             geoms_T_by_mode = {}
@@ -647,28 +619,26 @@ class RasterizerContext:
                     if mesh_node is not None:
                         vis_materials.setdefault(surface_key, mesh_node.primitives[0].material)
 
-        # A dynamic texture fills the base color of the material when the surface draws it as its color, and its
-        # emissive texture otherwise (see 'surface_uvs_to_trimesh_visual')
+        # A dynamic texture is the base color of the material when the surface draws it as its color, and its emissive
+        # texture otherwise (see 'surface_uvs_to_trimesh_visual'). The arrays start from the images of the handle.
         for handle in self.scene.dynamic_textures:
-            nodes_key, is_base_color, versions_idx = [], [], []
-            for binding in handle.bindings:
-                vgeom = binding.vgeom
-                if handle.is_batched:
-                    nodes_version_idx = [((vgeom.uid, env_i), i_b) for env_i, i_b in enumerate(self.rendered_envs_idx)]
-                else:
-                    nodes_version_idx = [(vgeom.uid, 0)]
-                for node_key, version_idx in nodes_version_idx:
-                    nodes_key.append(node_key)
-                    is_base_color.append(vgeom.surface.get_rgba() is handle.texture)
-                    versions_idx.append(version_idx)
+            is_base_color = [binding.vgeom.surface.get_rgba() is handle.texture for binding in handle.bindings]
+            images = tensor_to_array(handle.images)
+            textures = {
+                is_base: pyrender.Texture(
+                    source=images, source_channels="RGBA" if is_base else "RGB", tex_type=GL_TEXTURE_2D_ARRAY
+                )
+                for is_base in set(is_base_color)
+            }
             self._dynamic_texture_targets.append(
                 DynamicTextureTargets(
                     handle,
-                    nodes_key,
+                    textures,
+                    [binding.vgeom.uid for binding in handle.bindings],
                     is_base_color,
-                    np.array(versions_idx),
-                    np.zeros(len(nodes_key), dtype=gs.np_int),
-                    [None] * len(nodes_key),
+                    [None] * len(handle.bindings),
+                    handle.images_version.copy(),
+                    np.array([handle.selection_version]),
                 )
             )
 
@@ -767,17 +737,14 @@ class RasterizerContext:
             # the scene bounds, and the shadow map fitted to them, along
             is_pose_valid = (np.abs(geoms_T) < POSE_MAX_ABS).all(axis=(-2, -1))
             if not is_pose_valid.all():
-                for geom_T, is_valid, node_key, envs_slice in zip(
-                    geoms_T, is_pose_valid, batch.nodes_key, batch.envs_slice
-                ):
-                    is_invalid = ~is_valid[envs_slice]
-                    geom_T[envs_slice][is_invalid] = self.rigid_nodes[node_key].mesh.primitives[0].poses[is_invalid]
+                geoms_T_prev = np.stack([self.rigid_nodes[uid].mesh.primitives[0].poses for uid in batch.geoms_uid])
+                geoms_T[~is_pose_valid] = geoms_T_prev[~is_pose_valid]
             models = np.ascontiguousarray(geoms_T.transpose((0, 1, 3, 2)))
-            for geom_T, model, node_key, envs_slice in zip(geoms_T, models, batch.nodes_key, batch.envs_slice):
-                node = self.rigid_nodes[node_key]
+            for geom_T, model, geom_uid in zip(geoms_T, models, batch.geoms_uid):
+                node = self.rigid_nodes[geom_uid]
                 node.mesh._bounds = None
-                node.mesh.primitives[0].poses = geom_T[envs_slice]
-                self.jit.update_buffer(node, "model", model[envs_slice])
+                node.mesh.primitives[0].poses = geom_T
+                self.jit.update_buffer(node, "model", model)
             for i_plane in np.flatnonzero(batch.is_plane):
                 self.set_reflection_mat(geoms_T[i_plane])
 
@@ -1388,31 +1355,44 @@ class RasterizerContext:
         `solvers` restricts the sync to the nodes of those solvers, whose state changed since the last sync, the others
         being current. A sync after a step updates the nodes of every solver, whatever `solvers`.
         """
-        # The images of the dynamic textures are written at any time, stepping or not
+        # The dynamic textures are written and switched at any time, stepping or not
         with self.scene._visualizer.viewer_lock:
             for targets in self._dynamic_texture_targets:
                 handle = targets.handle
-                versions = handle.versions[targets.versions_idx]
-                nodes = [self.rigid_nodes.get(node_key) for node_key in targets.nodes_key]
-                is_stale = (versions != targets.uploaded_versions) | [
-                    node is not node_prev for node, node_prev in zip(nodes, targets.nodes)
-                ]
-                is_stale &= [node is not None for node in nodes]
-                if not is_stale.any():
-                    continue
-                targets_idx = np.flatnonzero(is_stale)
-                rows, rows_idx = np.unique(targets.versions_idx[targets_idx], return_inverse=True)
+                is_image_stale = handle.images_version != targets.images_version
+                if is_image_stale.any():
+                    images_idx = np.flatnonzero(is_image_stale)
+                    images = tensor_to_array(handle.images[torch.from_numpy(images_idx)])
+                    for texture in targets.textures.values():
+                        texture.set_layers(images_idx, images)
+                        self._scene.updated_textures.add(texture)
+                    targets.images_version[:] = handle.images_version
+                is_selection_stale = handle.selection_version != targets.selection_version[0]
                 if handle.is_batched:
-                    images = tensor_to_array(handle.image[torch.from_numpy(rows)])
+                    layers = handle.selection[self.rendered_envs_idx]
                 else:
-                    images = tensor_to_array(handle.image)[None]
-                for i_t, row_idx in zip(targets_idx, rows_idx):
-                    material = nodes[i_t].mesh.primitives[0].material
-                    texture = material.baseColorTexture if targets.is_base_color[i_t] else material.emissiveTexture
-                    texture.source = images[row_idx]
-                    self._scene.updated_textures.add(texture)
-                    targets.nodes[i_t] = nodes[i_t]
-                targets.uploaded_versions[targets_idx] = versions[targets_idx]
+                    layers = np.full(len(self.rendered_envs_idx), handle.selection[0])
+                for i_n, (node_key, is_base_color) in enumerate(zip(targets.nodes_key, targets.is_base_color)):
+                    node = self.rigid_nodes.get(node_key)
+                    if node is None:
+                        continue
+                    primitive = node.mesh.primitives[0]
+                    # A node drawn anew samples the texture its trimesh visual seeds, which the array replaces
+                    if node is not targets.nodes[i_n]:
+                        if is_base_color:
+                            primitive.material.baseColorTexture = targets.textures[True]
+                        else:
+                            primitive.material.emissiveTexture = targets.textures[False]
+                        if primitive.texture_layers is None:
+                            primitive.texture_layers = np.zeros((len(self.rendered_envs_idx), 2), np.float32)
+                        self._scene._meshes_updated = True
+                        targets.nodes[i_n] = node
+                    elif not is_selection_stale:
+                        continue
+                    texture_layers = primitive.texture_layers.copy()
+                    texture_layers[:, 0 if is_base_color else 1] = layers
+                    self.jit.update_texture_layers(node, texture_layers)
+                targets.selection_version[0] = handle.selection_version
 
         # Early return if already updated previously
         if not force_render and self._t >= self.scene.sim.cur_step_global:
