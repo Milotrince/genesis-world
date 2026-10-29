@@ -120,11 +120,11 @@ class LatchBehavior(Behavior[Latch]):
             self.release(torch.nonzero(is_pressed & ~self._is_pressed)[:, 0])
             self._is_pressed = is_pressed
 
+        # The torque applies everywhere, zero outside of a push, so that no step waits on the device
         is_pushing = self._push_steps_left > 0
-        if is_pushing.any():
-            push_torque = self.options.push_torque * self._joint.get_anchor_axis()
-            self._link.apply_external_torque(is_pushing[:, None] * push_torque)
-            self._push_steps_left.sub_(1).clamp_(min=0)
+        push_torque = self.options.push_torque * self._joint.get_anchor_axis()
+        self._link.apply_external_torque(is_pushing[:, None] * push_torque)
+        self._push_steps_left.sub_(1).clamp_(min=0)
 
     def reset(self, envs_idx):
         # A reset drops the welds added at runtime in the reset environments
@@ -133,6 +133,12 @@ class LatchBehavior(Behavior[Latch]):
         self._push_steps_left[envs_idx] = 0
         if self.options.is_engaged:
             self.engage(envs_idx)
+
+
+def report(phase, cabinet):
+    door_angle = cabinet.get_qpos(qs_idx_local=cabinet.get_joint("door_hinge").qs_idx_local)[:, 0]
+    is_engaged = cabinet.get_behavior("door_latch").is_engaged
+    print(f"{phase}: door angle {door_angle.tolist()} rad, latch engaged {is_engaged.tolist()}")
 
 
 def main():
@@ -177,11 +183,6 @@ def main():
     button_dofs_idx_local = cabinet.get_joint("open_button").dofs_idx_local
     cabinet.set_dofs_kp(200.0, dofs_idx_local=button_dofs_idx_local)
 
-    def report(phase, cabinet):
-        door_angle = cabinet.get_qpos(qs_idx_local=cabinet.get_joint("door_hinge").qs_idx_local)[:, 0]
-        is_engaged = cabinet.get_behavior("door_latch").is_engaged
-        print(f"{phase}: door angle {door_angle.tolist()} rad, latch engaged {is_engaged.tolist()}")
-
     # The engaged latch holds the door shut against a pull on its handle
     for _ in range(50):
         door.apply_external_torque((0.0, 0.0, -2.0))
@@ -195,24 +196,24 @@ def main():
     report("Button held in env 0", cabinet)
 
     # A checkpoint holds the latch state along with the welds and the rest of the scene
-    checkpoint_dir = tempfile.TemporaryDirectory()
-    checkpoint_path = os.path.join(checkpoint_dir.name, "latch.gstraj")
-    scene.save_checkpoint(checkpoint_path)
+    with tempfile.TemporaryDirectory() as checkpoint_dir:
+        checkpoint_path = os.path.join(checkpoint_dir, "latch.gstraj")
+        scene.save_checkpoint(checkpoint_path)
 
-    # Engaging again locks the door wherever it stands
-    cabinet.control_dofs_position([[0.0], [0.0]], dofs_idx_local=button_dofs_idx_local)
-    latch.engage()
-    for _ in range(50):
-        door.apply_external_torque((0.0, 0.0, -2.0))
-        scene.step()
-    report("Pulled after engaging again", cabinet)
+        # Engaging again locks the door wherever it stands
+        cabinet.control_dofs_position([[0.0], [0.0]], dofs_idx_local=button_dofs_idx_local)
+        latch.engage()
+        for _ in range(50):
+            door.apply_external_torque((0.0, 0.0, -2.0))
+            scene.step()
+        report("Pulled after engaging again", cabinet)
 
-    # A reset closes the door and restores the declared latch state in every environment
-    scene.reset()
-    report("Reset", cabinet)
+        # A reset closes the door and restores the declared latch state in every environment
+        scene.reset()
+        report("Reset", cabinet)
 
-    # The scene loaded from the checkpoint stands where it was saved, its door open and released in env 0 alone
-    restored_scene = gs.Scene.load_checkpoint(checkpoint_path)
+        # The scene loaded from the checkpoint stands where it was saved, its door open and released in env 0 alone
+        restored_scene = gs.Scene.load_checkpoint(checkpoint_path)
     restored_cabinet = restored_scene.entities[1]
     report("Loaded from the checkpoint", restored_cabinet)
     for _ in range(50):
