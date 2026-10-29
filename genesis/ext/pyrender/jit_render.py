@@ -863,6 +863,10 @@ class JITRenderer:
                         "diffuse_texture",
                         "specular_glossiness_texture",
                     ]
+                    # A sampler the draw leaves unset reads unit 0, which a texture array would make two sampler types
+                    # read, an invalid draw
+                    if tf >> 8 and active_texture == 0:
+                        active_texture = 1
                     for i in range(7):
                         if tf & (1 << i):
                             gl.glActiveTexture(GL_TEXTURE0 + active_texture)

@@ -208,8 +208,9 @@ def test_dynamic_texture(show_viewer):
     #  - screen: an emissive texture switching between two named colors per environment, drawn as the color of an
     #    Emission surface.
     #  - label: a diffuse texture of two images drawn at runtime, selected per environment, given through the options
-    #    of the visual geom.
-    #  - lamp: an emissive texture shared by every environment, added on top of a dark red base color.
+    #    of the visual geom, which start from the texture the plane gives itself, as a plain plane beside it shows.
+    #  - lamp: an emissive texture shared by every environment, added on top of a dark red base color, which starts as
+    #    a checkerboard since a plane gives no emission.
     # A camera sensor renders through a rasterizer of its own, so it uploads the images independently of the camera.
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
@@ -271,10 +272,18 @@ def test_dynamic_texture(show_viewer):
         surface=gs.surfaces.Default(
             color=(0.3, 0.0, 0.0),
             emissive_texture=gs.textures.DynamicTexture(
-                res=(4, 4),
+                res=(16, 16),
                 is_batched=False,
             ),
         ),
+    )
+    reference = scene.add_entity(
+        morph=gs.morphs.Plane(
+            pos=(2.4, 0.0, 0.0),
+            plane_size=(1.0, 1.0),
+            fixed=True,
+        ),
+        surface=gs.surfaces.Rough(),
     )
     camera = scene.add_camera(
         pos=(0.0, 0.0, 4.0),
@@ -293,7 +302,7 @@ def test_dynamic_texture(show_viewer):
     )
     scene.build(n_envs=2)
 
-    entities = (screen, label, lamp)
+    entities = (screen, label, lamp, reference)
     rgb, _, segmentation, _ = camera.render(rgb=True, segmentation=True)
     masks = [[segmentation[i_b] == entity.idx + 1 for entity in entities] for i_b in range(2)]
     for i_b in range(2):
@@ -303,23 +312,27 @@ def test_dynamic_texture(show_viewer):
     def get_colors(rgb):
         return np.stack([[rgb[i_b][mask].mean(axis=0) for mask in masks[i_b]] for i_b in range(2)])
 
-    # The images at build: the first color of the screen, opaque black, and the dark red base without emission
+    # The images at build: the first color of the screen, the texture of the plane, and a black and magenta checkerboard
+    # adding red and blue on top of the dark red base
     colors = get_colors(rgb)
     assert (colors[:, 0, 2] > 150.0).all() and (colors[:, 0, :2] < 30.0).all()
-    assert (colors[:, 1] < 30.0).all()
-    lamp_base = colors[:, 2]
-    assert (lamp_base[:, 0] > 40.0).all() and (lamp_base[:, 1:] < 30.0).all()
+    assert_allclose(colors[:, 1], colors[:, 3], atol=5.0)
+    lamp_initial = colors[:, 2]
+    assert (lamp_initial[:, [0, 2]] > 40.0).all() and (lamp_initial[:, 1] < 30.0).all()
 
     screen_texture = screen.get_dynamic_texture(gs.TEXTURE_SLOT.EMISSIVE)
     assert scene.get_dynamic_texture("screen") is screen_texture
     label_texture = label.vgeoms[0].get_dynamic_texture(gs.TEXTURE_SLOT.DIFFUSE)
     lamp_texture = lamp.get_dynamic_texture(gs.TEXTURE_SLOT.EMISSIVE)
+    assert_equal(
+        lamp_texture.images[0, 0, :4], [[0, 0, 0, 255], [0, 0, 0, 255], [255, 0, 255, 255], [255, 0, 255, 255]]
+    )
     # An image selected by name in one environment, images drawn and selected one per environment, and a shared image
     # written in place
     screen_texture.select("red", envs_idx=[1])
     label_texture.set_image(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None], images_idx=[0, 1])
     label_texture.select(torch.tensor([0, 1]))
-    lamp_texture.images[..., 1] = 255
+    lamp_texture.images[..., :3] = torch.tensor([0, 255, 0], dtype=torch.uint8)
     lamp_texture.notify_changed()
     # The camera shows the images as soon as they change, while the sensor renders them at the next step
     scene.step()
@@ -336,7 +349,7 @@ def test_dynamic_texture(show_viewer):
     # An integer image is clamped to the range of a channel, a texture shared by every environment refuses a selection
     # of environments, and an image is named by the texture
     lamp_texture.set_image(np.array([300, -5, 128]))
-    assert_equal(lamp_texture.images[0, ..., :3], torch.tensor([255, 0, 128], dtype=torch.uint8).expand(4, 4, 3))
+    assert_equal(lamp_texture.images[0, ..., :3], torch.tensor([255, 0, 128], dtype=torch.uint8).expand(16, 16, 3))
     with pytest.raises(gs.GenesisException, match="envs_idx"):
         lamp_texture.select(0, envs_idx=[0])
     with pytest.raises(gs.GenesisException, match="No image is named"):
@@ -360,8 +373,8 @@ def test_dynamic_texture(show_viewer):
     scene.reset()
     colors = get_colors(camera.render(rgb=True)[0])
     assert (colors[:, 0, 2] > 150.0).all() and (colors[:, 0, :2] < 30.0).all()
-    assert (colors[:, 1] < 30.0).all()
-    assert_allclose(colors[:, 2], lamp_base, atol=5.0)
+    assert_allclose(colors[:, 1], colors[:, 3], atol=5.0)
+    assert_allclose(colors[:, 2], lamp_initial, atol=5.0)
 
 
 @pytest.mark.required
