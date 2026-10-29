@@ -57,7 +57,7 @@ class RigidGeom(RBC):
         self._edge_start: int = edge_start
         self._verts_state_start: int = verts_state_start
 
-        solver_options = link.entity._options.solver_options
+        solver_options = link.entity._desc.options.solver_options
         self._coup_softness: float = solver_options.coup_softness
         self._coup_friction: float = solver_options.coup_friction
         self._coup_restitution: float = solver_options.coup_restitution

@@ -16,6 +16,7 @@ from genesis.utils.tools import StepTimer
 
 from .couplers import IPCCoupler, LegacyCoupler, SAPCoupler
 from .entities import HybridEntity
+from .entities.hybrid_entity import HybridEntityDescription
 from .sensors import SensorManager
 from .solvers import (
     FEMSolver,
@@ -29,6 +30,7 @@ from .solvers import (
 from .solvers.base_solver import GravityMixin, TimeBasedMixin, merge_errno
 from .state_change import StateChange, Subscriber
 from .states.solvers import SimState, SimulatorCheckpoint, SolverCheckpoint
+from .system_data import SystemDataArray
 
 if TYPE_CHECKING:
     from genesis.engine.entities.base_entity import Entity, EntityDescription
@@ -103,6 +105,8 @@ class Simulator(RBC):
         )
         self._is_forward_ready = True
 
+        self._system_data = SystemDataArray()
+
         # solvers
         self.rigid_solver = RigidSolver(self.scene, self, options.rigid)
         self.kinematic_solver = KinematicSolver(self.scene, self, options.kinematic)
@@ -158,10 +162,18 @@ class Simulator(RBC):
         if desc is not None:
             material = desc.material
             options = desc.options
+        # Only a kinematic or rigid entity takes several morphs, one per variant. The other solvers resolve their
+        # description from the morph before the entity exists, so the check runs here.
+        elif not isinstance(morph, Morph) and not isinstance(
+            options, (gs.options.RigidEntityOptions, gs.options.KinematicEntityOptions)
+        ):
+            gs.raise_exception(f"An entity is created from one morph, got {type(morph).__name__}.")
         if isinstance(options, gs.options.HybridEntityOptions):
-            # A hybrid entity has no solver of its own, since its parts are entities of their own. The hybrid entity
-            # adds its parts to the scene itself.
-            entity = HybridEntity(self.n_entities, self.scene, material, morph, surface, name=name, options=options)
+            # A hybrid entity has no solver of its own, since its parts are entities of their own. Resolution adds both
+            # parts to the scene first, so the hybrid entity comes after them, authored or loaded.
+            if desc is None:
+                desc = HybridEntityDescription.resolve(self.scene, morph, surface, name, options)
+            entity = HybridEntity(self.n_entities, self.scene, desc)
         else:
             # The options decide the solver, by naming the class of the options configuring it
             for solver in self._solvers:
@@ -173,8 +185,7 @@ class Simulator(RBC):
                 self.n_entities, material, morph, surface, visualize_contact, name=name, options=options, desc=desc
             )
         self._entities.append(entity)
-        if entity.desc is not None:
-            self.scene._desc.entities.append(entity.desc)
+        self.scene._desc.entities.append(entity.desc)
         return entity
 
     def _add_force_field(self, force_field):
@@ -228,6 +239,15 @@ class Simulator(RBC):
 
         # Counted per environment to support per-env reset, as steps rather than seconds to avoid drifting over time.
         self._steps = torch.zeros((self._B,), dtype=gs.tc_int, device=gs.device)
+
+        descriptions = [solver.describe() for solver in self._solvers]
+        for solver, description in zip(self._solvers, descriptions):
+            if description is not None:
+                solver._data_record = self._system_data.allocate(solver, description)
+        for solver in self._solvers:
+            if solver._data_record is not None:
+                solver.register_data()
+        self._system_data.build()
 
         # solvers
         # IPCCoupler needs full substep flow for pre/post coupling phases
@@ -286,6 +306,7 @@ class Simulator(RBC):
 
     def destroy(self):
         self._sensor_manager.destroy()
+        self._system_data.clear()
 
     def reset(self, state: SimState, envs_idx=None):
         for solver, solver_state in zip(self._solvers, state):

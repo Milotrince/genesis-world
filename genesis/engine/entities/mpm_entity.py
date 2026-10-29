@@ -1,4 +1,5 @@
 import functools
+from dataclasses import dataclass
 
 import torch
 
@@ -9,7 +10,12 @@ from genesis.engine.states.entities import MPMEntityState
 from genesis.options.materials import Liquid, Muscle, Sand, Snow
 from genesis.utils.misc import broadcast_tensor
 
-from .particle_entity import ParticleEntity, assert_active
+from .particle_entity import ParticleEntity, ParticleEntityDescription, assert_active
+
+
+@dataclass(kw_only=True)
+class MPMEntityDescription(ParticleEntityDescription):
+    pass
 
 
 def assert_muscle(method):
@@ -33,14 +39,8 @@ class MPMEntity(ParticleEntity):
         Scene object this entity belongs to.
     solver : Solver
         The solver responsible for simulating this entity.
-    material : Material
-        Material used to determine physical behavior (e.g., Snow, Sand, Muscle).
-    morph : Morph
-        Shape description used for particle sampling.
-    surface : Surface
-        Surface or texture representation.
-    particle_size : float
-        Particle size for discretization.
+    desc : MPMEntityDescription
+        The resolved particles and visual mesh, with the options, morph and surface they are resolved from.
     idx : int
         Unique index of the entity.
     model_idx : int
@@ -57,38 +57,21 @@ class MPMEntity(ParticleEntity):
         self,
         scene,
         solver,
-        material,
-        morph,
-        surface,
-        particle_size,
+        desc: MPMEntityDescription,
         idx,
         model_idx,
         particle_start,
         vvert_start,
         vface_start,
-        name: str | None = None,
-        *,
-        options,
     ):
-        need_skinning = not isinstance(material, (Liquid, Sand, Snow))
-        super().__init__(
-            scene,
-            solver,
-            material,
-            morph,
-            surface,
-            particle_size,
-            idx,
-            particle_start,
-            vvert_start,
-            vface_start,
-            need_skinning=need_skinning,
-            name=name,
-            options=options,
-        )
+        super().__init__(scene, solver, desc, idx, particle_start, vvert_start, vface_start)
         self._model_idx = model_idx
         # The number of muscle groups, which the hybrid entity owning this one as its skin sets to its number of links
-        self._n_groups = options.solver_options.n_groups
+        self._n_groups = desc.options.solver_options.n_groups
+
+    @property
+    def desc(self) -> MPMEntityDescription:
+        return self._desc
 
     def _add_to_solver(self):
         super()._add_to_solver()

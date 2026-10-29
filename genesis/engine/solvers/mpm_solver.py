@@ -10,11 +10,15 @@ import genesis.utils.array_class as array_class
 import genesis.utils.geom as gu
 import genesis.utils.sdf as sdf
 from genesis.engine.boundaries import CubeBoundary
-from genesis.engine.entities import MPMEntity
+from genesis.engine.entities import HybridEntity, MPMEntity
+from genesis.engine.entities.mpm_entity import MPMEntityDescription
 from genesis.engine.solvers.mpm_models import MPMModel, MPMModelKey, build_mpm_model, get_mpm_model_key
 from genesis.engine.state_change import StateChange, mutates
 from genesis.engine.states.solvers import MPMSolverState
+from genesis.engine.system_data.mpm import MPMData, MPMDescription
+from genesis.engine.system_data.particles import ParticleEntityData
 from genesis.grad.bridge import no_grad, register_custom_backward
+from genesis.options.materials import Liquid, Sand, Snow
 from genesis.options.solvers import MPMOptions
 from genesis.utils.misc import DeprecationError, broadcast_tensor, qd_isfinite, qd_to_torch
 
@@ -35,6 +39,8 @@ class MPMSolver(ParticleSolver):
 
     def __init__(self, scene: "Scene", sim: "Simulator", options: "MPMOptions"):
         super().__init__(scene, sim, options)
+
+        self._hybrid_entities: list[HybridEntity] = []
 
         # options
         self._grid_density = options.grid_density
@@ -82,60 +88,14 @@ class MPMSolver(ParticleSolver):
             lower=self._lower_bound + self.boundary_padding, upper=self._upper_bound - self.boundary_padding
         )
 
-    def init_particle_fields(self):
-        # dynamic particle state
-        struct_particle_state = qd.types.struct(
-            pos=gs.qd_vec3,  # position
-            vel=gs.qd_vec3,  # velocity
-            C=gs.qd_mat3,  # affine velocity field
-            F=gs.qd_mat3,  # deformation gradient
-            F_tmp=gs.qd_mat3,  # temp deformation gradient
-            U=gs.qd_mat3,  # SVD
-            V=gs.qd_mat3,  # SVD
-            S=gs.qd_mat3,  # SVD
-            actu=gs.qd_float,  # actuation
-            Jp=gs.qd_float,  # volume ratio
-        )
-
-        # dynamic particle state without gradient
-        struct_particle_state_ng = qd.types.struct(active=gs.qd_bool)
-
-        # static particle info
-        struct_particle_info = qd.types.struct(
-            material_idx=gs.qd_int,
-            mass=gs.qd_float,
-            default_Jp=gs.qd_float,
-            free=gs.qd_bool,
-            # for muscle
-            muscle_group=gs.qd_int,
-            muscle_direction=gs.qd_vec3,
-        )
-
+    def init_particle_render_fields(self):
         # single frame particle state for rendering
         struct_particle_state_render = qd.types.struct(pos=gs.qd_vec3, vel=gs.qd_vec3, active=gs.qd_bool)
-
-        # construct fields
-        self.particles = struct_particle_state.field(
-            shape=(self.n_frames, self._n_particles, self._B), needs_grad=True, layout=qd.Layout.SOA
-        )
-        self.particles_ng = struct_particle_state_ng.field(
-            shape=(self.n_frames, self._n_particles, self._B), needs_grad=False, layout=qd.Layout.SOA
-        )
-        self.particles_info = struct_particle_info.field(
-            shape=self._n_particles, needs_grad=False, layout=qd.Layout.SOA
-        )
         self.particles_render = struct_particle_state_render.field(
             shape=(self._n_particles, self._B), needs_grad=False, layout=qd.Layout.SOA
         )
 
-    def init_grid_fields(self):
-        grid_cell_state = qd.types.struct(
-            mass=gs.qd_float,  # mass
-            vel_in=gs.qd_vec3,  # input momentum/velocity
-            vel_out=gs.qd_vec3,  # output momentum/velocity
-        )
-        # Grid is only ever indexed at [f] (never [f+1]) in p2g/g2p/reset/coupler, so one frame per substep is enough.
-        # Particles still need one more, because g2p writes the next-frame state at [f+1].
+    def init_grid_scratch(self):
         # The errors of each env, raised at the beginning of the next step (see 'Solver.register_errors')
         self.errno = qd.field(gs.qd_int, shape=(self._B,))
         self.register_errors(
@@ -145,10 +105,6 @@ class MPMSolver(ParticleSolver):
                     "NaN detected in MPM states. Try reducing the time step size or adjusting simulation parameters."
                 ),
             },
-        )
-
-        self.grid = grid_cell_state.field(
-            shape=(self.n_frames - 1, *self._grid_res, self._B), needs_grad=True, layout=qd.Layout.SOA
         )
 
         # Sparse-reset bookkeeping for forward-only mode. A single global dirty list captures unique cells touched by
@@ -209,11 +165,10 @@ class MPMSolver(ParticleSolver):
         self.particles.grad.fill(0.0)
         self.grid.grad.fill(0.0)
 
-    def build(self):
-        super().build()
+    def describe(self) -> MPMDescription | None:
+        super().describe()
 
         # particles and entities
-        self._B = self._sim._B
         self._n_particles = self.n_particles
         self._n_vverts = self.n_vverts
         self._n_vfaces = self.n_vfaces
@@ -229,14 +184,52 @@ class MPMSolver(ParticleSolver):
         # TODO: validate the J = det(F_tmp) shortcut composes with quadrants autograd before enabling it there.
         self.needs_svd = self._sim.requires_grad or any(model.needs_svd for model in self._models)
 
+        if not self.is_active:
+            return None
+        return MPMDescription(
+            _B=self._B,
+            particle_volume_scale=self._particle_volume_scale,
+            n_frames=self.n_frames,
+            n_particles=self.n_particles,
+            grid_res=self._grid_res,
+        )
+
+    def register_data(self):
+        assert isinstance(self._data_record, MPMData)
+        self.particles = self._data_record.particles
+        self.particles_ng = self._data_record.particles_ng
+        self.particles_info = self._data_record.particles_info
+        self.grid = self._data_record.grid
+        for entity in self.entities:
+            self.sim._system_data.add(
+                ParticleEntityData(
+                    owner=self,
+                    idx=entity.idx,
+                    data=self._data_record,
+                    particle_start=entity.particle_start,
+                    particle_end=entity.particle_end,
+                )
+            )
+
+    def build(self):
+        super().build()
+
         if self.is_active:
             if self._enable_CPIC and self._sim.requires_grad:
                 gs.raise_exception(
                     "CPIC is not supported in differentiable mode yet. Submit a feature request if you need it."
                 )
 
-            self.init_particle_fields()
-            self.init_grid_fields()
+            self._hybrid_entities.extend(
+                entity
+                for entity in self._sim.entities
+                if isinstance(entity, HybridEntity)
+                and entity.part_soft.solver is self
+                and entity.desc.association is not None
+            )
+
+            self.init_particle_render_fields()
+            self.init_grid_scratch()
             self.init_vvert_fields()
 
             for entity in self._entities:
@@ -263,8 +256,20 @@ class MPMSolver(ParticleSolver):
 
     def add_entity(
         self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
-    ) -> "MPMEntity":
-        model_key = get_mpm_model_key(options)
+    ) -> MPMEntity:
+        if desc is None:
+            desc = MPMEntityDescription.resolve(
+                morph,
+                surface,
+                self._particle_size,
+                name,
+                self.boundary,
+                has_skinning=not isinstance(options.material, (Liquid, Sand, Snow)),
+                options=options,
+            )
+        assert isinstance(desc, MPMEntityDescription)
+
+        model_key = get_mpm_model_key(desc.options)
         if model_key not in self._models_key:
             self._models_key.append(model_key)
 
@@ -272,17 +277,12 @@ class MPMSolver(ParticleSolver):
         entity = MPMEntity(
             scene=self._scene,
             solver=self,
-            material=material,
-            morph=morph,
-            surface=surface,
-            particle_size=self._particle_size,
+            desc=desc,
             idx=idx,
             model_idx=self._models_key.index(model_key),
             particle_start=self.n_particles,
             vvert_start=self.n_vverts,
             vface_start=self.n_vfaces,
-            name=name,
-            options=options,
         )
         self._entities.append(entity)
 
@@ -606,6 +606,10 @@ class MPMSolver(ParticleSolver):
         # The positions a step ends with are checked once, an error being raised at the beginning of the next step
         if (self._sim._cur_substep_global + 1) % self._substeps == 0:
             self._kernel_flag_non_finite_pos(f + 1)
+
+        # Hybrid entities drive their soft particles from the rigid links after the grid to particle transfer
+        for entity in self._hybrid_entities:
+            entity.update_soft_part(f)
 
     @qd.kernel
     def copy_frame(self, source: qd.i32, target: qd.i32):

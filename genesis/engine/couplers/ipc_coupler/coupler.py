@@ -228,7 +228,8 @@ class IPCCoupler(RBC):
         for i_e, entity in enumerate(cast(list["RigidEntity"], self.rigid_solver.entities)):
             # An entity takes part in the coupling as soon as one of its links does
             links_solver_options = [
-                entity._options.get_link_solver_options(entity._links_path[link.idx_local]) for link in entity.links
+                entity._desc.options.get_link_solver_options(entity._links_path[link.idx_local])
+                for link in entity.links
             ]
             coup_links = {
                 link
@@ -237,7 +238,7 @@ class IPCCoupler(RBC):
             }
             if not coup_links:
                 continue
-            coup_type = entity._options.solver_options.coup_type
+            coup_type = entity._desc.options.solver_options.coup_type
             if coup_type is None:
                 # Only the two-way coupling couples some links of an entity alone (see 'RigidLinkSolverOptions')
                 coup_type = "two_way_soft_constraint" if len(coup_links) < entity.n_links else default_coup_type(entity)
@@ -334,7 +335,7 @@ class IPCCoupler(RBC):
             for i_e, entity in enumerate(cast(list["FEMEntity"], self.fem_solver.entities)):
                 is_cloth = isinstance(entity.material, Cloth)
                 solver_type = "cloth" if is_cloth else "fem"
-                material_params = entity._options.material_params
+                material_params = entity._desc.options.material_params
 
                 # Create object in IPC
                 fem_obj = self._ipc_objects.create(f"{solver_type}_{i_e}_{env_idx}")
@@ -537,7 +538,7 @@ class IPCCoupler(RBC):
 
                 # An affine body holds the density of its entity alone, over every link merged into it
                 for source_link in source_links:
-                    if entity._options.has_link_density(entity._links_path[source_link.idx_local]):
+                    if entity._desc.options.has_link_density(entity._links_path[source_link.idx_local]):
                         gs.raise_exception(
                             f"The IPC coupler simulates link '{source_link.name}' of entity '{entity.name}' at the "
                             "density of its material alone, so the link and geom options cannot give it a density."
@@ -709,12 +710,12 @@ class IPCCoupler(RBC):
         # Collect (ContactElement, friction_mu, resistance, is_abd) for all entity contact elements
         contact_infos: list[tuple[ContactElement, float, float, bool]] = []
         for entity, elem in (*self._ipc_cloth_contacts.items(), *self._ipc_fem_contacts.items()):
-            friction = entity._options.material_params.friction
-            resistance = entity._options.solver_options.contact_resistance or self.options.contact_resistance
+            friction = entity._desc.options.material_params.friction
+            resistance = entity._desc.options.solver_options.contact_resistance or self.options.contact_resistance
             contact_infos.append((elem, friction, resistance, False))
         for entity, elem in self._ipc_abd_contacts.items():
-            friction = entity._options.solver_options.coup_friction
-            resistance = entity._options.solver_options.contact_resistance or self.options.contact_resistance
+            friction = entity._desc.options.solver_options.coup_friction
+            resistance = entity._desc.options.solver_options.contact_resistance or self.options.contact_resistance
             contact_infos.append((elem, friction, resistance, True))
 
         # Register entity-entity pairs (upper triangle including self-pairs)
@@ -727,8 +728,8 @@ class IPCCoupler(RBC):
 
         # Register per-plane ground contact pairs
         for entity, ground_elem in self._ipc_ground_contacts.items():
-            plane_friction = entity._options.solver_options.coup_friction
-            plane_resistance = entity._options.solver_options.contact_resistance or self.options.contact_resistance
+            plane_friction = entity._desc.options.solver_options.coup_friction
+            plane_resistance = entity._desc.options.solver_options.contact_resistance or self.options.contact_resistance
             for elem, friction, resistance, is_abd in contact_infos:
                 friction_ground = geometric_mean(friction, plane_friction)
                 resistance_ground = harmonic_mean(resistance, plane_resistance)

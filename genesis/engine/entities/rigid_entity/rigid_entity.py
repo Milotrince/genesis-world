@@ -47,15 +47,10 @@ class KinematicEntity(Entity):
 
     def __init__(self, scene: "Scene", solver: "KinematicSolver", idx: int, desc: KinematicEntityDescription):
         # Set heterogeneous support before super().__init__() because _get_morph_identifier() needs it
-        self._desc = desc
         self._morph_heterogeneous = desc.morphs[1:]
         self._enable_heterogeneous = bool(self._morph_heterogeneous)
 
-        super().__init__(
-            idx, scene, desc.morphs[0], solver, desc.material, desc.surface, name=desc.name, options=desc.options
-        )
-        # The scene names an entity as it is added, so the description takes the name the entity received
-        desc.name = self._name
+        super().__init__(idx, scene, solver, desc, desc.morphs[0])
 
         # Where this entity's links, joints and geoms begin in the solver: right after those of the entities it holds
         self._idx_in_solver = solver.n_entities
@@ -1529,7 +1524,7 @@ class RigidEntity(KinematicEntity):
 
     def _add_heterogeneous_variant(self, link, v_link):
         # Add collision geometries
-        needs_coup = self._options.get_link_solver_options(self._links_path[link.idx_local]).needs_coup
+        needs_coup = self._desc.options.get_link_solver_options(self._links_path[link.idx_local]).needs_coup
         for g_desc in v_link.geoms:
             link._add_geom(g_desc, needs_coup=needs_coup)
 
@@ -1679,7 +1674,7 @@ class RigidEntity(KinematicEntity):
         # Add visual geometries
         for g_desc in l_desc.vgeoms:
             link._add_vgeom(g_desc)
-        needs_coup = self._options.get_link_solver_options(self._links_path[link.idx_local]).needs_coup
+        needs_coup = self._desc.options.get_link_solver_options(self._links_path[link.idx_local]).needs_coup
         for g_desc in l_desc.geoms:
             link._add_geom(g_desc, needs_coup=needs_coup)
 
@@ -3197,7 +3192,7 @@ class RigidEntity(KinematicEntity):
     @property
     def gravity_compensation(self):
         """Apply a force to compensate gravity. A value of 1 will make a zero-gravity behavior. Default to 0"""
-        return self._options.gravity_compensation
+        return self._desc.options.gravity_compensation
 
     @property
     def vert_start(self):

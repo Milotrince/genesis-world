@@ -13,6 +13,7 @@ import genesis.utils.array_class as array_class
 from genesis.engine.entities.base_entity import Entity
 from genesis.engine.state_change import StateChange, Subscriber, mutates
 from genesis.engine.states import SolverCheckpoint
+from genesis.engine.system_data import SystemData, SystemDataDescription
 from genesis.grad.bridge import RolloutGraph
 from genesis.repr_base import RBC
 from genesis.utils.misc import (
@@ -210,6 +211,7 @@ class Solver(RBC):
         self._sim = sim
         self._scene = scene
         self._options = options
+        self._data_record: SystemData | None = None
         self._entities: list[Entity] = gs.List()
 
         # Whether the state of the solver tracks gradients, and the autograd graph of the simulator recording them
@@ -437,8 +439,15 @@ class Solver(RBC):
                 tensor_ = tensor_[None]
         return tensor_, inputs_idx_, envs_idx_
 
-    def build(self):
+    def describe(self) -> SystemDataDescription | None:
+        """Resolve the static configuration, and return what the simulator allocates as this solver's record."""
         self._B = self._sim._B
+        return None
+
+    def register_data(self):
+        """Bind the allocated record and register the range records that index into it."""
+
+    def build(self):
         self._errno_latched = torch.zeros((self._B,), dtype=gs.tc_int, device=gs.device)
         if gs.device.type == "cuda":
             self._errno_host = torch.zeros((self._B,), dtype=gs.tc_int, pin_memory=True)

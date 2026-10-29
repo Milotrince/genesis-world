@@ -562,6 +562,15 @@ def test_entity_options(tmp_path, show_viewer, tol, two_box_free_mjcf, torus_box
         is_opposite = morph_verts_pos[:, 2] < morph_verts_pos[:, 2].min() + 1e-3
         assert (init_verts_pos[is_opposite, 2] - verts_pos[:, is_opposite, 2] > 1e-2).all()
 
+    exported = tmp_path / "entity_options.gscene"
+    scene.export(exported)
+    restored = gs.Scene.load(exported)
+    assert [type(entity) for entity in restored.entities] == [type(entity) for entity in scene.entities]
+    for restored_entity, original_entity in zip(restored.entities, scene.entities):
+        # FEM and MPM materials hold functions bound to themselves, which no other instance compares equal to
+        assert restored_entity.options.model_dump() == original_entity.options.model_dump()
+        assert restored_entity.options.model_fields_set == original_entity.options.model_fields_set
+
 
 @pytest.mark.required
 def test_scene_destroy_cleans_up_simulator():
