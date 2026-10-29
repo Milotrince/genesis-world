@@ -1,0 +1,26 @@
+tests/rigid/test_friction.py
+  s_b582e8fa6ff8e7::t_443a2ac1fb74ea 1107-1108
+  s_b582e8fa6ff8e7::t_94598ac1826f91 1054,1065,1106,1109
+genesis/engine/materials/rigid.py
+  s_b582e8fa6ff8e7::t_5e8e777d66506f 49-51,53-56
+genesis/engine/entities/rigid_entity/rigid_geom.py
+  s_b582e8fa6ff8e7::t_88051d7bf99aab 13,66-69
+  s_b582e8fa6ff8e7::t_675ca0c5fd022c 65
+  s_b582e8fa6ff8e7::t_71f1adb285c96d 64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ae5bfa52416f4d5289eb980d09e2468d4d18a69",
+  "prompts": {},
+  "sessions": {
+    "s_b582e8fa6ff8e7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "93cbe5da-5fda-4b22-914a-07c07aa5b08e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
