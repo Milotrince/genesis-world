@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
 
@@ -13,13 +14,123 @@ import genesis as gs
 import genesis.utils.element as eu
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
-from genesis.engine.couplers import SAPCoupler
 from genesis.engine.entities.rigid_entity import RigidLink
 from genesis.engine.states.entities import FEMEntityState
+from genesis.options.materials import Cloth, Muscle
+from genesis.options.morphs import Morph
+from genesis.options.surfaces import Surface
 from genesis.repr_base import RBC
 from genesis.utils.misc import broadcast_tensor, tensor_to_array, unique_rows
 
-from .base_entity import Entity
+from .base_entity import Entity, EntityDescription, VerticesDescription
+
+
+@dataclass(kw_only=True)
+class FEMVisGeomDescription:
+    vmesh: gs.Mesh
+    sim_verts_idx: np.ndarray
+
+
+@dataclass(kw_only=True)
+class FEMEntityDescription(VerticesDescription, EntityDescription):
+    morph: Morph
+    surface: Surface
+    name: str | None
+    init_positions_COM: np.ndarray
+    elems: np.ndarray
+    surface_triangles: np.ndarray
+    surface_elements: np.ndarray
+    vgeoms: tuple[FEMVisGeomDescription, ...]
+    pressure_field: np.ndarray | None
+    fixed_verts_idx_local: np.ndarray
+
+    @classmethod
+    def resolve(cls, morph, surface, name, *, has_pressure, options):
+        """Build the simulation mesh and the visual geoms of an entity from its morph.
+
+        Each morph sub-mesh becomes a visual geom with its own surface and UVs, while the simulation operates on a
+        single welded copy of their vertices, tracked through 'FEMVisGeomDescription.sim_verts_idx': welding and
+        tetrahedralization both keep the input vertices first and in order, so these maps remain valid indices into
+        the simulated vertices. The hydroelastic pressure field is computed when 'has_pressure' is set. 'options' are
+        the entity options the other arguments were taken from, kept as authored in the description, which state the
+        material and the fixed vertices.
+        """
+        meshes = gs.Mesh.from_morph_surface(morph, surface)
+        surface_verts, surface_faces, verts_maps = mu.merge_submeshes(
+            [mesh.verts for mesh in meshes], [mesh.faces for mesh in meshes]
+        )
+        if isinstance(options.material, Cloth):
+            # Cloth needs no tetrahedralization: the welded surface triangles are the simulation elements.
+            verts = surface_verts + morph.pos
+            elems = surface_faces
+        else:
+            # Tetgen refinement depends on the absolute coordinates of its input. File meshes are tetrahedralized
+            # untranslated so the result, and its on-disk cache, are shared across all placements of the same asset.
+            # Primitives keep the position baked in, as the simulated rest state is sensitive to the exact refinement.
+            is_mesh_morph = isinstance(morph, gs.options.morphs.Mesh)
+            if not is_mesh_morph:
+                surface_verts = surface_verts + morph.pos
+            surface_trimesh = trimesh.Trimesh(vertices=surface_verts, faces=surface_faces, process=False)
+            verts, elems = eu.mesh_to_elements(surface_trimesh, tet_cfg=mu.generate_tetgen_config_from_morph(morph))
+            if is_mesh_morph:
+                verts = verts + morph.pos
+            verts, elems = eu.split_all_surface_tets(verts, elems)
+
+        verts = verts.astype(gs.np_float, copy=False)
+        elems = elems.astype(gs.np_int, copy=False)
+        if len(verts) == 0:
+            gs.raise_exception("Entity has zero vertices.")
+        # The vertex options select vertices as the morph states them, relative to its position before its rotation
+        fixed_verts_idx_local = options.get_fixed_verts_idx(verts - morph.pos)
+        morph_quat = np.array(morph.quat, dtype=gs.np_float)
+        init_quat = gu.transform_quat_by_quat(np.array(morph.offset_quat, dtype=gs.np_float), morph_quat)
+        verts_COM = verts.mean(axis=0)
+        offset_shift = gu.transform_by_quat(np.array(morph.offset_pos, dtype=gs.np_float), morph_quat)
+        # Compose the morph pose offset (e.g. an up-axis conversion) onto the morph orientation, rotating the verts
+        # about their COM, then translate by the body-frame offset position R(morph.quat) @ offset_pos. Pivoting the
+        # orientation about the vertex COM differs from the rigid parent-child composition when the mesh COM is not at
+        # the morph origin.
+        init_positions = (verts - verts_COM) @ gu.quat_to_R(init_quat).T + verts_COM + offset_shift
+
+        if isinstance(options.material, Cloth):
+            surface_triangles = elems
+            surface_elements = np.arange(len(elems), dtype=gs.np_int)
+        else:
+            # Oriented faces keep outward normals after the shared interior faces are removed
+            face_corners = ((0, 2, 1), (1, 2, 3), (0, 1, 3), (0, 3, 2))
+            triangles = elems[:, face_corners].reshape((-1, 3))
+            _, faces_idx, _, counts = unique_rows(np.sort(triangles, axis=1))
+            surface_triangles = triangles[faces_idx[counts == 1]]
+            surface_elements = (faces_idx[counts == 1] // 4).astype(gs.np_int, copy=False)
+
+        # For hydroelastic contact: https://drake.mit.edu/doxygen_cxx/group__hydroelastic__user__guide.html
+        # TODO: Add margin support. Drake's implementation of margin seems buggy.
+        pressure_field = None
+        if has_pressure:
+            signed_distance, *_ = igl.signed_distance(init_positions, init_positions, surface_triangles)
+            unsigned_distance = np.abs(signed_distance).astype(gs.np_float, copy=False)
+            max_distance = unsigned_distance.max()
+            if max_distance < gs.EPS:
+                gs.raise_exception(
+                    f"Pressure field max distance is too small: {max_distance}. "
+                    "This might be due to a mesh having no internal vertices."
+                )
+            pressure_field = unsigned_distance / max_distance * options.solver_options.hydroelastic_modulus
+
+        return cls(
+            morph=morph,
+            surface=surface,
+            name=name,
+            init_positions=init_positions,
+            init_positions_COM=verts_COM + offset_shift,
+            elems=elems,
+            surface_triangles=surface_triangles,
+            surface_elements=surface_elements,
+            vgeoms=tuple(FEMVisGeomDescription(vmesh=mesh, sim_verts_idx=idx) for mesh, idx in zip(meshes, verts_maps)),
+            pressure_field=pressure_field,
+            fixed_verts_idx_local=fixed_verts_idx_local,
+            options=options,
+        )
 
 
 class FEMVisGeom(RBC):
@@ -111,8 +222,8 @@ class FEMVisGeom(RBC):
 def assert_muscle(method):
     @wraps(method)
     def wrapper(self, *args, **kwargs):
-        if not isinstance(self.material, gs.materials.FEM.Muscle):
-            gs.raise_exception("This method is only supported by entities with 'FEM.Muscle' material.")
+        if not isinstance(self.material, Muscle):
+            gs.raise_exception("This method is only supported by entities with a 'Muscle' material.")
         return method(self, *args, **kwargs)
 
     return wrapper
@@ -133,14 +244,13 @@ class FEMEntity(Entity):
         The simulation scene that this entity belongs to.
     solver : Solver
         The physics solver instance used for simulation.
-    material : Material
-        The material properties defining elasticity, density, etc.
-    morph : Morph
-        The morph specification that defines the entity's shape.
-    surface : Surface
-        The surface mesh associated with the entity (for rendering or collision).
+    desc : FEMEntityDescription
+        The simulation mesh, the visual geoms and the hydroelastic pressure field of the entity, with the options, the
+        morph and the surface they are resolved from.
     idx : int
         Unique identifier of the entity within the scene.
+    model_idx : int
+        Index of the constitutive model of the entity in the solver.
     v_start : int, optional
         Starting index of this entity's vertices in the global vertex array (default is 0).
     el_start : int, optional
@@ -157,65 +267,40 @@ class FEMEntity(Entity):
         self,
         scene,
         solver,
-        material,
-        morph,
-        surface,
+        desc: FEMEntityDescription,
         idx,
+        model_idx,
         v_start=0,
         el_start=0,
         s_start=0,
         vvert_start=0,
         vface_start=0,
-        name: str | None = None,
     ):
-        super().__init__(idx, scene, morph, solver, material, surface, name=name)
+        super().__init__(idx, scene, solver, desc, desc.morph)
 
+        self._model_idx = model_idx
         self._v_start = v_start  # offset for vertex index of elements
         self._el_start = el_start  # offset for element index
         self._s_start = s_start  # offset for surface triangles
         self._vvert_start = vvert_start  # offset for render vertices
         self._vface_start = vface_start  # offset for render faces
         self._step_global_added = None
-        self.sample()
-
-        if isinstance(self.material, gs.materials.FEM.Cloth):
-            # For cloth, elements are already surface triangles
-            self._surface_tri_np = self.elems
-            self._n_surfaces = len(self._surface_tri_np)
-            if self._n_surfaces > 0:
-                self._n_surface_vertices = len(np.unique(self._surface_tri_np))
-            else:
-                self._n_surface_vertices = 0
-            # For cloth, each triangle is its own "element"
-            self._surface_el_np = np.arange(self.elems.shape[0], dtype=gs.np_int)
-        else:
-            # For volumetric FEM, extract surface triangles from tetrahedral elements
-            el2tri = np.array(
-                [  # follow the order with correct normal
-                    [[v[0], v[2], v[1]], [v[1], v[2], v[3]], [v[0], v[1], v[3]], [v[0], v[3], v[2]]] for v in self.elems
-                ],
-                dtype=gs.np_int,
-            )
-            all_tri = el2tri.reshape((-1, 3))
-            all_tri_sorted = np.sort(all_tri, axis=1)
-            _, unique_idcs, _, cnt = unique_rows(all_tri_sorted)
-            unique_tri = all_tri[unique_idcs]
-            surface_tri = unique_tri[cnt == 1]
-
-            self._surface_tri_np = surface_tri
-            self._n_surfaces = len(self._surface_tri_np)
-
-            if self._n_surfaces > 0:
-                self._n_surface_vertices = len(np.unique(self._surface_tri_np))
-            else:
-                self._n_surface_vertices = 0
-
-            tri2el = np.repeat(np.arange(self.elems.shape[0], dtype=gs.np_int)[:, np.newaxis], 4, axis=1)
-            unique_el = tri2el.flat[unique_idcs]
-            self._surface_el_np = unique_el[cnt == 1]
-
-        if isinstance(self.sim.coupler, SAPCoupler):
-            self.compute_pressure_field()
+        self.init_positions = torch.tensor(desc.init_positions, dtype=gs.tc_float, device=gs.device)
+        self.init_positions_COM_offset = torch.tensor(
+            desc.init_positions - desc.init_positions_COM, dtype=gs.tc_float, device=gs.device
+        )
+        self.elems = desc.elems
+        self._fixed_verts_idx_local = desc.fixed_verts_idx_local
+        self._surface_tri_np = desc.surface_triangles
+        self._surface_el_np = desc.surface_elements
+        self._n_surfaces = len(desc.surface_triangles)
+        self._n_surface_vertices = len(np.unique(desc.surface_triangles))
+        self.pressure_field_np = desc.pressure_field
+        self._vgeoms = gs.List()
+        for geom in desc.vgeoms:
+            self._vgeoms.append(FEMVisGeom(self, vvert_start, vface_start, geom.vmesh, geom.sim_verts_idx))
+            vvert_start += len(geom.vmesh.verts)
+            vface_start += len(geom.vmesh.faces)
 
     # ------------------------------------------------------------------------------------
     # ----------------------------------- basic entity ops -------------------------------
@@ -283,11 +368,12 @@ class FEMEntity(Entity):
         Exception
             If the tensor shape is not supported or per-element actuation is attempted.
         """
+        n_groups = self._desc.options.solver_options.n_groups
         elements_idx = self._get_global_idx(None, self.n_elements, self._el_start, unsafe=True)
-        actu = broadcast_tensor(actu, gs.tc_float, (self._sim._B, self.material.n_groups), ("envs_idx", "groups"))
+        actu = broadcast_tensor(actu, gs.tc_float, (self._sim._B, n_groups), ("envs_idx", "groups"))
         # Every element of the entity takes the actuation of its muscle group
         actu = actu[:, None] if self._scene.n_envs > 0 else actu[0]
-        self._solver.set_elements_actu(actu, elements_idx, n_groups=self.material.n_groups)
+        self._solver.set_elements_actu(actu, elements_idx, n_groups=n_groups)
 
     def set_muscle(self, muscle_group=None, muscle_direction=None):
         """
@@ -306,7 +392,7 @@ class FEMEntity(Entity):
         AssertionError
             If tensor shapes are incorrect or normalization fails.
         """
-        n_groups = self.material.n_groups
+        n_groups = self._desc.options.solver_options.n_groups
         max_group_id = muscle_group.max().item()
 
         muscle_group = broadcast_tensor(muscle_group, gs.tc_int, (self.n_elements,), ("elements_idx",))
@@ -333,96 +419,6 @@ class FEMEntity(Entity):
     # ----------------------------------- instantiation ----------------------------------
     # ------------------------------------------------------------------------------------
 
-    def instantiate(self, verts, elems):
-        """
-        Initialize FEM entity with given vertices and elements.
-
-        Parameters
-        ----------
-        verts : np.ndarray
-            Array of vertex positions with shape (n_vertices, 3).
-
-        elems : np.ndarray
-            Array of elements indexing into verts: tetrahedra with shape (n_elements, 4), or surface triangles with
-            shape (n_elements, 3) for Cloth material.
-
-        Raises
-        ------
-        Exception
-            If no vertices are provided.
-        """
-        verts = verts.astype(gs.np_float, copy=False)
-        elems = elems.astype(gs.np_int, copy=False)
-
-        # Compose the morph pose offset (e.g. an up-axis conversion) onto the morph orientation, rotating the verts
-        # about their COM (the pre-existing morph.quat convention), then translate by the body-frame offset position
-        # R(morph.quat) @ offset_pos. NB: pivoting the orientation about the vertex COM differs from the rigid
-        # parent-child composition when the mesh COM is not at the morph origin.
-        morph_quat = np.array(self._morph.quat, dtype=gs.np_float)
-        init_quat = gu.transform_quat_by_quat(np.array(self._morph.offset_quat, dtype=gs.np_float), morph_quat)
-        R = gu.quat_to_R(init_quat)
-        verts_COM = verts.mean(axis=0)
-        init_positions = (verts - verts_COM) @ R.T + verts_COM
-        offset_shift = gu.transform_by_quat(np.array(self._morph.offset_pos, dtype=gs.np_float), morph_quat)
-        init_positions = init_positions + offset_shift
-
-        if not init_positions.shape[0] > 0:
-            gs.raise_exception("Entity has zero vertices.")
-
-        self.init_positions = torch.tensor(init_positions, dtype=gs.tc_float, device=gs.device)
-        self.init_positions_COM_offset = torch.tensor(
-            init_positions - (verts_COM + offset_shift), dtype=gs.tc_float, device=gs.device
-        )
-
-        self.elems = elems
-
-    def sample(self):
-        """
-        Build the entity's visual geoms and simulation mesh from its morph.
-
-        Each morph sub-mesh becomes a visual geom with its own surface and UVs, while the simulation operates on a
-        single welded copy of their vertices, tracked through 'FEMVisGeom.sim_verts_idx': welding and
-        tetrahedralization both keep the input vertices first and in order, so these maps remain valid indices into
-        the simulated vertices.
-        """
-        meshes = gs.Mesh.from_morph_surface(self._morph, self._surface)
-        surface_verts, surface_faces, verts_maps = mu.merge_submeshes(
-            [mesh.verts for mesh in meshes], [mesh.faces for mesh in meshes]
-        )
-        self._vgeoms = gs.List()
-        vvert_start, vface_start = self._vvert_start, self._vface_start
-        for mesh, verts_idx in zip(meshes, verts_maps):
-            self._vgeoms.append(
-                FEMVisGeom(
-                    entity=self,
-                    vvert_start=vvert_start,
-                    vface_start=vface_start,
-                    vmesh=mesh,
-                    sim_verts_idx=verts_idx,
-                )
-            )
-            vvert_start += len(mesh.verts)
-            vface_start += len(mesh.faces)
-
-        if isinstance(self.material, gs.materials.FEM.Cloth):
-            # Cloth needs no tetrahedralization: the welded surface triangles are the simulation elements.
-            verts = surface_verts + self._morph.pos
-            elems = surface_faces
-        else:
-            # Tetgen refinement depends on the absolute coordinates of its input. File meshes are tetrahedralized
-            # untranslated so the result, and its on-disk cache, are shared across all placements of the same asset;
-            # primitives keep the position baked in, as the simulated rest state is sensitive to the exact refinement.
-            is_mesh_morph = isinstance(self._morph, gs.options.morphs.Mesh)
-            if not is_mesh_morph:
-                surface_verts = surface_verts + self._morph.pos
-            surface_trimesh = trimesh.Trimesh(vertices=surface_verts, faces=surface_faces, process=False)
-            verts, elems = eu.mesh_to_elements(surface_trimesh, tet_cfg=self.tet_cfg)
-            if is_mesh_morph:
-                verts = verts + self._morph.pos
-            verts, elems = eu.split_all_surface_tets(verts, elems)
-
-        self.instantiate(verts, elems)
-
     def _add_to_solver(self):
         self._step_global_added = self._sim.cur_step_global
         gs.logger.info(
@@ -433,7 +429,7 @@ class FEMEntity(Entity):
         # Convert to appropriate numpy array types
         verts_numpy = tensor_to_array(self.init_positions, dtype=gs.np_float)
 
-        if isinstance(self.material, gs.materials.FEM.Cloth):
+        if isinstance(self.material, Cloth):
             self._solver.add_cloth(
                 f=self._sim.cur_substep_local,
                 v_start=self._v_start,
@@ -443,13 +439,15 @@ class FEMEntity(Entity):
             )
         else:
             elems_np = self.elems.astype(gs.np_int, copy=False)
+            material_params = self._desc.options.material_params
+            mat_mu, mat_lam = eu.lame_parameters(material_params.youngs_modulus, material_params.poisson_ratio)
             self._solver.add_elements(
                 f=self._sim.cur_substep_local,
-                mat_idx=self._material.idx,
-                mat_mu=self._material.mu,
-                mat_lam=self._material.lam,
-                mat_rho=self._material.rho,
-                mat_friction_mu=self._material.friction_mu,
+                mat_idx=self._model_idx,
+                mat_mu=mat_mu,
+                mat_lam=mat_lam,
+                mat_rho=material_params.density,
+                mat_friction_mu=material_params.friction,
                 v_start=self._v_start,
                 el_start=self._el_start,
                 s_start=self._s_start,
@@ -473,30 +471,9 @@ class FEMEntity(Entity):
                 vfaces=vgeom.vmesh.faces.astype(gs.np_int, copy=False),
             )
 
-    def compute_pressure_field(self):
-        """
-        Compute the pressure field for the FEM entity based on its tetrahedral elements.
-
-        For hydroelastic contact: https://drake.mit.edu/doxygen_cxx/group__hydroelastic__user__guide.html
-
-        Notes
-        -----
-        https://github.com/RobotLocomotion/drake/blob/master/geometry/proximity/make_mesh_field.cc
-        TODO: Add margin support
-        Drake's implementation of margin seems buggy.
-        """
-        init_positions = tensor_to_array(self.init_positions)
-        signed_distance, *_ = igl.signed_distance(init_positions, init_positions, self._surface_tri_np)
-        signed_distance = signed_distance.astype(gs.np_float, copy=False)
-
-        unsigned_distance = np.abs(signed_distance)
-        max_distance = np.max(unsigned_distance)
-        if max_distance < gs.EPS:
-            gs.raise_exception(
-                f"Pressure field max distance is too small: {max_distance}. "
-                "This might be due to a mesh having no internal vertices."
-            )
-        self.pressure_field_np = unsigned_distance / max_distance * self.material.hydroelastic_modulus  # normalize
+    @property
+    def desc(self) -> FEMEntityDescription:
+        return self._desc
 
     # ------------------------------------------------------------------------------------
     # ---------------------------- interfacing with solver -------------------------------

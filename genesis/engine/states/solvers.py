@@ -12,6 +12,8 @@ from genesis.utils.array_class import DataKind
 class SolverCheckpoint:
     """The arrays of one solver of the given kinds (see 'DataKind'), for 'Solver.__setstate__' to write back.
 
+    The state of the behaviors of a simulation travels in one as well (see 'BehaviorManager.data'), holding no config.
+
     A checkpoint '__getstate__' reads holds every kind a step reads from one step to the next (see 'CHECKPOINT_KINDS'),
     so stepping on from it lands where the original went. A trajectory frame may hold the state alone, and writing it
     back recomputes what it leaves out. Each array stands under the name 'Solver.data' gives it, copied where it lives:
@@ -28,12 +30,13 @@ class SolverCheckpoint:
 class SimulatorCheckpoint:
     """The state a simulation stands in.
 
-    How many steps each environment has run, and what every active solver reads from one step to the next, under the
-    name of its class.
+    How many steps each environment has run, what every active solver reads from one step to the next, under the
+    name of its class, and the state of the behaviors.
     """
 
     steps: np.ndarray | torch.Tensor
     solvers: dict[str, SolverCheckpoint]
+    behaviors: SolverCheckpoint
 
 
 class SimState(RBC):

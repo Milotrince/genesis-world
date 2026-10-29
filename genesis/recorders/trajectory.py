@@ -1246,10 +1246,11 @@ class Trajectory:
             if name != STEPS_FIELD and not name.startswith(TIMINGS_PREFIX):
                 solver_name, array_name = name.split(".", 1)
                 arrays.setdefault(solver_name, {})[array_name] = value
+        behaviors = SolverCheckpoint(arrays.pop("BehaviorManager", {}), {}, kinds)
         solvers = {
             solver_name: SolverCheckpoint(solver_arrays, {}, kinds) for solver_name, solver_arrays in arrays.items()
         }
-        sim = SimulatorCheckpoint(steps=values[STEPS_FIELD], solvers=solvers)
+        sim = SimulatorCheckpoint(steps=values[STEPS_FIELD], solvers=solvers, behaviors=behaviors)
         self._scene.__setstate__(
             self._checkpoint_class(scene=self._scene.desc, digest=self._digest, layout=self._layout, sim=sim)
         )

@@ -1,15 +1,21 @@
 import os
 from functools import cached_property
-from typing import Annotated, Sequence, Literal, Iterable, cast
+from typing import Annotated, Iterable, Literal, Sequence, cast
 
 import numpy as np
+
 from PIL import Image
-from pydantic import model_validator, computed_field, BeforeValidator, Field
+from pydantic import BeforeValidator, Field, StrictBool, computed_field, model_validator
 
 import genesis as gs
 import genesis.utils.mesh as mu
-from genesis.typing import LaxUnitIntervalArrayType, LaxFArrayType, UnitIntervalArrayType, NDArrayType
-
+from genesis.typing import (
+    LaxFArrayType,
+    LaxUnitIntervalArrayType,
+    NDArrayType,
+    PositiveVec2IType,
+    UnitIntervalArrayType,
+)
 from genesis.utils.serialization import Exporting, Loading, SerializationMixin
 
 from .options import Options
@@ -280,6 +286,78 @@ class ImageTexture(Texture, SerializationMixin):
             image_color=loading.value(raw["image_color"], UnitIntervalArrayType),
             encoding=raw["encoding"],
         )
+
+
+class DynamicTexture(Texture):
+    """
+    A texture map whose image is written while the simulation runs, such as a screen or an indicator light.
+
+    It fills the diffuse or the emissive slot of a surface (see ``gs.TEXTURE_SLOT``), and requires a mesh with texture
+    coordinates. The image is RGBA, its alpha channel standing for the opacity in the diffuse slot in place of the
+    opacity of the surface. Once the scene is built, ``scene.get_dynamic_texture``, ``entity.get_dynamic_texture`` or
+    ``vgeom.get_dynamic_texture`` return the handle writing it. Only the rasterizer draws a dynamic texture.
+
+    Parameters
+    ----------
+    res : tuple[int, int]
+        The resolution of the image, as (width, height) in pixels. Rendering uploads the whole image each time it is
+        written, so a larger image costs more per update.
+    encoding : str, optional
+        The encoding of the image, 'srgb' for colors or 'linear'. Default is 'srgb'.
+    is_batched : bool, optional
+        Whether each parallel environment shows an image of its own. A batched texture draws its geoms once per
+        environment, at the cost of one draw call per environment, while a shared one draws them once for all.
+        Default is True.
+    initial : ColorTexture | ImageTexture | None, optional
+        The image at build and after a reset, resized to 'res'. If None, opaque black. Default is None.
+    name : str | None, optional
+        The name of the texture, unique within the scene, by which ``scene.get_dynamic_texture`` finds it. Default is
+        None.
+    """
+
+    res: PositiveVec2IType
+    encoding: Annotated[Literal["srgb", "linear"], BeforeValidator(lambda e: str(e).lower())] = "srgb"
+    is_batched: StrictBool = True
+    initial: ColorTexture | ImageTexture | None = None
+    name: str | None = None
+
+    def check_dim(self, dim: int) -> Texture | None:
+        return None
+
+    def check_simplify(self) -> "DynamicTexture":
+        return self
+
+    def apply_cutoff(self, cutoff: float) -> None:
+        pass
+
+    @computed_field
+    @cached_property
+    def is_black(self) -> bool:
+        return False
+
+    @computed_field
+    @cached_property
+    def requires_uv(self) -> bool:
+        return True
+
+    def get_initial_image(self) -> np.ndarray:
+        """Return the initial image as an RGBA uint8 array of shape (height, width, 4)."""
+        width, height = self.res
+        if isinstance(self.initial, ImageTexture):
+            image = Image.fromarray(self.initial.image_array).convert("RGBA")
+            base, channels = (
+                np.asarray(image.resize((width, height), Image.Resampling.BILINEAR)),
+                self.initial.image_color,
+            )
+        else:
+            base = np.full((height, width, 4), 255, dtype=np.uint8)
+            channels = (0.0,) if self.initial is None else self.initial.color
+        # A gray or gray-alpha color spans the three color channels, as an image of one or two channels does
+        rgba = np.ones(4)
+        rgba[:3] = channels[:3] if len(channels) >= 3 else channels[0]
+        if len(channels) in (2, 4):
+            rgba[3] = channels[-1]
+        return (base * rgba).round().astype(np.uint8)
 
 
 class BatchTexture(Texture):

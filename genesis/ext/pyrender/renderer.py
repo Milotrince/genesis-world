@@ -147,6 +147,9 @@ class Renderer(object):
         # Update context with meshes and textures
         if is_first_pass:
             self.jit.update_context(scene, flags)
+            for texture in scene.updated_textures:
+                texture.upload_source()
+            scene.updated_textures.clear()
             self.jit.update(scene)
             all_ready = self.jit.set_lighting(scene, is_grid)
 

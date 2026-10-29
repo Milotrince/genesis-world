@@ -11,15 +11,14 @@ import quadrants as qd
 import genesis as gs
 import genesis.utils.array_class as array_class
 from genesis.engine.entities.base_entity import Entity
-from genesis.engine.materials.base import Material
 from genesis.engine.state_change import StateChange, Subscriber, mutates
 from genesis.engine.states import SolverCheckpoint
+from genesis.engine.system_data import SystemData, SystemDataDescription
 from genesis.grad.bridge import RolloutGraph
 from genesis.repr_base import RBC
 from genesis.utils.misc import (
     assign_indexed_tensor,
     broadcast_tensor,
-    data_to_array,
     drop_repeated_index,
     indices_to_mask,
     qd_add_grad,
@@ -199,8 +198,6 @@ class GravityMixin:
 
 
 class Solver(RBC):
-    # The material of the entities this solver simulates, None for a solver holding no entity of its own
-    material_cls: type[Material] | None = None
     # Whether the solver supports a scene with `requires_grad`, which every active solver of such a scene must
     is_differentiable: bool = False
     # Whether the solver holds its state in frames, one per substep of a window of them (see 'n_frames'), frame 0
@@ -213,6 +210,7 @@ class Solver(RBC):
         self._sim = sim
         self._scene = scene
         self._options = options
+        self._data_record: SystemData | None = None
         self._entities: list[Entity] = gs.List()
 
         # Whether the state of the solver tracks gradients, and the autograd graph of the simulator recording them
@@ -440,8 +438,15 @@ class Solver(RBC):
                 tensor_ = tensor_[None]
         return tensor_, inputs_idx_, envs_idx_
 
-    def build(self):
+    def describe(self) -> SystemDataDescription | None:
+        """Resolve the static configuration, and return what the simulator allocates as this solver's record."""
         self._B = self._sim._B
+        return None
+
+    def register_data(self):
+        """Bind the allocated record and register the range records that index into it."""
+
+    def build(self):
         self._errno_latched = torch.zeros((self._B,), dtype=gs.tc_int, device=gs.device)
         if gs.device.type == "cuda":
             self._errno_host = torch.zeros((self._B,), dtype=gs.tc_int, pin_memory=True)
@@ -630,15 +635,9 @@ class Solver(RBC):
             items = self._boundary_items.items_copied
         else:
             items = [item for item in self.data if not isinstance(item, array_class.ConfigItem) and item.kind in kinds]
-        for item in items:
-            if isinstance(item, array_class.ScalarItem):
-                arrays[item.name] = np.array(getattr(item.owner, item.attr))
-            elif boundary_only and self.has_frames:
-                arrays[item.name] = qd_to_torch(item.array, row_mask=0, keepdim=False, copy=True)
-            else:
-                arrays[item.name] = data_to_array(
-                    item.array, to_torch=boundary_only or gs.use_zerocopy.is_supported, copy=True
-                )
+        arrays |= array_class.read_data(
+            items, to_torch=boundary_only or gs.use_zerocopy.is_supported, frame_only=boundary_only and self.has_frames
+        )
         # The static configs are provenance, which a boundary checkpoint never leaving the process does without
         configs = {}
         if not boundary_only:

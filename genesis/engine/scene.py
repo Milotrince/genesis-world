@@ -21,30 +21,45 @@ import trimesh
 import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
+from genesis.constants import TEXTURE_SLOT
+from genesis.engine.dynamic_texture import DynamicTextureBinding, DynamicTextureHandle
 from genesis.engine.entities.base_entity import Entity, EntityDescription
 from genesis.engine.entities.rigid_entity import KinematicEntity
 from genesis.engine.force_fields import ForceField
-from genesis.engine.materials.base import EntityT, Material
 from genesis.engine.states.solvers import SimState, SimulatorCheckpoint
 from genesis.options import (
-    SceneOptions,
     BaseCouplerOptions,
+    EntityOptions,
+    FEMEntityOptions,
     FEMOptions,
+    HybridEntityOptions,
+    KinematicEntityOptions,
     KinematicOptions,
+    MPMEntityOptions,
     MPMOptions,
+    PBDClothEntityOptions,
+    PBDElasticEntityOptions,
+    PBDLiquidEntityOptions,
     PBDOptions,
+    PBDParticleEntityOptions,
     ProfilingOptions,
+    RigidEntityOptions,
     RigidOptions,
+    SceneOptions,
     SFOptions,
     SimOptions,
+    SPHEntityOptions,
     SPHOptions,
     ViewerOptions,
     VisOptions,
 )
+from genesis.options.entities import EntityT, get_entity_options_cls
+from genesis.options.materials import Cloth, Liquid, Material, Sand, Snow
 from genesis.options.morphs import Morph
 from genesis.options.recorders import RecorderOptions, TrajectoryFile
 from genesis.options.renderers import RendererOptions
 from genesis.options.surfaces import Surface
+from genesis.options.textures import DynamicTexture
 from genesis.recorders import RecorderManager
 from genesis.recorders.trajectory import Trajectory, save_checkpoint
 from genesis.repr_base import RBC
@@ -261,6 +276,7 @@ class Scene(RBC):
 
         # emitters
         self._emitters = gs.List()
+        self._dynamic_textures: list[DynamicTextureHandle] = []
 
         self._uid = gs.UID()
         self._is_built = False
@@ -303,39 +319,41 @@ class Scene(RBC):
             self._is_built = False
 
     @overload
+    def add_entity(self, *, options: EntityOptions[EntityT]) -> EntityT: ...
+
+    @overload
     def add_entity(
         self,
         morph: Morph | Iterable[Morph],
-        material: None = ...,
+        material: Material | None = ...,
         surface: Surface | None = ...,
         visualize_contact: bool = ...,
         vis_mode: str | None = ...,
         name: str | None = ...,
     ) -> "RigidEntity": ...
 
-    @overload
-    def add_entity(
-        self,
-        morph: Morph | Iterable[Morph],
-        material: Material[EntityT] = ...,
-        surface: Surface | None = ...,
-        visualize_contact: bool = ...,
-        vis_mode: str | None = ...,
-        name: str | None = ...,
-    ) -> EntityT: ...
-
     @gs.assert_unbuilt
     def add_entity(
         self,
-        morph: Morph | Iterable[Morph],
+        morph: Morph | Iterable[Morph] | None = None,
         material: Material | None = None,
         surface: Surface | None = None,
-        visualize_contact: bool = False,
+        visualize_contact: bool | None = None,
         vis_mode: str | None = None,
         name: str | None = None,
+        *,
+        options: EntityOptions | None = None,
     ) -> "Entity":
-        """
-        Add an entity to the scene.
+        """Add an entity to the scene, constructed from entity options or from individual arguments.
+
+        The class of ``options`` decides the kind of entity and the solver simulating it, such as
+        ``gs.options.RigidEntityOptions``, ``gs.options.KinematicEntityOptions`` or ``gs.options.FEMEntityOptions``.
+        The entity keeps a copy of them as ``entity.options``, so one instance can construct several entities.
+
+        The individual arguments are a shorthand for ``options=gs.options.RigidEntityOptions(...)``, so they always
+        build a rigid entity. Any other kind of entity, a kinematic one included, takes its options class, and a
+        material of another kind raises an error naming that class. Passing options and individual arguments together
+        raises an error too.
 
         Parameters
         ----------
@@ -347,35 +365,72 @@ class Scene(RBC):
             inertia, link frames (e.g. a different 'scale', or a different pose for a fixed base) and joint parameters
             may differ.
         material : gs.materials.Material | None, optional
-            The material of the entity. If None, use ``gs.materials.Rigid()``.
+            The material of the rigid entity. If None, use ``gs.materials.Material()``.
         surface : gs.surfaces.Surface | None, optional
             The surface of the entity. If None, use ``gs.surfaces.Default()``.
-        visualize_contact : bool
+        visualize_contact : bool | None, optional
             Whether to visualize contact forces applied to this entity as arrows in the viewer and rendered images.
-            Note that this will not be displayed in images rendered by camera using the `RayTracer` renderer.
+            The `RayTracer` renderer draws no arrows. If None, defaults to False.
         vis_mode : str | None, optional
             The visualization mode of the entity. This is a handy shortcut for setting `surface.vis_mode` without
             explicitly creating a surface object.
         name : str | None, optional
             User-specified name for the entity. If not provided, an auto-generated name will be assigned
             based on the morph type and entity UID (e.g., "box_a1b2c3d4"). Must be unique within the scene.
+        options : gs.options.EntityOptions | None, optional
+            The options to construct the entity from, an instance of a subclass of ``gs.options.EntityOptions``. They
+            replace every other argument.
 
         Returns
         -------
         entity : genesis.Entity
-            The created entity.
+            The created entity, of the kind its options class decides.
         """
-        if material is None:
-            material = gs.materials.Rigid()
-
+        if options is None:
+            if morph is None:
+                gs.raise_exception("Entity construction requires a morph.")
+            if material is not None and not isinstance(material, Material):
+                options_classes = get_entity_options_cls(material)
+                if not options_classes:
+                    gs.raise_exception(f"No entity options admit material {type(material).__name__}.")
+                options_names = " or ".join(f"gs.options.{options_cls.__name__}" for options_cls in options_classes)
+                gs.raise_exception(
+                    f"Individual 'add_entity' arguments build a rigid entity, which material {type(material).__name__} "
+                    f"cannot construct. Pass 'options={options_names}(morph=..., material=...)' instead."
+                )
+            # Heterogeneous morphs may come as any iterable of morphs
+            if isinstance(morph, collections.abc.Iterable) and not isinstance(morph, Morph):
+                morph = tuple(morph)
+            # A copy, since the surface given may be shared with other entities
+            if vis_mode is not None:
+                if surface is None:
+                    surface = gs.surfaces.Default()
+                surface = surface.model_copy(update={"vis_mode": vis_mode})
+            options = RigidEntityOptions(
+                morph=morph,
+                material=material if material is not None else Material(),
+                surface=surface,
+                visualize_contact=visualize_contact if visualize_contact is not None else False,
+                name=name,
+            )
+        elif any(value is not None for value in (morph, material, surface, visualize_contact, vis_mode, name)):
+            gs.raise_exception("Pass either entity options or individual entity arguments, never both.")
+        if type(options) is EntityOptions:
+            gs.raise_exception(
+                "EntityOptions selects no entity family. Use one of its subclasses, such as RigidEntityOptions."
+            )
+        # Revalidated, since 'model_copy(update=...)' bypasses validation. The entity owns the authored copy, while
+        # the resolution below modifies the morph and the surface of a copy of its own.
+        options = type(options).model_validate(options).model_copy(deep=True)
+        resolved_options = options.model_copy(deep=True)
+        morph = resolved_options.morph
+        material = None if isinstance(options, (KinematicEntityOptions, HybridEntityOptions)) else options.material
+        surface = resolved_options.surface
+        visualize_contact = isinstance(resolved_options, RigidEntityOptions) and resolved_options.visualize_contact
+        name = resolved_options.name
         if surface is None:
             # assign a local surface, otherwise modification will apply on global default surface
             surface = gs.surfaces.Default()
-
-        # Handle heterogeneous morphs (any iterable of morphs, excluding Morph objects). Whether a morph, or several,
-        # can be built from is for the entity created from it to say.
-        if isinstance(morph, collections.abc.Iterable) and not isinstance(morph, Morph):
-            morph = tuple(morph)
 
         # some morph should not smooth surface normal
         if isinstance(
@@ -384,124 +439,120 @@ class Scene(RBC):
             surface.smooth = False
 
         if surface.double_sided is None:
-            surface.double_sided = isinstance(material, (gs.materials.PBD.Cloth, gs.materials.FEM.Cloth))
+            surface.double_sided = isinstance(options, PBDClothEntityOptions) or isinstance(material, Cloth)
 
-        if vis_mode is not None:
-            surface.vis_mode = vis_mode
-        # validate and populate default surface.vis_mode considering morph type
-        if isinstance(material, gs.materials.Kinematic):
-            if surface.vis_mode is None:
-                surface.vis_mode = "visual"
-
-            if surface.vis_mode not in ("visual", "collision", "sdf"):
-                gs.raise_exception(
-                    f"Unsupported `surface.vis_mode` for material {material}: '{surface.vis_mode}'. Expected one of: "
-                    "['visual', 'collision', 'sdf']."
-                )
-
-        elif isinstance(
-            material,
-            (
-                gs.materials.PBD.Liquid,
-                gs.materials.PBD.Particle,
-                gs.materials.MPM.Liquid,
-                gs.materials.MPM.Sand,
-                gs.materials.MPM.Snow,
-                gs.materials.SPH.Liquid,
-            ),
+        # validate and populate default surface.vis_mode considering the kind of entity
+        if isinstance(options, (RigidEntityOptions, KinematicEntityOptions)):
+            vis_modes = ("visual", "collision", "sdf")
+        elif isinstance(options, (PBDLiquidEntityOptions, PBDParticleEntityOptions, SPHEntityOptions)) or (
+            isinstance(options, MPMEntityOptions) and isinstance(material, (Liquid, Sand, Snow))
         ):
-            if surface.vis_mode is None:
-                surface.vis_mode = "particle"
-
-            if surface.vis_mode not in ("particle", "recon"):
-                gs.raise_exception(
-                    f"Unsupported `surface.vis_mode` for material {material}: '{surface.vis_mode}'. Expected one of: ['particle', 'recon']."
-                )
-
-        elif isinstance(material, gs.materials.SF.Smoke):
-            if surface.vis_mode is None:
-                surface.vis_mode = "particle"
-
-            if surface.vis_mode not in ("particle",):
-                gs.raise_exception(
-                    f"Unsupported `surface.vis_mode` for material {material}: '{surface.vis_mode}'. Expected one of: ['particle', 'recon']."
-                )
-
-        elif isinstance(material, (gs.materials.PBD.Base, gs.materials.MPM.Base, gs.materials.SPH.Base)):
-            if surface.vis_mode is None:
-                surface.vis_mode = "visual"
-
-            if surface.vis_mode not in ("visual", "particle", "recon"):
-                gs.raise_exception(
-                    f"Unsupported `surface.vis_mode` for material {material}: '{surface.vis_mode}'. Expected one of: ['visual', 'particle', 'recon']."
-                )
-
-        elif isinstance(material, gs.materials.FEM.Base):
-            if surface.vis_mode is None:
-                surface.vis_mode = "visual"
-
-            if surface.vis_mode not in ("visual",):
-                gs.raise_exception(
-                    f"Unsupported `surface.vis_mode` for material {material}: '{surface.vis_mode}'. Expected one of: ['visual']."
-                )
-
-        elif isinstance(material, gs.materials.Hybrid):  # determine the visual of the outer soft part
-            if surface.vis_mode is None:
-                surface.vis_mode = "particle"
-
-            if surface.vis_mode not in ("particle", "visual"):
-                gs.raise_exception(
-                    f"Unsupported `surface.vis_mode` for material {material}: '{surface.vis_mode}'. Expected one of: ['particle', 'visual']."
-                )
-
+            vis_modes = ("particle", "recon")
+        elif isinstance(options, (PBDClothEntityOptions, PBDElasticEntityOptions, MPMEntityOptions)):
+            vis_modes = ("visual", "particle", "recon")
+        elif isinstance(options, FEMEntityOptions):
+            vis_modes = ("visual",)
         else:
-            gs.raise_exception()
+            # The visual of a hybrid entity is the one of its outer soft part
+            vis_modes = ("particle", "visual")
+        if surface.vis_mode is None:
+            surface.vis_mode = vis_modes[0]
+        if surface.vis_mode not in vis_modes:
+            gs.raise_exception(
+                f"Unsupported `surface.vis_mode` for {type(options).__name__}: '{surface.vis_mode}'. Expected one of: "
+                f"{list(vis_modes)}."
+            )
 
-        entity = self._sim._add_entity(morph, material, surface, visualize_contact, name)
+        entity = self._sim._add_entity(morph, material, surface, visualize_contact, name, options)
 
         return entity
+
+    @overload
+    def add_stage(self, *, options: KinematicEntityOptions) -> list[KinematicEntity]: ...
+
+    @overload
+    def add_stage(self, *, options: RigidEntityOptions) -> list["RigidEntity"]: ...
+
+    @overload
+    def add_stage(
+        self,
+        morph: gs.morphs.USD,
+        material: Material | None = ...,
+        surface: Surface | None = ...,
+        visualize_contact: bool | None = ...,
+        vis_mode: Literal["visual", "collision"] | None = ...,
+    ) -> list["RigidEntity"]: ...
 
     @gs.assert_unbuilt
     def add_stage(
         self,
-        morph: gs.morphs.USD,
+        morph: gs.morphs.USD | None = None,
         material: Material | None = None,
         surface: Surface | None = None,
-        visualize_contact: bool = False,
-        vis_mode: Literal["visual", "collision"] = "visual",
-    ):
-        """
-        Add a stage to the scene.
+        visualize_contact: bool | None = None,
+        vis_mode: Literal["visual", "collision"] | None = None,
+        *,
+        options: RigidEntityOptions | KinematicEntityOptions | None = None,
+    ) -> list["KinematicEntity | RigidEntity"]:
+        """Add a USD stage to the scene, as one entity per articulation or rigid body it holds.
+
+        The class of ``options`` decides the kind of every entity of the stage, ``gs.options.RigidEntityOptions`` or
+        ``gs.options.KinematicEntityOptions``, its morph being the stage. The options name no entity, since a stage
+        adds several. As for ``Scene.add_entity``, the individual arguments are a shorthand for
+        ``options=gs.options.RigidEntityOptions(...)``, and passing both raises an error.
 
         Parameters
         ----------
-        morph : gs.morphs.USD
+        morph : gs.morphs.USD | None, optional
             The stage to add to the scene.
         material : gs.materials.Material | None, optional
-            The material of the stage. If None, use ``gs.materials.Rigid()`` for all morphs.
+            The material of the rigid entities of the stage. If None, use ``gs.materials.Material()`` for all morphs.
         surface : gs.surfaces.Surface | None, optional
             The surface of the stage. If None, use ``gs.surfaces.Default()`` for all morphs.
-        visualize_contact : bool
+        visualize_contact : bool | None, optional
             Whether to visualize contact forces applied to this stage as arrows in the viewer and rendered images.
-            Note that this will not be displayed in images rendered by camera using the `RayTracer` renderer.
+            The `RayTracer` renderer draws no arrows. If None, defaults to False.
         vis_mode : str | None, optional
             The visualization mode of the stage. This is a handy shortcut for setting `surface.vis_mode` without
             explicitly creating a surface object.
+        options : gs.options.RigidEntityOptions | gs.options.KinematicEntityOptions | None, optional
+            The options to construct the entities of the stage from. They replace every other argument.
 
         Returns
         -------
-        entities : List[genesis.Entity]
+        entities : list[genesis.Entity]
             The created entities.
         """
+        if options is not None:
+            if any(value is not None for value in (morph, material, surface, visualize_contact, vis_mode)):
+                gs.raise_exception("Pass either entity options or individual entity arguments, never both.")
+            if not isinstance(options, (RigidEntityOptions, KinematicEntityOptions)):
+                gs.raise_exception(
+                    f"A stage holds rigid or kinematic entities, which {type(options).__name__} cannot construct."
+                )
+            if options.name is not None:
+                gs.raise_exception("A stage adds several entities, so its options take no name.")
+            if options.links or (
+                isinstance(options, RigidEntityOptions) and any(not geom_index.is_all for geom_index in options.geoms)
+            ):
+                gs.raise_exception(
+                    "A stage adds entities of different links, so its options take no link options and select geoms "
+                    "with 'gs.GeomIndex.all()' alone."
+                )
+            morph = options.morph
         if not isinstance(morph, gs.morphs.USD):
             gs.raise_exception(f"Unsupported morph: {morph}.")
         from genesis.utils.usd import parse_usd_stage
 
-        # One `gs.morphs.USD` per rigid entity of the stage, added while the stage it was split from stays open.
+        # One `gs.morphs.USD` per entity of the stage, added while the stage it was split from stays open.
         with parse_usd_stage(morph) as entity_morphs:
             entities = []
             for entity_morph in entity_morphs:
-                entities.append(self.add_entity(entity_morph, material, surface, visualize_contact, vis_mode))
+                if options is None:
+                    entity = self.add_entity(entity_morph, material, surface, visualize_contact, vis_mode)
+                else:
+                    entity = self.add_entity(options=options.model_copy(update={"morph": entity_morph}))
+                entities.append(entity)
         return entities
 
     @gs.assert_unbuilt
@@ -760,24 +811,20 @@ class Scene(RBC):
 
     @gs.assert_unbuilt
     def add_emitter(
-        self,
-        material: Material,
-        max_particles=20000,
-        surface: Surface | None = None,
+        self, options: MPMEntityOptions | SPHEntityOptions | PBDLiquidEntityOptions | PBDParticleEntityOptions
     ):
         """
         Add a fluid emitter to the scene.
 
         Parameters
         ----------
-        material : gs.materials.Material
-            The material of the fluid to be emitted. Must be an instance of `gs.materials.MPM.Base`,
-            `gs.materials.SPH.Base`, `gs.materials.PBD.Particle` or `gs.materials.PBD.Liquid`.
-        max_particles : int
-            The maximum number of particles that can be emitted by the emitter. Particles will be recycled once this
-            limit is reached.
-        surface : gs.surfaces.Surface | None, optional
-            The surface of the emitter. If None, use `gs.surfaces.Default(color=(0.6, 0.8, 1.0, 1.0))`.
+        options : gs.options.EntityOptions
+            The entity options of the emitted particles, whose class decides the solver simulating them: one of
+            ``gs.options.MPMEntityOptions``, ``gs.options.SPHEntityOptions``, ``gs.options.PBDLiquidEntityOptions``
+            or ``gs.options.PBDParticleEntityOptions``. Their morph is ``gs.morphs.Nowhere(n_particles=...)``, which
+            sets the maximum number of particles the emitter holds, recycled once all are emitted. If their surface is
+            None, use ``gs.surfaces.Default(color=(0.6, 0.8, 1.0, 1.0))``, and its visualization mode defaults to
+            'particle'.
 
         Returns
         -------
@@ -790,27 +837,27 @@ class Scene(RBC):
             gs.raise_exception("Emitter is not supported in differentiable mode.")
 
         if not isinstance(
-            material, (gs.materials.MPM.Base, gs.materials.SPH.Base, gs.materials.PBD.Particle, gs.materials.PBD.Liquid)
+            options, (MPMEntityOptions, SPHEntityOptions, PBDLiquidEntityOptions, PBDParticleEntityOptions)
         ):
             gs.raise_exception(
-                "Non-supported material for emitter. Supported materials are: `gs.materials.MPM.Base`, "
-                "`gs.materials.SPH.Base`, `gs.materials.PBD.Particle`, `gs.materials.PBD.Liquid`."
+                f"Non-supported entity options for emitter: {type(options).__name__}. Supported ones are "
+                "MPMEntityOptions, SPHEntityOptions, PBDLiquidEntityOptions and PBDParticleEntityOptions."
+            )
+        if not isinstance(options.morph, gs.morphs.Nowhere):
+            gs.raise_exception(
+                f"The morph of an emitter must be gs.morphs.Nowhere, got {type(options.morph).__name__}."
             )
 
+        surface = options.surface
         if surface is None:
             surface = gs.surfaces.Default(color=(0.6, 0.8, 1.0, 1.0))
-
         if surface.vis_mode is None:
-            surface.vis_mode = "particle"
+            surface = surface.model_copy(update={"vis_mode": "particle"})
         if surface.vis_mode == "visual":
             gs.raise_exception("surface.vis_mode='visual' is not supported for fluid emitters.")
 
-        emitter = Emitter(max_particles)
-        entity = self.add_entity(
-            morph=gs.morphs.Nowhere(n_particles=max_particles),
-            material=material,
-            surface=surface,
-        )
+        emitter = Emitter(options.morph.n_particles)
+        entity = self.add_entity(options=options.model_copy(update={"surface": surface}))
         emitter.set_entity(entity)
         self._emitters.append(emitter)
         return emitter
@@ -873,6 +920,32 @@ class Scene(RBC):
         with gs.logger.timer(f"Building scene ~~~<{self._uid}>~~~..."):
             self._parallelize(n_envs, env_spacing, n_envs_per_row, center_envs_at_origin)
 
+            # The dynamic textures, each with the visual geoms drawing it, which every renderer binds to as it builds, the
+            # camera sensors building with the simulator
+            bindings_by_texture: dict[DynamicTexture, list[DynamicTextureBinding]] = {}
+            for entity in self.entities:
+                if isinstance(entity, KinematicEntity):
+                    for vgeom in entity.vgeoms:
+                        surface_textures = dict(vgeom.surface)
+                        for slot, field_name in (
+                            (TEXTURE_SLOT.DIFFUSE, "diffuse_texture"),
+                            (TEXTURE_SLOT.EMISSIVE, "emissive_texture"),
+                        ):
+                            texture = surface_textures.get(field_name)
+                            if isinstance(texture, DynamicTexture):
+                                bindings_by_texture.setdefault(texture, []).append(DynamicTextureBinding(vgeom, slot))
+                elif any(isinstance(texture, DynamicTexture) for _, texture in entity.surface):
+                    gs.raise_exception(
+                        f"Only rigid and kinematic entities draw a dynamic texture, got '{entity.name}'."
+                    )
+            self._dynamic_textures = [
+                DynamicTextureHandle(self, texture, bindings) for texture, bindings in bindings_by_texture.items()
+            ]
+            textures_name = [handle.name for handle in self._dynamic_textures if handle.name is not None]
+            for name, count in Counter(textures_name).items():
+                if count > 1:
+                    gs.raise_exception(f"Several dynamic textures are named '{name}'.")
+
             # simulator
             self._sim.build()
 
@@ -898,7 +971,7 @@ class Scene(RBC):
             self._visualizer.build()
 
         # recorders, which lay out the phases a step times once (see 'StepTimer.add_phases')
-        self._sim.step_timer.add_phases("recorders", "rendering", "video")
+        self._sim.step_timer.add_phases("behaviors", "recorders", "rendering", "video")
         self._recorder_manager.build()
 
     def _parallelize(
@@ -973,6 +1046,12 @@ class Scene(RBC):
             self._recorder_manager.record(self._sim.cur_step_global)
         self._recorder_manager.reset(envs_idx)
         self._reset(state, envs_idx=envs_idx)
+        # A texture shared by every environment is restored with the whole scene alone
+        for handle in self._dynamic_textures:
+            if handle.is_batched:
+                handle.reset(envs_idx)
+            elif envs_idx is None:
+                handle.reset()
 
     def _reset(self, state: SimState | None = None, *, envs_idx=None, keep_init: bool = False):
         if self._is_built:
@@ -985,6 +1064,9 @@ class Scene(RBC):
                 if not keep_init:
                     self._init_state = state
             self._sim.reset(state, envs_idx)
+            # A restore keeping the init resumes the rollout, so the behaviors keep the state they reached
+            if not keep_init:
+                self._sim._behavior_manager.reset(envs_idx)
         else:
             self._init_state = self._get_state()
         self._restart()
@@ -1079,8 +1161,11 @@ class Scene(RBC):
             if not self._sim.is_forward_ready:
                 gs.raise_exception("Forward simulation not allowed after backward pass. Please reset scene state.")
             # The recorders read the state a step starts from, with the inputs the step consumes: 'Simulator.step'
-            # zeroes the applied forces at its end. The pre-step callbacks ran, so their inputs are read as well.
-            # The recorders read the state for themselves, outside of the autograd graph of a differentiable rollout
+            # zeroes the applied forces at its end. The pre-step callbacks and the behaviors ran, so their inputs are
+            # read as well. The recorders read the state for themselves, outside of the autograd graph of a
+            # differentiable rollout.
+            with step_timer.phase("behaviors"):
+                self._sim._behavior_manager.step()
             with step_timer.phase("recorders"), torch.no_grad():
                 self._recorder_manager.step(self._sim.cur_step_global)
             self._sim.step()
@@ -1581,8 +1666,7 @@ class Scene(RBC):
         # A scene holding what alters the simulation is rejected, since a file leaving it out would restore other
         # physics. Everything else is left out with a warning: what observes or draws the simulation, and every
         # callback. Every solver holds the same force fields, so one solver names them all.
-        rejected_kinds = Counter(type(entity).__name__ for entity in self.entities if entity.desc is None)
-        rejected_kinds.update(type(emitter).__name__ for emitter in self._emitters)
+        rejected_kinds = Counter(type(emitter).__name__ for emitter in self._emitters)
         rejected_kinds.update(type(force_field).__name__ for force_field in self._sim.solvers[0].force_fields)
         omitted_kinds = Counter(type(sensor).__name__ for sensor in self._sim._sensor_manager.sensors)
         if self._visualizer is not None:
@@ -1622,11 +1706,11 @@ class Scene(RBC):
         simulation had run to, so the simulated state has to be reproduced by stepping it again. Adding an entity
         resolves its description, so a scene is exported before it is built as readily as after.
 
-        Only a rigid or a kinematic entity carries a description. A scene
-        holding anything that alters the simulation raises, naming it: an emitter and a force field. Everything else
-        a description leaves out is written without, with a warning naming it: a camera, a sensor, a callback Genesis
-        calls at every step, a texture read from an HDR or EXR file, and the visual vertices an entity was given at
-        runtime. A recorder neither simulates nor draws, so it is left out without a word.
+        Every entity is written as its description. A scene holding anything that alters the simulation and that no
+        description covers raises, naming it: an emitter and a force field. Everything else a description leaves out
+        is written without, with a warning naming it: a camera, a sensor, a callback Genesis calls at every step, a
+        texture read from an HDR or EXR file, and the visual vertices an entity was given at runtime. A recorder
+        neither simulates nor draws, so it is left out without a word.
 
         Parameters
         ----------
@@ -1855,6 +1939,8 @@ class Scene(RBC):
             record = state.sim.solvers[name]
             items = (item for item in solver.data if isinstance(item, DataItem) and item.kind in record.kinds)
             check_data(items, record.arrays)
+        behaviors_items = (item for item in self._sim._behavior_manager.data if item.kind in state.sim.behaviors.kinds)
+        check_data(behaviors_items, state.sim.behaviors.arrays)
         # The recorders finish the run first (see 'reset'), and the restart follows the state, so the visualizer draws
         # the state put back.
         self._recorder_manager.record(self._sim.cur_step_global)
@@ -1915,6 +2001,7 @@ class Scene(RBC):
 
         The phases are:
 
+        - behaviors: the behaviors of the entities acting on the simulation (see 'Behavior.step').
         - physics: the solvers advancing the state over the substeps.
         - sensors: the sensor updates, and sensors/<class name> the share of each sensor class.
         - rendering: the viewer refresh.
@@ -2037,10 +2124,25 @@ class Scene(RBC):
                 return match
             gs.raise_exception(f"Entity not found for uid: '{uid}'.")
 
+    @gs.assert_built
+    def get_dynamic_texture(self, name: str) -> DynamicTextureHandle:
+        """Return the handle writing the dynamic texture of a given name (see ``gs.textures.DynamicTexture``)."""
+        for handle in self._dynamic_textures:
+            if handle.name == name:
+                return handle
+        gs.raise_exception(
+            f"No dynamic texture is named '{name}'. Existing names: {[h.name for h in self._dynamic_textures]}."
+        )
+
     @property
     def emitters(self):
         """All the emitters in the scene."""
         return self._emitters
+
+    @property
+    def dynamic_textures(self) -> list[DynamicTextureHandle]:
+        """The handles writing the dynamic textures of the scene, one per declaration, once it is built."""
+        return self._dynamic_textures
 
     @property
     def rigid_solver(self):

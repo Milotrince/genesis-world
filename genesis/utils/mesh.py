@@ -295,20 +295,31 @@ def surface_uvs_to_trimesh_visual(surface, uvs=None, n_verts=None):
             emissive_kwargs = dict(
                 emissiveTexture=Image.fromarray(emission.image_array), emissiveFactor=emission.image_color
             )
+        elif isinstance(emission, gs.textures.DynamicTexture):
+            # The renderer writes the image of a dynamic texture into the texture this one seeds
+            emissive_kwargs = dict(
+                emissiveTexture=Image.fromarray(emission.get_initial_image()[..., :3]), emissiveFactor=(1.0, 1.0, 1.0)
+            )
         elif isinstance(emission, gs.textures.ColorTexture):
             emissive_kwargs = dict(emissiveFactor=emission.color)
 
-    if isinstance(texture, gs.textures.ImageTexture):
+    if isinstance(texture, (gs.textures.ImageTexture, gs.textures.DynamicTexture)):
         if flipped_uvs is not None:
-            assert texture.image_array.dtype == np.uint8
-            image = Image.fromarray(texture.image_array)
-            if emissive_kwargs:
+            if isinstance(texture, gs.textures.DynamicTexture):
+                image = Image.fromarray(texture.get_initial_image())
+            else:
+                assert texture.image_array.dtype == np.uint8
+                image = Image.fromarray(texture.image_array)
+            # A dynamic texture may turn transparent at runtime, which the blending of a PBR material follows
+            if emissive_kwargs or isinstance(texture, gs.textures.DynamicTexture):
                 material = trimesh.visual.material.PBRMaterial(
                     baseColorTexture=image, baseColorFactor=(255, 255, 255, 255), **emissive_kwargs
                 )
             else:
                 material = trimesh.visual.material.SimpleMaterial(image=image, diffuse=(1.0, 1.0, 1.0, 1.0))
             visual = trimesh.visual.TextureVisuals(uv=flipped_uvs, material=material)
+        elif isinstance(texture, gs.textures.DynamicTexture):
+            gs.raise_exception("A dynamic texture requires a mesh with texture coordinates, which this mesh lacks.")
         else:
             # fall back to color texture
             visual = trimesh.visual.ColorVisuals(vertex_colors=np.tile(texture.mean_color, [n_verts, 1]))
@@ -428,6 +439,7 @@ def postprocess_collision_geoms(
         friction = g_info.get("friction")
         density = g_info.get("density")
         sol_params = g_info.get("sol_params")
+        material = g_info.get("material")
         key_parts += [
             np.ascontiguousarray(mesh.verts),
             np.ascontiguousarray(mesh.faces),
@@ -437,6 +449,7 @@ def postprocess_collision_geoms(
             float("nan") if friction is None else float(friction),
             float("nan") if density is None else float(density),
             np.zeros(0) if sol_params is None else np.ascontiguousarray(sol_params, dtype=np.float64),
+            {} if material is None else material.model_dump(exclude_unset=True),
             np.ascontiguousarray(g_info.get("pos", gu.zero_pos()), dtype=np.float64),
             np.ascontiguousarray(g_info.get("quat", gu.identity_quat()), dtype=np.float64),
         ]
@@ -602,7 +615,10 @@ def _postprocess_collision_geoms_impl(
                     first_g_info = g_infos[fusion_group[0]]
                     if (
                         first_g_info["type"] not in (gs.GEOM_TYPE.PLANE, gs.GEOM_TYPE.TERRAIN)
-                        and all(first_g_info.get(name) == g_info.get(name) for name in ("contype", "conaffinity"))
+                        and all(
+                            first_g_info.get(name) == g_info.get(name)
+                            for name in ("contype", "conaffinity", "material")
+                        )
                         and all(
                             np.allclose(first_g_info.get(name, np.nan), g_info.get(name, np.nan), equal_nan=True)
                             # A fused mesh carries a single density, so geoms with different authored densities must
@@ -820,15 +836,12 @@ def parse_mesh_trimesh(path, group_by_material, scale, is_mesh_zup, surface) -> 
     tmeshes = _FILE_TMESHES_CACHE.find(key)
     if tmeshes is None:
         tmeshes = _load_trimesh_geometries(*key)
-    meshes = [
-        gs.Mesh.from_trimesh(
-            mesh=tmesh,
-            surface=surface,
-            metadata={"mesh_path": path, "imported_as_zup": is_mesh_zup},
-            share_arrays=True,
-        )
-        for tmesh in tmeshes
-    ]
+    meshes = []
+    for tmesh in tmeshes:
+        metadata = {"mesh_path": path, "imported_as_zup": is_mesh_zup}
+        if isinstance(tmesh.visual, trimesh.visual.TextureVisuals) and tmesh.visual.material is not None:
+            metadata["material_name"] = tmesh.visual.material.name or ""
+        meshes.append(gs.Mesh.from_trimesh(mesh=tmesh, surface=surface, metadata=metadata, share_arrays=True))
     for mesh in meshes:
         _FILE_TMESHES_CACHE.own(mesh, key, tmeshes)
     return meshes

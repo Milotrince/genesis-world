@@ -16,7 +16,8 @@ from genesis.utils.misc import DeprecationError, qd_to_torch, tensor_to_array
 from .description import RigidGeomDescription, RigidVisGeomDescription
 
 if TYPE_CHECKING:
-    from genesis.engine.materials.rigid import Rigid as RigidMaterial
+    from genesis.constants import TEXTURE_SLOT
+    from genesis.engine.dynamic_texture import DynamicTextureHandle
     from genesis.engine.solvers.rigid.rigid_solver import RigidSolver
 
     from .rigid_entity import RigidEntity
@@ -47,7 +48,6 @@ class RigidGeom(RBC):
         self.desc: RigidGeomDescription = desc
         self._link: "RigidLink" = link
         self._entity: "RigidEntity" = link.entity
-        self._material: "RigidMaterial" = link.entity.material
         self._solver: "RigidSolver" = link.entity.solver
 
         self._uid = gs.UID()
@@ -59,9 +59,10 @@ class RigidGeom(RBC):
         self._edge_start: int = edge_start
         self._verts_state_start: int = verts_state_start
 
-        self._coup_softness: float = self._material.coup_softness
-        self._coup_friction: float = self._material.coup_friction
-        self._coup_restitution: float = self._material.coup_restitution
+        solver_options = link.entity._desc.options.solver_options
+        self._coup_softness: float = solver_options.coup_softness
+        self._coup_friction: float = solver_options.coup_friction
+        self._coup_restitution: float = solver_options.coup_restitution
 
         # For heterogeneous simulation: which environments this geom is active in (None = all envs)
         self.active_envs_mask: torch.Tensor | None = None
@@ -201,8 +202,7 @@ class RigidGeom(RBC):
     @gs.assert_built
     def get_friction_torsional(self):
         """
-        Get the torsional friction coefficient the simulation is currently using for this geom (see
-        'gs.materials.Rigid').
+        Get the torsional friction coefficient the simulation is currently using for this geom.
 
         Returns
         -------
@@ -214,8 +214,7 @@ class RigidGeom(RBC):
     @gs.assert_built
     def get_friction_rolling(self):
         """
-        Get the rolling friction coefficient the simulation is currently using for this geom (see
-        'gs.materials.Rigid').
+        Get the rolling friction coefficient the simulation is currently using for this geom.
 
         Returns
         -------
@@ -227,7 +226,7 @@ class RigidGeom(RBC):
     @gs.assert_built
     def set_friction_torsional(self, friction_torsional):
         """
-        Set the torsional friction coefficient of this geometry (see 'gs.materials.Rigid').
+        Set the torsional friction coefficient of this geometry.
         """
         if friction_torsional < 0:
             gs.raise_exception("`friction_torsional` must be non-negative.")
@@ -236,7 +235,7 @@ class RigidGeom(RBC):
     @gs.assert_built
     def set_friction_rolling(self, friction_rolling):
         """
-        Set the rolling friction coefficient of this geometry (see 'gs.materials.Rigid').
+        Set the rolling friction coefficient of this geometry.
         """
         if friction_rolling < 0:
             gs.raise_exception("`friction_rolling` must be non-negative.")
@@ -601,7 +600,6 @@ class RigidVisGeom(RBC):
         self.desc: RigidVisGeomDescription = desc
         self._link = link
         self._entity = link.entity
-        self._material = link.entity.material
         self._solver = link.entity.solver
 
         # Lazy-initialize low-res geometry because it is usually unused and may be slow to compute
@@ -726,6 +724,14 @@ class RigidVisGeom(RBC):
         quat = vgeoms_quat[..., self.idx, :].unsqueeze(-2)
         tensor = gu.transform_by_trans_quat(init, pos, quat)
         return tensor[0] if self._solver.n_envs == 0 else tensor
+
+    @gs.assert_built
+    def get_dynamic_texture(self, slot: "TEXTURE_SLOT") -> "DynamicTextureHandle":
+        """Return the handle writing the dynamic texture that fills a slot of the surface of this visual geom."""
+        for handle in self._entity.scene.dynamic_textures:
+            if any(binding.vgeom is self and binding.slot == slot for binding in handle.bindings):
+                return handle
+        gs.raise_exception(f"The {slot.name.lower()} slot of this visual geom holds no dynamic texture.")
 
     # ------------------------------------------------------------------------------------
     # ----------------------------------- properties -------------------------------------

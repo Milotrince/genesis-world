@@ -68,13 +68,15 @@ def checkpoint_scene(mimic_hinges, requires_grad, show_viewer):
     )
     # A kinematic entity, whose solver holds state of its own. The runtime crashes when it builds one with gradients
     # after another scene in the same process, so a gradient scene holds a rigid box there.
+    options_cls = gs.options.RigidEntityOptions if requires_grad else gs.options.KinematicEntityOptions
     scene.add_entity(
-        morph=gs.morphs.Box(
-            pos=(0.0, -0.6, 0.5),
-            quat=(1.0, 0.0, 0.0, 1.0),
-            size=(0.1, 0.1, 0.1),
+        options=options_cls(
+            morph=gs.morphs.Box(
+                pos=(0.0, -0.6, 0.5),
+                quat=(1.0, 0.0, 0.0, 1.0),
+                size=(0.1, 0.1, 0.1),
+            ),
         ),
-        material=gs.materials.Rigid() if requires_grad else gs.materials.Kinematic(),
     )
     return scene
 
@@ -102,7 +104,7 @@ def test_export_and_load_rigid(
             pos=(0.0, 0.0, 0.5),
             size=(0.2, 0.2, 0.2),
         ),
-        material=gs.materials.Rigid(
+        material=gs.materials.Material(
             friction=0.7,
         ),
         surface=gs.surfaces.Default(
@@ -150,8 +152,12 @@ def test_export_and_load_rigid(
             files=pieces,
             pos=(0.0, 0.5, 0.5),
         ),
+        surface=gs.surfaces.Default(
+            color=(0.8, 0.2, 0.2),
+        ),
     )
-    # A link whose frame is anchored on the geometry it holds, given a pose offset as well
+    # A link whose frame is anchored on the geometry it holds, given a pose offset as well. Its surface holds a dynamic
+    # texture, whose declaration travels.
     anchored = scene.add_entity(
         morph=gs.morphs.Mesh(
             file="meshes/duck.obj",
@@ -163,6 +169,13 @@ def test_export_and_load_rigid(
         surface=gs.surfaces.Default(
             diffuse_texture=gs.textures.ImageTexture(
                 image_path="textures/checker.png",
+            ),
+            emissive_texture=gs.textures.DynamicTexture(
+                res=(4, 2),
+                initial=gs.textures.ColorTexture(
+                    color=(0.0, 0.5, 0.0),
+                ),
+                name="glow",
             ),
         ),
     )
@@ -195,11 +208,12 @@ def test_export_and_load_rigid(
         ),
     )
     kinematic_arm = scene.add_entity(
-        morph=gs.morphs.MJCF(
-            file=ET.tostring(mimic_hinges, encoding="unicode"),
-            pos=(40.0, 40.0, 1.0),
+        options=gs.options.KinematicEntityOptions(
+            morph=gs.morphs.MJCF(
+                file=ET.tostring(mimic_hinges, encoding="unicode"),
+                pos=(40.0, 40.0, 1.0),
+            ),
         ),
-        material=gs.materials.Kinematic(),
     )
     # A second entity from the same asset as 'anchored', so both share its geometry in the written file
     twin = scene.add_entity(
@@ -341,6 +355,8 @@ def test_export_and_load_rigid(
     assert restored.entities[1].surface.diffuse_texture.image_path == "checker.png"
     # A batch holds textures of its own, and each keeps the name of the image it was read from
     assert restored.entities[2].surface.diffuse_texture.textures[0].image_path == "indoor_bright.png"
+    # A color shortcut stays out of the file, and the texture it resolved to stands in its place
+    assert_allclose(restored.entities[5].surface.diffuse_texture.color, (0.8, 0.2, 0.2), tol=gs.EPS)
     # A texture holding a path rather than pixels stands for nothing, in the surface and in the meshes drawn with it
     assert restored.entities[14].surface.normal_texture is None
     assert restored.entities[14].vgeoms[0].vmesh.surface.normal_texture is None
@@ -348,6 +364,7 @@ def test_export_and_load_rigid(
     restored_visual = restored.entities[6].vgeoms[0].trimesh.visual
     assert restored_visual.kind == "texture"
     assert_equal(restored_visual.uv, anchored.vgeoms[0].trimesh.visual.uv)
+    assert_equal(restored.get_dynamic_texture("glow").image, scene.get_dynamic_texture("glow").image)
     # A morph names the asset it was created from, since the description stands for what was parsed out of it
     assert restored.entities[15].morph.file == "two_link.urdf.xacro"
     # A mesh states the asset it was read from by name, wherever that asset stood
@@ -372,7 +389,7 @@ def test_export_and_load_rigid(
     # A kinematic entity's description holds its frames, the geoms that render it, and no dynamics. The restored
     # entity keeps the same links and degrees of freedom, with nothing simulated behind them.
     ghost = restored.entities[10]
-    assert isinstance(ghost.material, gs.materials.Kinematic)
+    assert ghost.material is None
     assert (ghost.n_links, ghost.n_dofs) == (kinematic_arm.n_links, kinematic_arm.n_dofs)
     # At the configuration it was authored at rather than the one it was driven to, as every restored entity is.
     assert_equal(ghost.get_dofs_position(), 0.0)
@@ -579,6 +596,16 @@ def test_load_rejects_damaged_file(checkpoint_scene, tmp_path):
     with pytest.raises(gs.GenesisException, match="values a Genesis scene is not made of"):
         gs.Scene.load(exported)
 
+    # Every entity is constructed from options, so a description holding none is rejected.
+    manifest = deepcopy(original)
+    del manifest["held"]["scene"]["entities"][0]["options"]
+    members[MANIFEST_NAME] = json.dumps(manifest).encode()
+    with zipfile.ZipFile(exported, "w") as archive:
+        for name, content in members.items():
+            archive.writestr(name, content)
+    with pytest.raises(gs.GenesisException, match="values a Genesis scene is not made of"):
+        gs.Scene.load(exported)
+
     # A value standing where another kind is declared is rejected as well, and so is one its field does not admit.
     manifest = deepcopy(original)
     manifest["held"]["scene"]["options"]["values"]["sim"]["values"]["dt"] = -1.0
@@ -602,12 +629,9 @@ def test_load_rejects_damaged_file(checkpoint_scene, tmp_path):
 @pytest.mark.required
 def test_export_rejects_unsupported_physics(checkpoint_scene, tmp_path):
     # A scene holding what alters the simulation is rejected by name, since a file leaving it out would restore
-    # other physics. No description carries a particle entity either.
-    checkpoint_scene.add_entity(
-        morph=gs.morphs.Box(pos=(0.5, 0.5, 0.8), size=(0.1, 0.1, 0.1)), material=gs.materials.MPM.Elastic()
-    )
+    # other physics.
     checkpoint_scene.add_force_field(gs.force_fields.Wind(direction=(1.0, 0.0, 0.0)))
-    with pytest.raises(gs.GenesisException, match="1 MPMEntity, 1 Wind cannot be exported"):
+    with pytest.raises(gs.GenesisException, match="1 Wind cannot be exported"):
         checkpoint_scene.export(tmp_path / f"wind{SCENE_FORMAT}")
 
 
@@ -802,13 +826,14 @@ def test_trajectory_replay(n_envs, checkpoint_scene, tmp_path, show_viewer, tol)
     # A frame holds the wall time of every phase of the step that reached its state, which a vetoed step in between
     # leaves as it is. No step led to the first frame, and no step ran between the reset and the stop, which leave the
     # timings as they were.
+    phases = {"step", "period", "behaviors", "physics", "sensors", "recorders", "rendering", "video"}
     for trajectory in trajectories:
-        assert set(trajectory.timings(0)) == {"step", "period", "physics", "sensors", "recorders", "rendering", "video"}
+        assert set(trajectory.timings(0)) == phases
         assert np.isnan(list(trajectory.timings(0).values())).all()
         assert_equal(list(trajectory.timings(-1).values()), list(trajectory.timings(-2).values()))
         for index in range(1, N_STEPS + 1):
             timings = trajectory.timings(index)
-            assert set(timings) == {"step", "period", "physics", "sensors", "recorders", "rendering", "video"}
+            assert set(timings) == phases
             assert (
                 timings["step"] >= sum(time for phase, time in timings.items() if phase not in ("step", "period")) > 0
             )

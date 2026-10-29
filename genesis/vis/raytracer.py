@@ -212,6 +212,8 @@ class Raytracer:
 
     def build(self, scene):
         # Note that surfaces and entities added after building may not be included in LuisaRender
+        if scene.dynamic_textures:
+            gs.raise_exception("The raytracer does not draw dynamic textures. Render them with the rasterizer.")
         self.scene = scene
         self.sim = scene.sim
         self.visualizer = scene.visualizer
@@ -304,7 +306,7 @@ class Raytracer:
                         str(mpm_entity.uid),
                         self.sim.mpm_solver,
                         self.sim.mpm_solver.particle_radius,
-                        mpm_entity.material.rho,
+                        mpm_entity.material.density,
                     )
 
         # SPH particles
@@ -314,7 +316,7 @@ class Raytracer:
                     str(sph_entity.uid),
                     self.sim.sph_solver,
                     self.sim.sph_solver.particle_radius,
-                    sph_entity.material.rho,
+                    sph_entity.material.density,
                 )
 
         # PBD entities

@@ -10,12 +10,14 @@ from genesis.grad.bridge import LaunchRecorder, Operation, RolloutGraph
 from genesis.options.morphs import Morph
 from genesis.options.solvers import IPCCouplerOptions, LegacyCouplerOptions, SAPCouplerOptions
 from genesis.repr_base import RBC
-from genesis.utils.array_class import DataItem, DataKind, ErrorCode, iter_data
+from genesis.utils.array_class import CHECKPOINT_KINDS, DataItem, DataKind, ErrorCode, fill_data, iter_data, read_data
 from genesis.utils.misc import indices_to_mask, qd_to_numpy, qd_to_torch
 from genesis.utils.tools import StepTimer
 
+from .behaviors import BehaviorManager
 from .couplers import IPCCoupler, LegacyCoupler, SAPCoupler
 from .entities import HybridEntity
+from .entities.hybrid_entity import HybridEntityDescription
 from .sensors import SensorManager
 from .solvers import (
     FEMSolver,
@@ -29,10 +31,12 @@ from .solvers import (
 from .solvers.base_solver import GravityMixin, TimeBasedMixin, merge_errno
 from .state_change import StateChange, Subscriber
 from .states.solvers import SimState, SimulatorCheckpoint, SolverCheckpoint
+from .system_data import SystemDataArray
 
 if TYPE_CHECKING:
     from genesis.engine.entities.base_entity import Entity, EntityDescription
     from genesis.engine.scene import Scene
+    from genesis.options.entities import EntityOptions
     from genesis.options.scene import SceneOptions
 
     from .solvers.base_solver import Solver
@@ -102,6 +106,8 @@ class Simulator(RBC):
         )
         self._is_forward_ready = True
 
+        self._system_data = SystemDataArray()
+
         # solvers
         self.rigid_solver = RigidSolver(self.scene, self, options.rigid)
         self.kinematic_solver = KinematicSolver(self.scene, self, options.kinematic)
@@ -141,6 +147,9 @@ class Simulator(RBC):
         # entities
         self._entities: list["Entity"] = gs.List()
 
+        # behaviors
+        self._behavior_manager = BehaviorManager(self)
+
         # sensors
         self._sensor_manager = SensorManager(self)
 
@@ -151,32 +160,36 @@ class Simulator(RBC):
         surface=None,
         visualize_contact=False,
         name: str | None = None,
+        options: "EntityOptions | None" = None,
         desc: "EntityDescription | None" = None,
     ):
         if desc is not None:
             material = desc.material
-        if visualize_contact and not isinstance(material, gs.materials.Rigid):
-            gs.raise_exception("'visualize_contact' only applies to rigid entities.")
-        if isinstance(material, gs.materials.Hybrid):
-            # Note that adding to solver is handled in the hybrid entity
-            entity = HybridEntity(self.n_entities, self.scene, material, morph, surface, name=name)
+            options = desc.options
+        # Only a kinematic or rigid entity takes several morphs, one per variant. The other solvers resolve their
+        # description from the morph before the entity exists, so the check runs here.
+        elif not isinstance(morph, Morph) and not isinstance(
+            options, (gs.options.RigidEntityOptions, gs.options.KinematicEntityOptions)
+        ):
+            gs.raise_exception(f"An entity is created from one morph, got {type(morph).__name__}.")
+        if isinstance(options, gs.options.HybridEntityOptions):
+            # A hybrid entity has no solver of its own, since its parts are entities of their own. Resolution adds both
+            # parts to the scene first, so the hybrid entity comes after them, authored or loaded.
+            if desc is None:
+                desc = HybridEntityDescription.resolve(self.scene, morph, surface, name, options)
+            entity = HybridEntity(self.n_entities, self.scene, desc)
         else:
-            # Several solvers may declare a class the material belongs to, since 'Rigid' derives from 'Kinematic'. The
-            # one declaring the most derived class simulates it (see 'Solver.material_cls').
-            solver = None
-            for candidate in self._solvers:
-                if candidate.material_cls is None or not isinstance(material, candidate.material_cls):
-                    continue
-                if solver is None or issubclass(candidate.material_cls, solver.material_cls):
-                    solver = candidate
-            if solver is None:
-                gs.raise_exception(f"No solver simulates entities of material {type(material).__name__}.")
+            # The options decide the solver, by naming the class of the options configuring it
+            for solver in self._solvers:
+                if isinstance(solver._options, options._solver_options_cls):
+                    break
+            else:
+                gs.raise_exception(f"No solver simulates entities of options {type(options).__name__}.")
             entity = solver.add_entity(
-                self.n_entities, material, morph, surface, visualize_contact, name=name, desc=desc
+                self.n_entities, material, morph, surface, visualize_contact, name=name, options=options, desc=desc
             )
         self._entities.append(entity)
-        if entity.desc is not None:
-            self.scene._desc.entities.append(entity.desc)
+        self.scene._desc.entities.append(entity.desc)
         return entity
 
     def _add_force_field(self, force_field):
@@ -231,6 +244,15 @@ class Simulator(RBC):
         # Counted per environment to support per-env reset, as steps rather than seconds to avoid drifting over time.
         self._steps = torch.zeros((self._B,), dtype=gs.tc_int, device=gs.device)
 
+        descriptions = [solver.describe() for solver in self._solvers]
+        for solver, description in zip(self._solvers, descriptions):
+            if description is not None:
+                solver._data_record = self._system_data.allocate(solver, description)
+        for solver in self._solvers:
+            if solver._data_record is not None:
+                solver.register_data()
+        self._system_data.build()
+
         # solvers
         # IPCCoupler needs full substep flow for pre/post coupling phases
         self._rigid_only = self.rigid_solver.is_active and not isinstance(self._coupler, (SAPCoupler, IPCCoupler))
@@ -283,11 +305,14 @@ class Simulator(RBC):
                 if solver._errno is not None
             ]
 
+        self._behavior_manager.build()
+
         self._step_timer.add_phases("physics", "sensors")
         self._sensor_manager.build()
 
     def destroy(self):
         self._sensor_manager.destroy()
+        self._system_data.clear()
 
     def reset(self, state: SimState, envs_idx=None):
         for solver, solver_state in zip(self._solvers, state):
@@ -318,7 +343,8 @@ class Simulator(RBC):
     def data(self, kinds: frozenset[DataKind]) -> Iterator[DataItem]:
         """Yield every item of the requested kinds that the simulator and its active solvers hold.
 
-        The items of the simulator are named under 'Simulator', and the ones of a solver under its class name.
+        The items of the simulator are named under 'Simulator', the ones of a solver under its class name, and the ones
+        of the behaviors under 'BehaviorManager'.
         """
         if isinstance(self._coupler, IPCCoupler):
             gs.raise_exception(
@@ -332,6 +358,9 @@ class Simulator(RBC):
             for item in solver.data:
                 if isinstance(item, DataItem) and item.kind in kinds:
                     yield item._replace(name=f"{prefix}.{item.name}")
+        for item in self._behavior_manager.data:
+            if item.kind in kinds:
+                yield item._replace(name=f"BehaviorManager.{item.name}")
 
     def __getstate__(self) -> SimulatorCheckpoint:
         """Return a SimulatorCheckpoint of the simulation, for '__setstate__' to restore."""
@@ -339,9 +368,15 @@ class Simulator(RBC):
             gs.raise_exception(
                 "A scene coupled by IPC cannot be checkpointed yet: the IPC world holds state of its own."
             )
+        behaviors_items = [item for item in self._behavior_manager.data if item.kind in CHECKPOINT_KINDS]
         return SimulatorCheckpoint(
             steps=self._steps.clone(),
             solvers={type(solver).__name__: solver.__getstate__() for solver in self._active_solvers},
+            behaviors=SolverCheckpoint(
+                arrays=read_data(behaviors_items, to_torch=gs.use_zerocopy.is_supported),
+                configs={},
+                kinds=CHECKPOINT_KINDS,
+            ),
         )
 
     def __setstate__(self, state: SimulatorCheckpoint) -> None:
@@ -349,15 +384,17 @@ class Simulator(RBC):
 
         Everything around the state restarts as under a reset.
 
-        The clock of each environment comes back as recorded, since simulated time is state. The autograd graph of the
-        rollout, the gradients, the coupler and the sensors are restarted (see 'reset'): they describe the run that led
-        here.
+        The clock of each environment and the state of the behaviors come back as recorded, since both are state. The
+        autograd graph of the rollout, the gradients, the coupler and the sensors are restarted (see 'reset'): they
+        describe the run that led here.
         """
         # The record was checked against every solver by the scene (see 'Scene.__setstate__'). The restart precedes the
         # state, whose gradients it would zero otherwise.
         self._restart()
         for solver in self._active_solvers:
             solver.__setstate__(state.solvers[type(solver).__name__])
+        behaviors_items = (item for item in self._behavior_manager.data if item.kind in state.behaviors.kinds)
+        fill_data(behaviors_items, state.behaviors.arrays)
         self._steps[:] = torch.as_tensor(state.steps, device=gs.device)
         # Flush the zero-copy writes of fill_data on Metal.
         if gs.use_zerocopy.is_supported and gs.backend == gs.metal:
