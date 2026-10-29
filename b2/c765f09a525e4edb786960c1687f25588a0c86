@@ -22,12 +22,17 @@ genesis/engine/solvers/rigid/rigid_solver.py
   s_33aab527a44173::t_5be554a9878470 52,140
   s_33aab527a44173::t_646aaaa3adb558 226-231,313-317,337,1278-1281,1794,1834-1839,1864,1886,3300-3332,3529-3547
   s_33aab527a44173::t_3af1e425ada733 3548
+  s_3ddd9fcfafa263::t_544cdc663d24bb 1747-1749,1751-1759
 genesis/engine/scene.py
   s_33aab527a44173::t_646aaaa3adb558 927-929
   s_33aab527a44173::t_551693783cbad1 27,29-34,96,104,873-926,930-961,1885-1886
 tests/rigid/test_friction.py
   s_33aab527a44173::t_8ca10aa8bc67b5 972,974-985,1003,1024-1027,1030-1052,1057,1063,1081,1083,1085,1107-1111
   s_33aab527a44173::t_221cddaa3c307e 973,1022-1023,1028-1029,1082
+genesis/options/materials.py
+  s_3ddd9fcfafa263::t_a7b11d8de4bb17 46-49
+genesis/engine/states/solvers.py
+  s_3ddd9fcfafa263::t_544cdc663d24bb 104,113
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -39,6 +44,14 @@ tests/rigid/test_friction.py
       "agent_id": {
         "tool": "claude",
         "id": "28f96fc5-3905-4f11-a3af-5f67dc372dbe",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    },
+    "s_3ddd9fcfafa263": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2adab647-cb0d-4a92-a405-319c929351d5",
         "model": "claude-opus-5-5"
       },
       "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
