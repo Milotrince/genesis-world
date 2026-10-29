@@ -174,7 +174,6 @@ def test_export_and_load_rigid(
                         color=(0.0, 0.5, 0.0),
                     ),
                 ),
-                name="glow",
             ),
         ),
     )
@@ -361,7 +360,10 @@ def test_export_and_load_rigid(
     restored_visual = restored.entities[6].vgeoms[0].trimesh.visual
     assert restored_visual.kind == "texture"
     assert_equal(restored_visual.uv, anchored.vgeoms[0].trimesh.visual.uv)
-    assert_equal(restored.get_dynamic_texture("glow").images, scene.get_dynamic_texture("glow").images)
+    restored_texture = restored.entities[6].vgeoms[0].vmesh.surface.emissive_texture
+    assert_equal(
+        restored_texture.get_initial_images(), anchored.vgeoms[0].vmesh.surface.emissive_texture.get_initial_images()
+    )
     # A morph names the asset it was created from, since the description stands for what was parsed out of it
     assert restored.entities[15].morph.file == "two_link.urdf.xacro"
     # A mesh states the asset it was read from by name, wherever that asset stood

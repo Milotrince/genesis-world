@@ -324,7 +324,7 @@ class AssetTexture(Texture):
         return True
 
 
-def _texture_to_rgba(texture: "ColorTexture | ImageTexture | AssetTexture | None", res: tuple[int, int]) -> np.ndarray:
+def texture_to_rgba(texture: "ColorTexture | ImageTexture | AssetTexture | None", res: tuple[int, int]) -> np.ndarray:
     """Return a color or an image texture as an RGBA uint8 array of shape (height, width, 4), and no texture as a black
     and magenta checkerboard of 8 by 8 cells, an asset texture left unresolved included.
 
@@ -336,7 +336,10 @@ def _texture_to_rgba(texture: "ColorTexture | ImageTexture | AssetTexture | None
         is_magenta = ((np.arange(height)[:, None] * 8 // height) + (np.arange(width) * 8 // width)) % 2 == 1
         return np.where(is_magenta[..., None], [255, 0, 255, 255], [0, 0, 0, 255]).astype(np.uint8)
     if isinstance(texture, ImageTexture):
-        image = Image.fromarray(texture.image_array).convert("RGBA")
+        image_array = texture.image_array
+        if image_array.ndim == 3 and image_array.shape[-1] == 1:
+            image_array = image_array[..., 0]
+        image = Image.fromarray(image_array).convert("RGBA")
         base, channels = np.asarray(image.resize((width, height), Image.Resampling.BILINEAR)), texture.image_color
     else:
         base = np.full((height, width, 4), 255, dtype=np.uint8)
@@ -350,41 +353,40 @@ def _texture_to_rgba(texture: "ColorTexture | ImageTexture | AssetTexture | None
 
 class DynamicTexture(Texture):
     """
-    A fixed set of images that the simulation switches between and draws into while it runs, such as a screen or an
-    indicator light.
+    A texture whose image changes while the simulation runs, such as a screen or an indicator light.
 
     It fills the diffuse or the emissive slot of a surface (see ``gs.TEXTURE_SLOT``), and requires a mesh with texture
-    coordinates. Each parallel environment shows one image of the set, which it selects at runtime, and every image can
-    be written at runtime. The images are RGBA, their alpha channel standing for the opacity in the diffuse slot in
-    place of the opacity of the surface. Once the scene is built, ``scene.get_dynamic_texture``,
-    ``entity.get_dynamic_texture`` or ``vgeom.get_dynamic_texture`` return the handle selecting and writing them. Only
-    the rasterizer draws a dynamic texture.
+    coordinates. Each parallel environment shows one of a fixed set of images declared here, or, for a drawable
+    texture, pixels drawn at runtime on its canvas. The images are RGBA, their alpha channel standing for the opacity in
+    the diffuse slot in place of the opacity of the surface. Once the scene is built, ``entity.set_texture`` and
+    ``vgeom.set_texture`` set the image of each environment, and ``get_texture`` returns it. Each renderer holds the
+    pixels it draws, and only the rasterizer draws a dynamic texture yet.
 
     Parameters
     ----------
     res : tuple[int, int]
-        The resolution of every image, as (width, height) in pixels. Rendering uploads an image each time it is written,
-        so a larger image costs more per write, while selecting an image costs nothing.
+        The resolution of every image, as (width, height) in pixels. Rendering uploads a canvas each time it is drawn,
+        so a larger image costs more per drawing, while showing a declared image costs nothing.
     images : int | tuple[ColorTexture | ImageTexture | AssetTexture | None, ...] | dict[str, ...], optional
-        The images, each a color or an image resized to 'res', an ``AssetTexture`` for the texture the asset gives the
-        slot, or None for no texture, which shows a black and magenta checkerboard until it is written. A number gives
-        that many images with no texture, and a mapping names them (see 'images_name'). The set is fixed once the scene
-        is built,
-        and its memory is the number of images times the size of one, whatever the number of environments: a screen
-        showing an image of its own in each environment takes one image per environment, which environment i selects.
-        Default is one image.
+        The declared images, each a color or an image resized to 'res', an ``AssetTexture`` for the texture the asset
+        gives the slot, or None for no texture, which shows a black and magenta checkerboard. A number gives that many
+        images with no texture, and a mapping names them (see 'images_name'). The images are fixed once the scene is
+        built, and their memory is independent of the number of environments. Default is one image.
     images_name : tuple[str, ...] | None, optional
-        The name of each image, by which the images are selected and written as well as by position. Default is None.
+        The name of each image, by which the images are shown as well as by position. Default is None.
+    is_drawable : bool, optional
+        Whether pixels can be drawn on the texture at runtime, on a canvas added after the declared images. Drawing
+        costs the memory of the canvases and an upload per drawing, so leave it off for a texture switching between
+        known images. Default is False.
     is_batched : bool, optional
-        Whether each parallel environment selects an image of its own. Default is True.
+        Whether each parallel environment of a drawable texture draws on a canvas of its own. Its own canvases cost one
+        image per environment, while a single canvas costs one image and shows one drawing in every environment
+        selecting it. Default is True.
     initial_image : int | str, optional
-        The image every environment selects at build and after a reset, by position or by name, which the texture holds
+        The image every environment shows at build and after a reset, by position or by name, which the texture holds
         as a position. Default is 0.
     encoding : str, optional
         The encoding of the images, 'srgb' for colors or 'linear'. Default is 'srgb'.
-    name : str | None, optional
-        The name of the texture, unique within the scene, by which ``scene.get_dynamic_texture`` finds it. Default is
-        None.
     """
 
     res: PositiveVec2IType
@@ -392,10 +394,10 @@ class DynamicTexture(Texture):
         tuple[ColorTexture | ImageTexture | AssetTexture | None, ...], Field(min_length=1, strict=False)
     ] = (None,)
     images_name: Annotated[tuple[str, ...], Field(min_length=1, strict=False)] | None = None
+    is_drawable: StrictBool = False
     is_batched: StrictBool = True
     initial_image: StrictInt = 0
     encoding: Annotated[Literal["srgb", "linear"], BeforeValidator(lambda e: str(e).lower())] = "srgb"
-    name: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -442,12 +444,12 @@ class DynamicTexture(Texture):
 
     def get_initial_images(self) -> np.ndarray:
         """Return the images at build as an RGBA uint8 array of shape (n_images, height, width, 4)."""
-        return np.stack([_texture_to_rgba(texture, self.res) for texture in self.images])
+        return np.stack([texture_to_rgba(texture, self.res) for texture in self.images])
 
     def get_initial_image(self) -> np.ndarray:
         """Return the image every environment selects at build, as an RGBA uint8 array of shape (height, width, 4)."""
         (i_image,) = self.get_images_idx(self.initial_image)
-        return _texture_to_rgba(self.images[i_image], self.res)
+        return texture_to_rgba(self.images[i_image], self.res)
 
     def check_dim(self, dim: int) -> Texture | None:
         return None

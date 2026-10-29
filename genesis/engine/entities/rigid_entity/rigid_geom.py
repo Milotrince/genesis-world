@@ -726,12 +726,34 @@ class RigidVisGeom(RBC):
         return tensor[0] if self._solver.n_envs == 0 else tensor
 
     @gs.assert_built
-    def get_dynamic_texture(self, slot: "TEXTURE_SLOT") -> "DynamicTextureHandle":
-        """Return the handle writing the dynamic texture that fills a slot of the surface of this visual geom."""
-        for handle in self._entity.scene.dynamic_textures:
-            if any(binding.vgeom is self and binding.slot == slot for binding in handle.bindings):
-                return handle
-        gs.raise_exception(f"The {slot.name.lower()} slot of this visual geom holds no dynamic texture.")
+    def get_texture(self, slot: "TEXTURE_SLOT | None" = None, envs_idx=None) -> torch.Tensor:
+        """Return the image each environment shows on the dynamic texture of this visual geom.
+
+        See ``set_texture`` for 'slot', and ``DynamicTextureHandle.get_texture`` for 'envs_idx' and the returned value.
+        """
+        return self._get_dynamic_texture(slot).get_texture(envs_idx)
+
+    @gs.assert_built
+    def set_texture(self, texture, slot: "TEXTURE_SLOT | None" = None, envs_idx=None):
+        """Show a declared image, or draw pixels, on the dynamic texture of this visual geom.
+
+        'slot' picks the texture filling that slot of its surface, and may be None when a single slot holds one. See
+        ``DynamicTextureHandle.set_texture`` for 'texture' and 'envs_idx'.
+        """
+        self._get_dynamic_texture(slot).set_texture(texture, envs_idx)
+
+    def _get_dynamic_texture(self, slot: "TEXTURE_SLOT | None") -> "DynamicTextureHandle":
+        handles = [
+            handle
+            for handle in self._entity.scene.dynamic_textures
+            if any(b.vgeom is self and (slot is None or b.slot == slot) for b in handle.bindings)
+        ]
+        if len(handles) != 1:
+            slot_name = "any" if slot is None else f"the {slot.name.lower()}"
+            gs.raise_exception(
+                f"{len(handles)} dynamic textures fill {slot_name} slot of this visual geom, expected one."
+            )
+        return handles[0]
 
     # ------------------------------------------------------------------------------------
     # ----------------------------------- properties -------------------------------------

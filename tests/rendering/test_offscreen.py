@@ -9,6 +9,7 @@ import av
 
 import genesis as gs
 import genesis.utils.geom as gu
+from genesis.engine.dynamic_texture import DRAWN_IMAGE
 from genesis.options.sensors import RasterizerCameraOptions
 from genesis.utils import set_random_seed
 from genesis.utils.image_exporter import FrameImageExporter, as_grayscale_image
@@ -207,11 +208,11 @@ def test_dynamic_texture(show_viewer, png_snapshot):
     # Three horizontal planes seen from above under flat ambient light, each showing one dynamic texture:
     #  - screen: an emissive texture switching between two named colors per environment, drawn as the color of an
     #    Emission surface.
-    #  - label: a diffuse texture of two images drawn at runtime, selected per environment, given through the options
-    #    of the visual geom, which start as the texture the plane asset gives, as a plain plane beside it shows.
-    #  - lamp: an emissive texture shared by every environment, added on top of a dark red base color, which starts as
-    #    the checkerboard of no texture.
-    # A camera sensor renders through a rasterizer of its own, so it uploads the images independently of the camera.
+    #  - label: a diffuse texture drawn per environment, given through the options of the visual geom, which starts as
+    #    the texture the plane asset gives, as a plain plane beside it shows.
+    #  - lamp: an emissive texture drawn on a canvas shared by every environment, added on top of a dark red base color,
+    #    which starts as the checkerboard of no texture.
+    # A camera sensor renders through a rasterizer of its own, so it uploads the drawings independently of the camera.
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
             camera_pos=(0.0, 0.0, 4.0),
@@ -241,7 +242,6 @@ def test_dynamic_texture(show_viewer, png_snapshot):
                         color=(1.0, 0.0, 0.0),
                     ),
                 },
-                name="screen",
             ),
         ),
     )
@@ -256,7 +256,8 @@ def test_dynamic_texture(show_viewer, png_snapshot):
                     surface=gs.surfaces.Rough(
                         diffuse_texture=gs.textures.DynamicTexture(
                             res=(8, 8),
-                            images=(gs.textures.AssetTexture(), gs.textures.AssetTexture()),
+                            images=(gs.textures.AssetTexture(),),
+                            is_drawable=True,
                         ),
                     ),
                 ),
@@ -273,6 +274,7 @@ def test_dynamic_texture(show_viewer, png_snapshot):
             color=(0.3, 0.0, 0.0),
             emissive_texture=gs.textures.DynamicTexture(
                 res=(16, 16),
+                is_drawable=True,
                 is_batched=False,
             ),
         ),
@@ -320,20 +322,12 @@ def test_dynamic_texture(show_viewer, png_snapshot):
     lamp_initial = colors[:, 2]
     assert (lamp_initial[:, [0, 2]] > 40.0).all() and (lamp_initial[:, 1] < 30.0).all()
 
-    screen_texture = screen.get_dynamic_texture(gs.TEXTURE_SLOT.EMISSIVE)
-    assert scene.get_dynamic_texture("screen") is screen_texture
-    label_texture = label.vgeoms[0].get_dynamic_texture(gs.TEXTURE_SLOT.DIFFUSE)
-    lamp_texture = lamp.get_dynamic_texture(gs.TEXTURE_SLOT.EMISSIVE)
-    assert_equal(
-        lamp_texture.images[0, 0, :4], [[0, 0, 0, 255], [0, 0, 0, 255], [255, 0, 255, 255], [255, 0, 255, 255]]
-    )
-    # An image selected by name in one environment, images drawn and selected one per environment, and a shared image
-    # written in place
-    screen_texture.select("red", envs_idx=[1])
-    label_texture.set_image(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None], images_idx=[0, 1])
-    label_texture.select(torch.tensor([0, 1]))
-    lamp_texture.images[..., :3] = torch.tensor([0, 255, 0], dtype=torch.uint8)
-    lamp_texture.notify_changed()
+    # An image shown by name in one environment, one drawing per environment, and a drawing shared by every one
+    screen.set_texture("red", envs_idx=[1])
+    label.vgeoms[0].set_texture(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None])
+    lamp.set_texture(gs.textures.ColorTexture(color=(0.0, 1.0, 0.0)), slot=gs.TEXTURE_SLOT.EMISSIVE)
+    assert_equal(screen.get_texture(), [0, 1])
+    assert_equal(label.get_texture(slot=gs.TEXTURE_SLOT.DIFFUSE, envs_idx=[1]), [DRAWN_IMAGE])
     # The camera shows the images as soon as they change, while the sensor renders them at the next step
     scene.step()
     rgb_switched = camera.render(rgb=True)[0]
@@ -349,16 +343,22 @@ def test_dynamic_texture(show_viewer, png_snapshot):
         # The emission adds green on top of the base color, which keeps its red
         assert (colors[:, 2, 0] > 40.0).all() and (colors[:, 2, 1] > 100.0).all() and (colors[:, 2, 2] < 30.0).all()
 
-    # An integer image is clamped to the range of a channel, a texture shared by every environment refuses a selection
-    # of environments, and an image is given by an integer position or a name of the texture
-    lamp_texture.set_image(np.array([300, -5, 128]))
-    assert_equal(lamp_texture.images[0, ..., :3], torch.tensor([255, 0, 128], dtype=torch.uint8).expand(16, 16, 3))
-    with pytest.raises(gs.GenesisException, match="envs_idx"):
-        lamp_texture.select(0, envs_idx=[0])
+    # Integer pixels are clamped to the range of a channel
+    lamp.set_texture(np.array([[[0, 300, -5]]]))
+    colors = get_colors(camera.render(rgb=True)[0])
+    assert (colors[:, 2, 1] > 100.0).all() and (colors[:, 2, 2] < 30.0).all()
+    # Refused inputs: an image the texture does not declare, pixels on a texture that is not drawable, one drawing per
+    # environment on a shared canvas, and a slot holding no dynamic texture
     with pytest.raises(gs.GenesisException, match="No image is named"):
-        screen_texture.select("green")
+        screen.set_texture("green")
     with pytest.raises(gs.GenesisException, match="integer position"):
-        screen_texture.select(0.5)
+        screen.set_texture(0.5)
+    with pytest.raises(gs.GenesisException, match="is_drawable"):
+        screen.set_texture(np.zeros((16, 16, 3)))
+    with pytest.raises(gs.GenesisException, match="single image"):
+        lamp.set_texture(np.zeros((2, 16, 16, 3)))
+    with pytest.raises(gs.GenesisException, match="diffuse slot"):
+        screen.set_texture("red", slot=gs.TEXTURE_SLOT.DIFFUSE)
     with pytest.raises(gs.GenesisException, match="diffuse_texture"):
         gs.surfaces.Default(roughness_texture=gs.textures.DynamicTexture(res=(4, 4)))
     with pytest.raises(gs.GenesisException, match="texture coordinates"):
@@ -374,7 +374,9 @@ def test_dynamic_texture(show_viewer, png_snapshot):
         )
         unsupported_scene.build()
 
-    # A reset restores the images and the selection
+    # A reset of one environment shows its initial images again, and a reset of the scene those of every environment
+    scene.reset(envs_idx=[1])
+    assert_equal(label.get_texture(), [DRAWN_IMAGE, 0])
     scene.reset()
     colors = get_colors(camera.render(rgb=True)[0])
     assert (colors[:, 0, 2] > 150.0).all() and (colors[:, 0, :2] < 30.0).all()
