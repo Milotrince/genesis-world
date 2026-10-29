@@ -1,0 +1,22 @@
+genesis/engine/solvers/rigid/collider/collider.py
+  s_c960e3a1fa9c88::t_47821359b76414 365-367,369-370,376
+tests/ipc/test_api.py
+  s_c960e3a1fa9c88::t_4ab2ea08ad83b7 132-133,398-399,405
+  s_c960e3a1fa9c88::t_979f2747eafc35 403
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e41a48f459ed2ca901932556edba31c841f1f3e8",
+  "prompts": {},
+  "sessions": {
+    "s_c960e3a1fa9c88": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f85a0b1c-a7f4-49ca-b375-b50c1b840b61",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
