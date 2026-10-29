@@ -1,0 +1,19 @@
+tests/ipc/test_rigid.py
+  s_b582e8fa6ff8e7::t_69317a19be5ae2 753
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7f5caefea4352162e59ffabcc041366ea63b075b",
+  "prompts": {},
+  "sessions": {
+    "s_b582e8fa6ff8e7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "93cbe5da-5fda-4b22-914a-07c07aa5b08e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
