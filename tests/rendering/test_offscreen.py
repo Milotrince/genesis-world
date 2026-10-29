@@ -350,13 +350,15 @@ def test_dynamic_texture(show_viewer, png_snapshot):
         assert (colors[:, 2, 0] > 40.0).all() and (colors[:, 2, 1] > 100.0).all() and (colors[:, 2, 2] < 30.0).all()
 
     # An integer image is clamped to the range of a channel, a texture shared by every environment refuses a selection
-    # of environments, and an image is named by the texture
+    # of environments, and an image is given by an integer position or a name of the texture
     lamp_texture.set_image(np.array([300, -5, 128]))
     assert_equal(lamp_texture.images[0, ..., :3], torch.tensor([255, 0, 128], dtype=torch.uint8).expand(16, 16, 3))
     with pytest.raises(gs.GenesisException, match="envs_idx"):
         lamp_texture.select(0, envs_idx=[0])
     with pytest.raises(gs.GenesisException, match="No image is named"):
         screen_texture.select("green")
+    with pytest.raises(gs.GenesisException, match="integer position"):
+        screen_texture.select(0.5)
     with pytest.raises(gs.GenesisException, match="diffuse_texture"):
         gs.surfaces.Default(roughness_texture=gs.textures.DynamicTexture(res=(4, 4)))
     with pytest.raises(gs.GenesisException, match="texture coordinates"):
