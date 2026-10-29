@@ -203,7 +203,7 @@ def test_emissive_composites(base_plus_emissive_glb, show_viewer, renderer):
 
 
 @pytest.mark.required
-def test_dynamic_texture(show_viewer):
+def test_dynamic_texture(show_viewer, png_snapshot):
     # Three horizontal planes seen from above under flat ambient light, each showing one dynamic texture:
     #  - screen: an emissive texture switching between two named colors per environment, drawn as the color of an
     #    Emission surface.
@@ -336,7 +336,10 @@ def test_dynamic_texture(show_viewer):
     lamp_texture.notify_changed()
     # The camera shows the images as soon as they change, while the sensor renders them at the next step
     scene.step()
-    for rgb in (camera.render(rgb=True)[0], tensor_to_array(sensor.read().rgb)):
+    rgb_switched = camera.render(rgb=True)[0]
+    for frame in rgb_switched:
+        assert rgb_array_to_png_bytes(frame) == png_snapshot
+    for rgb in (rgb_switched, tensor_to_array(sensor.read().rgb)):
         colors = get_colors(rgb)
         assert colors[0, 0, 2] > 100.0 and (colors[0, 0, :2] < 30.0).all()
         assert colors[1, 0, 0] > 100.0 and (colors[1, 0, 1:] < 30.0).all()
