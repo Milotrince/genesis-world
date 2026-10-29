@@ -94,6 +94,9 @@ class DynamicTextureHandle:
         takes no 'envs_idx'.
         """
         envs_idx = self._sanitize_envs_idx(envs_idx)
+        # Torch warns on wrapping a read-only array, such as one read from an image, which the copy below never writes
+        if isinstance(image, np.ndarray) and not image.flags.writeable:
+            image = image.copy()
         image = torch.as_tensor(image, device=gs.device)
         image = (image.clamp(0.0, 1.0) * 255.0).round() if image.is_floating_point() else image.clamp(0, 255)
         if image.shape[-1] == 3:
