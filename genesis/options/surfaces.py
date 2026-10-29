@@ -12,7 +12,7 @@ from genesis.utils.cache import OwnedCache, get_hashkey
 
 from .misc import FoamOptions
 from .options import Options
-from .textures import BatchTexture, ColorTexture, ImageTexture, Texture
+from .textures import BatchTexture, ColorTexture, DynamicTexture, ImageTexture, Texture
 
 MetalType = Literal["aluminium", "gold", "copper", "brass", "iron", "titanium", "vanadium", "lithium"]
 
@@ -139,6 +139,15 @@ class Surface(Options):
 
         return data
 
+    @model_validator(mode="after")
+    def _check_dynamic_textures(self) -> Self:
+        for name, value in self:
+            if isinstance(value, DynamicTexture) and name not in ("diffuse_texture", "emissive_texture"):
+                gs.raise_exception(
+                    f"A dynamic texture fills 'diffuse_texture' or 'emissive_texture' alone, got '{name}'."
+                )
+        return self
+
     @property
     def texture(self) -> Texture | None:
         raise NotImplementedError
@@ -253,6 +262,10 @@ def _resolve_albedo(base_texture: Texture | None, emissive_texture: Texture | No
 
 
 def _make_rgba(color_texture: Texture | None, opacity_texture: Texture | None, batch: bool) -> "BatchTexture | Texture":
+    # The image of a dynamic texture is written at runtime and holds its own opacity
+    if isinstance(color_texture, DynamicTexture):
+        return BatchTexture(textures=[color_texture]) if batch else color_texture
+
     input_textures = [texture for texture in (color_texture, opacity_texture) if texture is not None]
     # TODO: Identical pixels loaded from distinct files are not shared, since 'image_path' is part of the key. Sharing
     # them requires texture-specific hashing, which 'get_hashkey' leaves out to stay generic.

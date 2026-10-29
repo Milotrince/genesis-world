@@ -164,20 +164,39 @@ class Texture(object):
     # OpenGL code
     ##################
 
+    @property
+    def _gl_format(self):
+        """The OpenGL format of the channels of the texture."""
+        if self.source_channels == "R":
+            return GL_RED
+        if self.source_channels in ("RG", "GB"):
+            return GL_RG
+        if self.source_channels == "RGB":
+            return GL_RGB
+        if self.source_channels == "RGBA":
+            return GL_RGBA
+        return GL_DEPTH_COMPONENT
+
+    def upload_source(self):
+        """Upload the current source of the texture, which keeps its size and channels.
+
+        A texture not yet in the OpenGL context uploads its current source once it is added, so this does nothing then.
+        """
+        if self._texid is None:
+            return
+        glBindTexture(self.tex_type, self._texid)
+        data = np.ascontiguousarray(np.flip(self.source, axis=0))
+        height, width = self.source.shape[:2]
+        glTexSubImage2D(self.tex_type, 0, 0, 0, width, height, self._gl_format, self.data_format, data)
+        glGenerateMipmap(self.tex_type)
+        glBindTexture(self.tex_type, 0)
+
     def _add_to_context(self):
         if self._texid is not None:
             return
             # raise ValueError('Texture already loaded into OpenGL context')
 
-        fmt = GL_DEPTH_COMPONENT
-        if self.source_channels == "R":
-            fmt = GL_RED
-        elif self.source_channels == "RG" or self.source_channels == "GB":
-            fmt = GL_RG
-        elif self.source_channels == "RGB":
-            fmt = GL_RGB
-        elif self.source_channels == "RGBA":
-            fmt = GL_RGBA
+        fmt = self._gl_format
 
         # Generate the OpenGL texture
         self._texid = glGenTextures(1)

@@ -494,6 +494,7 @@ from .constants import (
     EQUALITY_TYPE,
     CTRL_MODE,
     PARA_LEVEL,
+    TEXTURE_SLOT,
     ACTIVE,
     INACTIVE,
     integrator,

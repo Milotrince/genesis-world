@@ -212,6 +212,8 @@ class Raytracer:
 
     def build(self, scene):
         # Note that surfaces and entities added after building may not be included in LuisaRender
+        if scene.dynamic_textures:
+            gs.raise_exception("The raytracer does not draw dynamic textures. Render them with the rasterizer.")
         self.scene = scene
         self.sim = scene.sim
         self.visualizer = scene.visualizer
