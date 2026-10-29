@@ -433,6 +433,8 @@ class DynamicTexture(Texture):
                 if image not in images_name:
                     gs.raise_exception(f"No image is named '{image}'. Existing names: {list(images_name)}.")
                 image = images_name.index(image)
+            elif not isinstance(image, (int, np.integer)) or isinstance(image, bool):
+                gs.raise_exception(f"An image is given by an integer position or a name, got {image!r}.")
             if not 0 <= image < len(self.images):
                 gs.raise_exception(f"Image {image} is out of range for {len(self.images)} images.")
             images_idx.append(image)
