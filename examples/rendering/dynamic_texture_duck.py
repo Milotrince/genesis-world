@@ -38,14 +38,14 @@ def main():
     scene.add_entity(
         gs.morphs.Plane(),
     )
-    # The images to switch between, named and each the size of the dynamic texture: the texture of the asset, which an
-    # image left as None starts from, a checkerboard, vertical stripes and a flat color
+    # The images to switch between, named and each the size of the dynamic texture: the texture of the asset, a
+    # checkerboard, vertical stripes and a flat color
     width, height = TEXTURE_RES
     cols, rows = np.arange(width) // 32, np.arange(height)[:, None] // 32
     is_checker_dark = (rows + cols) % 2 == 0
     is_stripe = np.broadcast_to(cols % 2 == 0, (height, width))
     images = {
-        "duck": None,
+        "duck": gs.textures.AssetTexture(),
         "checker": gs.textures.ImageTexture(
             image_array=np.where(is_checker_dark[..., None], [240, 140, 30], [250, 240, 230]).astype(np.uint8),
         ),
