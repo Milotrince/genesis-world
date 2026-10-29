@@ -16,6 +16,7 @@ genesis/engine/solvers/rigid/rigid_solver.py
   s_33aab527a44173::t_e80a8c2fae0fec 2922-2924,3242-3243,3245-3253,3255-3256,3258-3260
   s_33aab527a44173::t_74dec3686f979f 1243-1246
   s_33aab527a44173::t_e4b2fd85ddf77d 1764,1803,1827,1848
+  s_3ddd9fcfafa263::t_0ce12139cbc8a7 1726,1728,1730
 genesis/utils/array_class.py
   s_c8d7cbda7564fe::t_4fcbe5a59eaa04 2357-2358,2413-2415,2509-2511,2514-2515,2588-2591,2637-2638,2660-2662,2707-2708,2756-2758,2786-2787,2810-2811,2828-2829,2846-2847,2850-2851,2867-2868,2888,2891,2893-2895,2897,2911-2912,2936-2937,2964-2965,2986-2987,3018-3019,3046-3049
   s_33aab527a44173::t_74dec3686f979f 2752-2753,2767
@@ -138,6 +139,8 @@ examples/rigid/domain_randomization.py
 genesis/engine/entities/rigid_entity/rigid_geom.py
   s_33aab527a44173::t_da52405634ed42 186-187,194-195,202-203
   s_33aab527a44173::t_25ac4e5be9eed2 182,184,190,192,198,200,206,208-213,217-218,220,223,225,227,230,232,234
+genesis/engine/states/solvers.py
+  s_3ddd9fcfafa263::t_0ce12139cbc8a7 104,112
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -149,6 +152,14 @@ genesis/engine/entities/rigid_entity/rigid_geom.py
       "agent_id": {
         "tool": "claude",
         "id": "28f96fc5-3905-4f11-a3af-5f67dc372dbe",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    },
+    "s_3ddd9fcfafa263": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2adab647-cb0d-4a92-a405-319c929351d5",
         "model": "claude-opus-5-5"
       },
       "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
