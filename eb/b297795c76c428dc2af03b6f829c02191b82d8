@@ -4,10 +4,12 @@ tests/rigid/test_behaviors.py
   s_14849f03ceed0e::t_c5cf5f51bc6435 8,25-28,136,139-140,145-146
   s_14849f03ceed0e::t_6e86424c4410e2 47-49,94,126-131,134
   s_14849f03ceed0e::t_d6602da59db5a2 6,137-138,147-155
+  s_3ddd9fcfafa263::t_a4f609f729ed3d 65-68,70-76,79-82,84-91,96-103,105
 genesis/engine/solvers/kinematic_solver.py
   s_14849f03ceed0e::t_ee096a59c1a420 11
   s_14849f03ceed0e::t_fb113c7f850726 223-227
   s_14849f03ceed0e::t_2eb28eab40c1d2 208,209-213
+  s_3ddd9fcfafa263::t_5f7cb2e862a12d 222
 genesis/engine/entities/rigid_entity/description.py
   s_14849f03ceed0e::t_eb72940ea37598 462-463,464-466,473
 genesis/engine/scene.py
@@ -15,6 +17,7 @@ genesis/engine/scene.py
   s_14849f03ceed0e::t_9315c17d3c13ee 1125
   s_14849f03ceed0e::t_86628b7ee1fe39 468,944,1128-1129
   s_14849f03ceed0e::t_5bc3247e284c72 1904-1905
+  s_3ddd9fcfafa263::t_853a0719b78414 1126-1127
 examples/rigid/latch_behavior.py
   s_14849f03ceed0e::t_83c5bd9ea2af94 1-9,12-16,18-20,22-68,71-78,86-124,128-157,161,172-179,184-188,190-194,196,202-207,209-211,222-225
   s_14849f03ceed0e::t_f17d285595f112 69-70,125-126
@@ -22,6 +25,7 @@ examples/rigid/latch_behavior.py
   s_14849f03ceed0e::t_e81f7e6e9f6823 10-11,180-183,189,195,197-201,208,212-221
   s_14849f03ceed0e::t_d6602da59db5a2 17,79-85
   s_14849f03ceed0e::t_c39df72e31862a 21
+  s_3ddd9fcfafa263::t_a4f609f729ed3d 158-160,162-171
 genesis/engine/behaviors/base_behavior.py
   s_14849f03ceed0e::t_e3aac0f908bac6 1,9,24-25,75-77,79-85
   s_14849f03ceed0e::t_21525ae54e61f2 71-74
@@ -30,6 +34,8 @@ genesis/engine/behaviors/base_behavior.py
   s_14849f03ceed0e::t_a3255296ca28b6 33-35,45-51
 genesis/options/behaviors/options.py
   s_14849f03ceed0e::t_3c0632d501052b 1-6,10-12
+  s_3ddd9fcfafa263::t_ead35364b20385 7
+  s_3ddd9fcfafa263::t_20e12460fbe7f8 8-9
 genesis/engine/behaviors/__init__.py
   s_14849f03ceed0e::t_bdba4f7edf9531 1-2
 genesis/__init__.py
@@ -46,20 +52,27 @@ genesis/engine/states/solvers.py
   s_14849f03ceed0e::t_e3aac0f908bac6 15-16,33-34,39
 genesis/utils/array_class.py
   s_14849f03ceed0e::t_998fe8ca7595e8 327-328,331-335,338,340-342
+  s_3ddd9fcfafa263::t_9728912fcc6db8 16,324-326,329-330,336-337,339
 genesis/engine/simulator.py
   s_14849f03ceed0e::t_2bcdb0f1fd6db3 174
   s_14849f03ceed0e::t_5bc3247e284c72 367
   s_14849f03ceed0e::t_e3aac0f908bac6 32,326-327,341-343,351,376-377
   s_14849f03ceed0e::t_9875f9a93be46a 306
   s_14849f03ceed0e::t_ee089b448ce3fe 17,146-148,288-289
+  s_3ddd9fcfafa263::t_b8322a70cbabf0 13,355-359,368-369
 genesis/options/behaviors/__init__.py
   s_14849f03ceed0e::t_1bee972b56eca6 1
 genesis/engine/entities/rigid_entity/rigid_entity.py
   s_14849f03ceed0e::t_d715d7facfc893 30,85-86,88-89,432-440,442-453
   s_14849f03ceed0e::t_a3255296ca28b6 33
   s_14849f03ceed0e::t_c7ebbb912c6c7c 454
+  s_3ddd9fcfafa263::t_5f7cb2e862a12d 87,441
 genesis/recorders/trajectory.py
   s_14849f03ceed0e::t_5bc3247e284c72 1249,1253
+genesis/engine/solvers/base_solver.py
+  s_3ddd9fcfafa263::t_9728912fcc6db8 629-631
+genesis/options/entities.py
+  s_3ddd9fcfafa263::t_ead35364b20385 16,270,447-451
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -71,6 +84,14 @@ genesis/recorders/trajectory.py
       "agent_id": {
         "tool": "claude",
         "id": "a72dc8a3-bb50-490d-82de-4c10a4128f34",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    },
+    "s_3ddd9fcfafa263": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2adab647-cb0d-4a92-a405-319c929351d5",
         "model": "claude-opus-5-5"
       },
       "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
