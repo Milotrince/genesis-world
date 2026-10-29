@@ -268,9 +268,15 @@ def test_selection_precedence(tmp_path, show_viewer, tol, two_box_free_mjcf, tor
                         surface=gs.surfaces.Emission(
                             emissive_texture=gs.textures.DynamicTexture(
                                 res=(8, 4),
-                                initial=gs.textures.ColorTexture(
-                                    color=(0.0, 1.0, 0.0),
-                                ),
+                                images={
+                                    "off": gs.textures.ColorTexture(
+                                        color=(0.0, 0.1, 0.0),
+                                    ),
+                                    "on": gs.textures.ColorTexture(
+                                        color=(0.0, 1.0, 0.0),
+                                    ),
+                                },
+                                initial_image="on",
                                 name="lcd",
                             ),
                         ),
