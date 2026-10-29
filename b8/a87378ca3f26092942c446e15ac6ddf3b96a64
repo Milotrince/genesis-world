@@ -1,0 +1,90 @@
+examples/rigid/heterogeneous_switching.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 1-109
+genesis/engine/solvers/kinematic_solver.py
+  s_3ddd9fcfafa263::t_6844aafb1f0e28 28,68,193-195,331,400-416,418-435,444,446,501-503,721,725-747,749-753,768-792,795-814,826-836,851-858,860-872,874-904,906-916,918-937,939-940,952-958,960-964,966
+  s_3ddd9fcfafa263::t_514c8475d3a10e 417,748,793-794,815-825,837,839-841,843-850,941-951,959
+genesis/engine/solvers/rigid/collider/collider.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 22-26,214,311-315,322,364-366,463-467,485,487-493,496-547,689,773-840,846-847,849,851,870,877
+tests/coupling/test_hybrid.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 171-227
+tests/sensors/test_tactile.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 1829-1834
+tests/rigid/conftest.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 80,87-88,110,132-134
+genesis/engine/sensors/base_sensor.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 658-668
+genesis/engine/entities/rigid_entity/rigid_geom.py
+  s_3ddd9fcfafa263::t_6844aafb1f0e28 30-65,96-97,126-129,622,643-644,647-650
+genesis/engine/entities/rigid_entity/rigid_entity.py
+  s_3ddd9fcfafa263::t_6844aafb1f0e28 36,74-75,1020-1024,3168-3187,3189
+  s_3ddd9fcfafa263::t_514c8475d3a10e 3190-3217
+genesis/engine/solvers/rigid/abd/forward_kinematics.py
+  s_3ddd9fcfafa263::t_f5f8519280fda3 916,918-920
+  s_3ddd9fcfafa263::t_514c8475d3a10e 912-915,917,921-922,938,988
+genesis/engine/couplers/sap_coupler.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 258-259
+genesis/engine/sensors/point_cloud_tactile.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 635,1998
+genesis/engine/couplers/legacy_coupler.py
+  s_3ddd9fcfafa263::t_4650d9c2803eaa 544-551
+  s_3ddd9fcfafa263::t_514c8475d3a10e 9,149,152,156,333,336,367,370,478,481,487,513,516,684,687,693,720,723,730,892,895,908,911,923,926,936,939,954,957
+genesis/vis/batch_renderer.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 307-308
+tests/rendering/test_offscreen.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 818,935-956
+tests/sensors/test_raycaster.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 763-767
+genesis/vis/raytracer.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 222-223
+genesis/engine/system_data/variants.py
+  s_3ddd9fcfafa263::t_6844aafb1f0e28 1-28,30,34-40,42-48
+  s_3ddd9fcfafa263::t_514c8475d3a10e 29,31-33,41
+genesis/vis/rasterizer_context.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 234-236,287-296,393-396,403,702-715
+genesis/engine/entities/rigid_entity/description.py
+  s_3ddd9fcfafa263::t_6844aafb1f0e28 458-462,1333,1360
+genesis/ext/pyrender/jit_render.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 641-642,1454-1470
+genesis/utils/raycast_qd.py
+  s_3ddd9fcfafa263::t_f5f8519280fda3 7
+  s_3ddd9fcfafa263::t_514c8475d3a10e 348
+genesis/engine/solvers/rigid/abd/misc.py
+  s_3ddd9fcfafa263::t_6844aafb1f0e28 437-441,443-444,448,450,455-470,478-507
+  s_3ddd9fcfafa263::t_514c8475d3a10e 446,451-454,471-477
+genesis/engine/states/solvers.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 1,76-82,135
+  s_3ddd9fcfafa263::t_f5f8519280fda3 136
+  s_3ddd9fcfafa263::t_4ff9dc4f6a3597 114-124
+genesis/engine/entities/rigid_entity/rigid_link.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 259-262
+tests/rigid/test_heterogeneous.py
+  s_3ddd9fcfafa263::t_6844aafb1f0e28 12,202-203,205-206,210,219-221,224-227,229,231-233
+  s_3ddd9fcfafa263::t_514c8475d3a10e 9,560-825
+genesis/engine/scene.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 2,71,1165-1209,2087-2088
+genesis/utils/array_class.py
+  s_3ddd9fcfafa263::t_6844aafb1f0e28 3069-3129,3131-3152,3155-3156,3161-3189
+  s_3ddd9fcfafa263::t_514c8475d3a10e 1422-1424,1432,1434,1538,1547-1548,1590,2252,3130,3153-3154,3157-3160
+genesis/engine/sensors/surface_distance_probe.py
+  s_3ddd9fcfafa263::t_514c8475d3a10e 379
+genesis/engine/solvers/rigid/rigid_solver.py
+  s_3ddd9fcfafa263::t_6844aafb1f0e28 1086-1109
+  s_3ddd9fcfafa263::t_9ae17ee9625852 1746-1749,1760
+  s_3ddd9fcfafa263::t_514c8475d3a10e 121,232-234,378,432-436,439-440,443-444,447,455-458,1081-1084,1149-1155,1159,1166-1184,1771-1790,1947,1949-1954,1956-1958,2377-2484
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b8a87378ca3f26092942c446e15ac6ddf3b96a64",
+  "prompts": {},
+  "sessions": {
+    "s_3ddd9fcfafa263": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2adab647-cb0d-4a92-a405-319c929351d5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
