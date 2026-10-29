@@ -292,18 +292,22 @@ class ImageTexture(Texture, SerializationMixin):
 
 
 def _texture_to_rgba(texture: "ColorTexture | ImageTexture | None", res: tuple[int, int]) -> np.ndarray:
-    """Return a color or an image texture as an RGBA uint8 array of shape (height, width, 4), opaque black for None.
+    """Return a color or an image texture as an RGBA uint8 array of shape (height, width, 4), a black and magenta
+    checkerboard of 8 by 8 cells for None.
 
     An image is resized to 'res', given as (width, height). A gray or gray-alpha color spans the three color channels,
     as an image of one or two channels does.
     """
     width, height = res
+    if texture is None:
+        is_magenta = ((np.arange(height)[:, None] * 8 // height) + (np.arange(width) * 8 // width)) % 2 == 1
+        return np.where(is_magenta[..., None], [255, 0, 255, 255], [0, 0, 0, 255]).astype(np.uint8)
     if isinstance(texture, ImageTexture):
         image = Image.fromarray(texture.image_array).convert("RGBA")
         base, channels = np.asarray(image.resize((width, height), Image.Resampling.BILINEAR)), texture.image_color
     else:
         base = np.full((height, width, 4), 255, dtype=np.uint8)
-        channels = (0.0,) if texture is None else texture.color
+        channels = texture.color
     rgba = np.ones(4)
     rgba[:3] = channels[:3] if len(channels) >= 3 else channels[0]
     if len(channels) in (2, 4):
@@ -329,8 +333,11 @@ class DynamicTexture(Texture):
         The resolution of every image, as (width, height) in pixels. Rendering uploads an image each time it is written,
         so a larger image costs more per write, while selecting an image costs nothing.
     images : int | tuple[ColorTexture | ImageTexture | None, ...] | dict[str, ...], optional
-        The images, each a color or an image resized to 'res', or None for opaque black. A number gives that many
-        images, opaque black, and a mapping names them (see 'images_name'). The set is fixed once the scene is built,
+        The images, each a color or an image resized to 'res', or None for the texture the asset gives the slot the
+        dynamic texture fills, a black and magenta checkerboard where the asset gives none. A number gives that many
+        images left as None, and a mapping names them (see 'images_name'). The visual geoms drawing one dynamic texture
+        must get the same texture from their asset where it leaves an image as None. The set is fixed once the scene is
+        built,
         and its memory is the number of images times the size of one, whatever the number of environments: a screen
         showing an image of its own in each environment takes one image per environment, which environment i selects.
         Default is one image.
