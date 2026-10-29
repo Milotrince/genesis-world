@@ -341,6 +341,13 @@ def test_dynamic_texture(show_viewer):
         lamp_texture.select(0, envs_idx=[0])
     with pytest.raises(gs.GenesisException, match="No image is named"):
         screen_texture.select("green")
+    with pytest.raises(gs.GenesisException, match="diffuse_texture"):
+        gs.surfaces.Default(roughness_texture=gs.textures.DynamicTexture(res=(4, 4)))
+    with pytest.raises(gs.GenesisException, match="texture coordinates"):
+        gs.Scene().add_entity(
+            morph=gs.morphs.Box(size=(0.1, 0.1, 0.1)),
+            surface=gs.surfaces.Emission(emissive_texture=gs.textures.DynamicTexture(res=(4, 4))),
+        )
     with pytest.raises(gs.GenesisException, match="custom visual vertices"):
         unsupported_scene = gs.Scene()
         unsupported_scene.add_entity(
