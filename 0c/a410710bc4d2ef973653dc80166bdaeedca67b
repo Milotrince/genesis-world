@@ -1,0 +1,19 @@
+tests/coupling/test_hybrid.py
+  s_0dda136e1dd12c::t_7ee2196adeb310 332
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0ca410710bc4d2ef973653dc80166bdaeedca67b",
+  "prompts": {},
+  "sessions": {
+    "s_0dda136e1dd12c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c2259c48-c7ba-469c-a289-5a3d91b9bd88",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
