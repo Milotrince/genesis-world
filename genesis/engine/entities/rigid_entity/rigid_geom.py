@@ -9,6 +9,7 @@ import trimesh
 
 import genesis as gs
 import genesis.utils.geom as gu
+from genesis.engine.dynamic_texture import DynamicTextureHandle, get_dynamic_texture
 from genesis.engine.mesh import Mesh
 from genesis.repr_base import RBC
 from genesis.utils.misc import DeprecationError, qd_to_torch, tensor_to_array
@@ -16,8 +17,6 @@ from genesis.utils.misc import DeprecationError, qd_to_torch, tensor_to_array
 from .description import RigidGeomDescription, RigidVisGeomDescription
 
 if TYPE_CHECKING:
-    from genesis.constants import TEXTURE_SLOT
-    from genesis.engine.dynamic_texture import DynamicTextureHandle
     from genesis.engine.solvers.rigid.rigid_solver import RigidSolver
 
     from .rigid_entity import RigidEntity
@@ -617,6 +616,9 @@ class RigidVisGeom(RBC):
         self.active_envs_mask: torch.Tensor | None = None
         self.active_envs_idx: np.ndarray | None = None
 
+        # The dynamic textures this visual geom draws, which the scene lists as it builds
+        self._dynamic_textures: list[DynamicTextureHandle] = []
+
     def _build(self):
         pass
 
@@ -726,34 +728,29 @@ class RigidVisGeom(RBC):
         return tensor[0] if self._solver.n_envs == 0 else tensor
 
     @gs.assert_built
-    def get_texture(self, slot: "TEXTURE_SLOT | None" = None, envs_idx=None) -> torch.Tensor:
-        """Return the image each environment shows on the dynamic texture of this visual geom.
+    def get_texture(self, name: str | None = None, envs_idx=None) -> torch.Tensor:
+        """Return the image each environment shows on a dynamic texture of this visual geom.
 
-        See ``set_texture`` for 'slot', and ``DynamicTextureHandle.get_texture`` for 'envs_idx' and the returned value.
+        'name' picks the texture of that name, and may be None when the visual geom draws a single one. See
+        ``DynamicTextureHandle.get_texture`` for 'envs_idx' and the returned value.
         """
-        return self._get_dynamic_texture(slot).get_texture(envs_idx)
+        return get_dynamic_texture(self._dynamic_textures, name, "this visual geom").get_texture(envs_idx)
 
     @gs.assert_built
-    def set_texture(self, texture, slot: "TEXTURE_SLOT | None" = None, envs_idx=None):
-        """Show a declared image, or draw pixels, on the dynamic texture of this visual geom.
+    def set_texture(self, image, name: str | None = None, envs_idx=None):
+        """Show a declared image of a dynamic texture of this visual geom.
 
-        'slot' picks the texture filling that slot of its surface, and may be None when a single slot holds one. See
-        ``DynamicTextureHandle.set_texture`` for 'texture' and 'envs_idx'.
+        See ``get_texture`` for 'name', and ``DynamicTextureHandle.set_texture`` for 'image' and 'envs_idx'.
         """
-        self._get_dynamic_texture(slot).set_texture(texture, envs_idx)
+        get_dynamic_texture(self._dynamic_textures, name, "this visual geom").set_texture(image, envs_idx)
 
-    def _get_dynamic_texture(self, slot: "TEXTURE_SLOT | None") -> "DynamicTextureHandle":
-        handles = [
-            handle
-            for handle in self._entity.scene.dynamic_textures
-            if any(b.vgeom is self and (slot is None or b.slot == slot) for b in handle.bindings)
-        ]
-        if len(handles) != 1:
-            slot_name = "any" if slot is None else f"the {slot.name.lower()}"
-            gs.raise_exception(
-                f"{len(handles)} dynamic textures fill {slot_name} slot of this visual geom, expected one."
-            )
-        return handles[0]
+    @gs.assert_built
+    def draw_texture(self, pixels, name: str | None = None, envs_idx=None):
+        """Draw pixels on a dynamic texture of this visual geom.
+
+        See ``get_texture`` for 'name', and ``DynamicTextureHandle.draw_texture`` for 'pixels' and 'envs_idx'.
+        """
+        get_dynamic_texture(self._dynamic_textures, name, "this visual geom").draw_texture(pixels, envs_idx)
 
     # ------------------------------------------------------------------------------------
     # ----------------------------------- properties -------------------------------------

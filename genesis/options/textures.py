@@ -1,12 +1,11 @@
 import os
-from collections.abc import Mapping
 from functools import cached_property
 from typing import Annotated, Iterable, Literal, Sequence, cast
 
 import numpy as np
 
 from PIL import Image
-from pydantic import BeforeValidator, Field, StrictBool, computed_field, model_validator
+from pydantic import BeforeValidator, Field, computed_field, model_validator
 from typing_extensions import Self
 
 import genesis as gs
@@ -355,80 +354,67 @@ class DynamicTexture(Texture):
     """
     A texture whose image changes while the simulation runs, such as a screen or an indicator light.
 
-    It fills the diffuse or the emissive slot of a surface (see ``gs.TEXTURE_SLOT``), and requires a mesh with texture
-    coordinates. Each parallel environment shows one of a fixed set of images declared here, or, for a drawable
-    texture, pixels drawn at runtime on its canvas. The images are RGBA, their alpha channel standing for the opacity in
-    the diffuse slot in place of the opacity of the surface. Once the scene is built, ``entity.set_texture`` and
-    ``vgeom.set_texture`` set the image of each environment, and ``get_texture`` returns it. Each renderer holds the
-    pixels it draws, and only the rasterizer draws a dynamic texture yet.
+    It fills the diffuse or the emissive slot of a surface, and requires a mesh with texture coordinates. Each parallel
+    environment shows one of a fixed set of images declared here, or, for a texture with a canvas, pixels drawn at
+    runtime on it. The images are RGBA, their alpha channel standing for the opacity in the diffuse slot in place of the
+    opacity of the surface. Once the scene is built, ``entity.set_texture`` shows a declared image in each environment,
+    ``entity.draw_texture`` draws pixels, and ``entity.get_texture`` returns what each environment shows, as do the
+    methods of the same name of a visual geom. Each renderer holds the pixels it draws, and only the rasterizer draws a
+    dynamic texture yet.
 
     Parameters
     ----------
     res : tuple[int, int]
         The resolution of every image, as (width, height) in pixels. Rendering uploads a canvas each time it is drawn,
         so a larger image costs more per drawing, while showing a declared image costs nothing.
-    images : int | tuple[ColorTexture | ImageTexture | AssetTexture | None, ...] | dict[str, ...], optional
+    images : tuple[ColorTexture | ImageTexture | AssetTexture | None, ...] | dict[str, ...], optional
         The declared images, each a color or an image resized to 'res', an ``AssetTexture`` for the texture the asset
-        gives the slot, or None for no texture, which shows a black and magenta checkerboard. A number gives that many
-        images with no texture, and a mapping names them (see 'images_name'). The images are fixed once the scene is
-        built, and their memory is independent of the number of environments. Default is one image.
-    images_name : tuple[str, ...] | None, optional
-        The name of each image, by which the images are shown as well as by position. Default is None.
-    is_drawable : bool, optional
-        Whether pixels can be drawn on the texture at runtime, on a canvas added after the declared images. Drawing
-        costs the memory of the canvases and an upload per drawing, so leave it off for a texture switching between
-        known images. Default is False.
-    is_batched : bool, optional
-        Whether each parallel environment of a drawable texture draws on a canvas of its own. Its own canvases cost one
-        image per environment, while a single canvas costs one image and shows one drawing in every environment
-        selecting it. Default is True.
+        gives the slot, or None for no texture, which shows a black and magenta checkerboard. A mapping names them, so
+        that they are shown by name as well as by position. The images are fixed once the scene is built, and their
+        memory is independent of the number of environments. Default is one image with no texture.
+    canvas : str | None, optional
+        Where pixels drawn at runtime go, after the declared images: None draws none, 'per_env' gives each parallel
+        environment a canvas of its own, and 'shared' gives every environment a single canvas, which shows one drawing
+        in all the environments showing it. A canvas costs the memory of one image and an upload per drawing, and one
+        per environment costs that much per environment, so leave it None for a texture switching between known
+        images. Default is None.
     initial_image : int | str, optional
-        The image every environment shows at build and after a reset, by position or by name, which the texture holds
-        as a position. Default is 0.
+        The image every environment shows at build and after a reset, by position or by name. Default is 0.
     encoding : str, optional
         The encoding of the images, 'srgb' for colors or 'linear'. Default is 'srgb'.
+    name : str | None, optional
+        The name of the texture, unique in the scene, by which the methods of an entity whose visual geoms draw several
+        dynamic textures pick it. Default is None.
     """
 
     res: PositiveVec2IType
-    images: Annotated[
-        tuple[ColorTexture | ImageTexture | AssetTexture | None, ...], Field(min_length=1, strict=False)
-    ] = (None,)
-    images_name: Annotated[tuple[str, ...], Field(min_length=1, strict=False)] | None = None
-    is_drawable: StrictBool = False
-    is_batched: StrictBool = True
-    initial_image: StrictInt = 0
+    images: (
+        Annotated[tuple[ColorTexture | ImageTexture | AssetTexture | None, ...], Field(min_length=1, strict=False)]
+        | Annotated[dict[str, ColorTexture | ImageTexture | AssetTexture | None], Field(min_length=1)]
+    ) = (None,)
+    canvas: Literal["per_env", "shared"] | None = None
+    initial_image: StrictInt | str = 0
     encoding: Annotated[Literal["srgb", "linear"], BeforeValidator(lambda e: str(e).lower())] = "srgb"
-
-    @model_validator(mode="before")
-    @classmethod
-    def _split_images(cls, data: dict) -> dict:
-        images = data.get("images")
-        if isinstance(images, Mapping):
-            if data.get("images_name") is not None:
-                gs.raise_exception("Name the images of a dynamic texture through a mapping or 'images_name', not both.")
-            data["images_name"], data["images"] = tuple(images), tuple(images.values())
-        elif isinstance(images, int):
-            data["images"] = (None,) * images
-        initial_image = data.get("initial_image")
-        if isinstance(initial_image, str):
-            images_name = data.get("images_name") or ()
-            if initial_image not in images_name:
-                gs.raise_exception(f"No image is named '{initial_image}'. Existing names: {list(images_name)}.")
-            data["initial_image"] = images_name.index(initial_image)
-        return data
+    name: str | None = None
 
     @model_validator(mode="after")
     def _check_images(self) -> Self:
-        if self.images_name is not None and len(self.images_name) != len(self.images):
-            gs.raise_exception(f"{len(self.images_name)} names given for {len(self.images)} images.")
-        if self.images_name is not None and len(set(self.images_name)) != len(self.images_name):
-            gs.raise_exception(f"The images of a dynamic texture take distinct names, got {list(self.images_name)}.")
         self.get_images_idx(self.initial_image)
         return self
 
+    @property
+    def images_name(self) -> tuple[str, ...]:
+        """The name of each declared image, empty when the images are not named."""
+        return tuple(self.images) if isinstance(self.images, dict) else ()
+
+    @property
+    def images_texture(self) -> tuple["ColorTexture | ImageTexture | AssetTexture | None", ...]:
+        """The texture of each declared image, in the order of their positions."""
+        return tuple(self.images.values()) if isinstance(self.images, dict) else self.images
+
     def get_images_idx(self, images: "int | str | Sequence[int | str] | np.ndarray") -> np.ndarray:
         """Return the positions of images given by position or by name, raising on one the set does not hold."""
-        images_name = self.images_name or ()
+        images_name = self.images_name
         images_idx = []
         for image in np.atleast_1d(np.asarray(images, dtype=object)).tolist():
             if isinstance(image, str):
@@ -443,13 +429,13 @@ class DynamicTexture(Texture):
         return np.array(images_idx, dtype=gs.np_int)
 
     def get_initial_images(self) -> np.ndarray:
-        """Return the images at build as an RGBA uint8 array of shape (n_images, height, width, 4)."""
-        return np.stack([texture_to_rgba(texture, self.res) for texture in self.images])
+        """Return the declared images as an RGBA uint8 array of shape (n_images, height, width, 4)."""
+        return np.stack([texture_to_rgba(texture, self.res) for texture in self.images_texture])
 
     def get_initial_image(self) -> np.ndarray:
-        """Return the image every environment selects at build, as an RGBA uint8 array of shape (height, width, 4)."""
+        """Return the image every environment shows at build, as an RGBA uint8 array of shape (height, width, 4)."""
         (i_image,) = self.get_images_idx(self.initial_image)
-        return texture_to_rgba(self.images[i_image], self.res)
+        return texture_to_rgba(self.images_texture[i_image], self.res)
 
     def check_dim(self, dim: int) -> Texture | None:
         return None

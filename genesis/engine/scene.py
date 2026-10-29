@@ -967,9 +967,16 @@ class Scene(RBC):
                     gs.raise_exception(
                         f"Only rigid and kinematic entities draw a dynamic texture, got '{entity.name}'."
                     )
-            self._dynamic_textures = [
-                DynamicTextureHandle(self, texture, bindings) for texture, bindings in bindings_by_texture.items()
-            ]
+            textures_name = [texture.name for texture in bindings_by_texture if texture.name is not None]
+            if len(set(textures_name)) != len(textures_name):
+                gs.raise_exception(f"The dynamic textures of a scene take distinct names, got {textures_name}.")
+            for texture, bindings in bindings_by_texture.items():
+                handle = DynamicTextureHandle(self, texture, bindings)
+                self._dynamic_textures.append(handle)
+                for vgeom in dict.fromkeys(binding.vgeom for binding in bindings):
+                    vgeom._dynamic_textures.append(handle)
+                for entity in dict.fromkeys(binding.vgeom.entity for binding in bindings):
+                    entity._dynamic_textures.append(handle)
 
             # simulator
             self._sim.build()
