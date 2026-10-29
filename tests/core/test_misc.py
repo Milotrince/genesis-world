@@ -496,7 +496,13 @@ def test_entity_options(
                 vgeoms={
                     gs.VGeomIndex.with_material("lcd*"): gs.options.VGeomOptions(
                         surface=gs.surfaces.Emission(
-                            emissive=(0.0, 1.0, 0.0),
+                            emissive_texture=gs.textures.DynamicTexture(
+                                res=(8, 4),
+                                initial=gs.textures.ColorTexture(
+                                    color=(0.0, 1.0, 0.0),
+                                ),
+                                name="lcd",
+                            ),
                         ),
                     ),
                 },
@@ -650,6 +656,13 @@ def test_entity_options(
             options=mixed_geoms_body.options.model_copy(
                 update={"vgeoms": {gs.VGeomIndex.with_material("lcd"): gs.options.VGeomOptions()}}
             )
+        )
+    with pytest.raises(gs.GenesisException, match="diffuse_texture"):
+        gs.surfaces.Default(roughness_texture=gs.textures.DynamicTexture(res=(4, 4)))
+    with pytest.raises(gs.GenesisException, match="texture coordinates"):
+        scene.add_entity(
+            morph=gs.morphs.Box(pos=(5.0, 0.0, 0.0), size=(0.1, 0.1, 0.1)),
+            surface=gs.surfaces.Emission(emissive_texture=gs.textures.DynamicTexture(res=(4, 4))),
         )
     with pytest.raises(gs.GenesisException, match="links_to_keep"):
         scene.add_entity(
