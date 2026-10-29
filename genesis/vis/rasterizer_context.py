@@ -46,7 +46,7 @@ class DynamicTextureTargets(NamedTuple):
     slot, one per slot the texture fills ('textures', keyed by whether the slot is the base color), at the layer each
     rendered environment selects. 'canvases_layer' holds the layer of the canvas of each environment of the scene, -1
     for one not rendered. 'nodes' holds the node each visual geom was last bound through, so that a node drawn anew is
-    bound again. 'is_selection_stale' marks a selection changed since the last sync, and 'callback' is the callback
+    bound again. 'selection_version' holds the version of the selection the nodes show, and 'callback' is the callback
     subscribed to the handle.
     """
 
@@ -56,8 +56,8 @@ class DynamicTextureTargets(NamedTuple):
     nodes_key: list["gs.UID"]
     is_base_color: list[bool]
     nodes: list["pyrender.Node | None"]
-    is_selection_stale: np.ndarray
-    callback: Callable[[np.ndarray, torch.Tensor | None], None]
+    selection_version: np.ndarray
+    callback: Callable[[np.ndarray, torch.Tensor], None]
 
 
 class TrackedNodeList:
@@ -631,8 +631,8 @@ class RasterizerContext:
             texture = handle.texture
             images = texture.get_initial_images()
             canvases_layer = np.full(self.sim._B, -1, dtype=gs.np_int)
-            if texture.is_drawable:
-                n_canvases = len(self.rendered_envs_idx) if texture.is_batched else 1
+            if texture.canvas is not None:
+                n_canvases = len(self.rendered_envs_idx) if texture.canvas == "per_env" else 1
                 canvases_layer[self.rendered_envs_idx] = (
                     len(images) + np.arange(len(self.rendered_envs_idx)) % n_canvases
                 )
@@ -651,8 +651,8 @@ class RasterizerContext:
                 [binding.vgeom.uid for binding in handle.bindings],
                 is_base_color,
                 [None] * len(handle.bindings),
-                np.array([True]),
-                partial(self._on_dynamic_texture_change, handle),
+                np.array([-1]),
+                partial(self._on_dynamic_texture_draw, handle),
             )
             handle.subscribe(targets.callback)
             self._dynamic_texture_targets[handle] = targets
@@ -1363,24 +1363,22 @@ class RasterizerContext:
     def clear_debug_objects(self):
         self.clear_external_nodes()
 
-    def _on_dynamic_texture_change(
-        self, handle: "DynamicTextureHandle", envs_idx: np.ndarray, image: torch.Tensor | None
+    def _on_dynamic_texture_draw(
+        self, handle: "DynamicTextureHandle", envs_idx: np.ndarray, image: torch.Tensor
     ) -> None:
-        """Queue the upload of the pixels drawn on the canvases of the rendered environments, and mark the selection."""
+        """Queue the upload of the pixels drawn on the canvases of the rendered environments."""
         targets = self._dynamic_texture_targets[handle]
-        with self.scene._visualizer.viewer_lock:
-            if image is not None:
-                if handle.texture.is_batched:
-                    layers_idx = targets.canvases_layer[envs_idx]
-                else:
-                    layers_idx = np.array([len(handle.texture.images)])
-                (images_idx,) = np.nonzero(layers_idx >= 0)
-                if len(images_idx) > 0:
-                    images = tensor_to_array(image[torch.as_tensor(images_idx, device=image.device)])
-                    for texture in targets.textures.values():
-                        texture.set_layers(layers_idx[images_idx], images)
-                        self._scene.updated_textures.add(texture)
-            targets.is_selection_stale[0] = True
+        if handle.texture.canvas == "per_env":
+            layers_idx = targets.canvases_layer[envs_idx]
+        else:
+            layers_idx = np.array([len(handle.texture.images)])
+        (images_idx,) = np.nonzero(layers_idx >= 0)
+        if len(images_idx) > 0:
+            images = tensor_to_array(image[torch.as_tensor(images_idx, device=image.device)])
+            with self.scene._visualizer.viewer_lock:
+                for texture in targets.textures.values():
+                    texture.set_layers(layers_idx[images_idx], images)
+                    self._scene.updated_textures.add(texture)
 
     def update(self, force_render: bool = False, solvers=None):
         """
@@ -1410,12 +1408,12 @@ class RasterizerContext:
                             primitive.texture_layers = np.zeros((len(self.rendered_envs_idx), 2), np.float32)
                         self._scene._meshes_updated = True
                         targets.nodes[i_n] = node
-                    elif not targets.is_selection_stale[0]:
+                    elif targets.selection_version[0] == targets.handle.selection_version:
                         continue
                     texture_layers = primitive.texture_layers.copy()
                     texture_layers[:, 0 if is_base_color else 1] = layers
                     self.jit.update_texture_layers(node, texture_layers)
-                targets.is_selection_stale[0] = False
+                targets.selection_version[0] = targets.handle.selection_version
 
         # Early return if already updated previously
         if not force_render and self._t >= self.scene.sim.cur_step_global:

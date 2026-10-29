@@ -509,7 +509,7 @@ class KinematicEntityDescription(EntityDescription):
             for vg_desc in l_desc.vgeoms:
                 for slot_name, texture in dict(vg_desc.vmesh.surface).items():
                     if isinstance(texture, DynamicTexture) and any(
-                        isinstance(image, AssetTexture) for image in texture.images
+                        isinstance(image, AssetTexture) for image in texture.images_texture
                     ):
                         bindings_by_texture.setdefault(texture, []).append((vg_desc.vmesh, slot_name))
         for texture, bindings in bindings_by_texture.items():
@@ -521,7 +521,9 @@ class KinematicEntityDescription(EntityDescription):
                     "texture images resolve to no single one. Bind one dynamic texture per material with "
                     "'gs.VGeomIndex.with_material', or give those images explicitly."
                 )
-            images = tuple(seed if isinstance(image, AssetTexture) else image for image in texture.images)
+            images = tuple(seed if isinstance(image, AssetTexture) else image for image in texture.images_texture)
+            if texture.images_name:
+                images = dict(zip(texture.images_name, images))
             filled = texture.model_copy(update={"images": images})
             for vmesh, slot_name in bindings:
                 setattr(vmesh.surface, slot_name, filled)
