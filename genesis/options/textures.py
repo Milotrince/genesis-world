@@ -147,6 +147,9 @@ class ImageTexture(Texture, SerializationMixin):
     @model_validator(mode="before")
     @classmethod
     def _validate_and_load(cls, data: dict) -> dict:
+        # A texture instance validated against this class, as a union of texture types does, is not raw input
+        if not isinstance(data, dict):
+            return data
         image_path, image_array = data.get("image_path"), data.get("image_array")
 
         if not ((image_path is not None) ^ (image_array is not None)):
@@ -291,15 +294,45 @@ class ImageTexture(Texture, SerializationMixin):
         )
 
 
-def _texture_to_rgba(texture: "ColorTexture | ImageTexture | None", res: tuple[int, int]) -> np.ndarray:
-    """Return a color or an image texture as an RGBA uint8 array of shape (height, width, 4), a black and magenta
-    checkerboard of 8 by 8 cells for None.
+class AssetTexture(Texture):
+    """
+    The texture the asset gives the slot of a surface holding a dynamic texture, as an image of that dynamic texture.
+
+    It stands in the 'images' of a ``DynamicTexture`` alone, and resolves when the entity is added: to the image or the
+    color the asset gives the slot, or to no texture where it gives none. The visual geoms drawing one dynamic texture
+    must get the same texture from their asset, so a multi-material asset takes one dynamic texture per material,
+    bound through ``gs.VGeomIndex.with_material``.
+    """
+
+    def check_dim(self, dim: int) -> Texture | None:
+        return None
+
+    def check_simplify(self) -> "AssetTexture":
+        return self
+
+    def apply_cutoff(self, cutoff: float) -> None:
+        pass
+
+    @computed_field
+    @cached_property
+    def is_black(self) -> bool:
+        return False
+
+    @computed_field
+    @cached_property
+    def requires_uv(self) -> bool:
+        return True
+
+
+def _texture_to_rgba(texture: "ColorTexture | ImageTexture | AssetTexture | None", res: tuple[int, int]) -> np.ndarray:
+    """Return a color or an image texture as an RGBA uint8 array of shape (height, width, 4), and no texture as a black
+    and magenta checkerboard of 8 by 8 cells, an asset texture left unresolved included.
 
     An image is resized to 'res', given as (width, height). A gray or gray-alpha color spans the three color channels,
     as an image of one or two channels does.
     """
     width, height = res
-    if texture is None:
+    if not isinstance(texture, (ColorTexture, ImageTexture)):
         is_magenta = ((np.arange(height)[:, None] * 8 // height) + (np.arange(width) * 8 // width)) % 2 == 1
         return np.where(is_magenta[..., None], [255, 0, 255, 255], [0, 0, 0, 255]).astype(np.uint8)
     if isinstance(texture, ImageTexture):
@@ -332,12 +365,11 @@ class DynamicTexture(Texture):
     res : tuple[int, int]
         The resolution of every image, as (width, height) in pixels. Rendering uploads an image each time it is written,
         so a larger image costs more per write, while selecting an image costs nothing.
-    images : int | tuple[ColorTexture | ImageTexture | None, ...] | dict[str, ...], optional
-        The images, each a color or an image resized to 'res', or None for the texture the asset gives the slot the
-        dynamic texture fills, a black and magenta checkerboard where the asset gives none. A number gives that many
-        images left as None, and a mapping names them (see 'images_name'). The visual geoms drawing one dynamic texture
-        must get the same texture from their asset where it leaves an image as None. The set is fixed once the scene is
-        built,
+    images : int | tuple[ColorTexture | ImageTexture | AssetTexture | None, ...] | dict[str, ...], optional
+        The images, each a color or an image resized to 'res', an ``AssetTexture`` for the texture the asset gives the
+        slot, or None for no texture, which shows a black and magenta checkerboard until it is written. A number gives
+        that many images with no texture, and a mapping names them (see 'images_name'). The set is fixed once the scene
+        is built,
         and its memory is the number of images times the size of one, whatever the number of environments: a screen
         showing an image of its own in each environment takes one image per environment, which environment i selects.
         Default is one image.
@@ -356,7 +388,9 @@ class DynamicTexture(Texture):
     """
 
     res: PositiveVec2IType
-    images: Annotated[tuple[ColorTexture | ImageTexture | None, ...], Field(min_length=1, strict=False)] = (None,)
+    images: Annotated[
+        tuple[ColorTexture | ImageTexture | AssetTexture | None, ...], Field(min_length=1, strict=False)
+    ] = (None,)
     images_name: Annotated[tuple[str, ...], Field(min_length=1, strict=False)] | None = None
     is_batched: StrictBool = True
     initial_image: StrictInt = 0

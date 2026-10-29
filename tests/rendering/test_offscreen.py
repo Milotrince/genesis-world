@@ -208,9 +208,9 @@ def test_dynamic_texture(show_viewer, png_snapshot):
     #  - screen: an emissive texture switching between two named colors per environment, drawn as the color of an
     #    Emission surface.
     #  - label: a diffuse texture of two images drawn at runtime, selected per environment, given through the options
-    #    of the visual geom, which start from the texture the plane gives itself, as a plain plane beside it shows.
+    #    of the visual geom, which start as the texture the plane asset gives, as a plain plane beside it shows.
     #  - lamp: an emissive texture shared by every environment, added on top of a dark red base color, which starts as
-    #    a checkerboard since a plane gives no emission.
+    #    the checkerboard of no texture.
     # A camera sensor renders through a rasterizer of its own, so it uploads the images independently of the camera.
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
@@ -256,7 +256,7 @@ def test_dynamic_texture(show_viewer, png_snapshot):
                     surface=gs.surfaces.Rough(
                         diffuse_texture=gs.textures.DynamicTexture(
                             res=(8, 8),
-                            images=2,
+                            images=(gs.textures.AssetTexture(), gs.textures.AssetTexture()),
                         ),
                     ),
                 ),
@@ -312,8 +312,8 @@ def test_dynamic_texture(show_viewer, png_snapshot):
     def get_colors(rgb):
         return np.stack([[rgb[i_b][mask].mean(axis=0) for mask in masks[i_b]] for i_b in range(2)])
 
-    # The images at build: the first color of the screen, the texture of the plane, and a black and magenta checkerboard
-    # adding red and blue on top of the dark red base
+    # The images at build: the first color of the screen, the asset texture of the plane, and no texture, whose black
+    # and magenta checkerboard adds red and blue on top of the dark red base
     colors = get_colors(rgb)
     assert (colors[:, 0, 2] > 150.0).all() and (colors[:, 0, :2] < 30.0).all()
     assert_allclose(colors[:, 1], colors[:, 3], atol=5.0)
