@@ -6,6 +6,7 @@ import torch
 
 import genesis as gs
 from genesis.constants import link_ref_frame
+from genesis.engine.dynamic_texture import DynamicTextureHandle, get_dynamic_texture
 from genesis.engine.states.entities import RigidEntityState
 from genesis.options.indices import get_links_path
 from genesis.typing import UnitVec4FType, Vec3FType
@@ -27,8 +28,6 @@ from .rigid_joint import RigidJoint
 from .rigid_link import KinematicLink, RigidLink
 
 if TYPE_CHECKING:
-    from genesis.constants import TEXTURE_SLOT
-    from genesis.engine.dynamic_texture import DynamicTextureHandle
     from genesis.engine.scene import Scene
     from genesis.engine.solvers.rigid.rigid_solver import RigidSolver
     from genesis.engine.solvers.kinematic_solver import KinematicSolver
@@ -74,6 +73,8 @@ class KinematicEntity(Entity):
         self._is_built: bool = False
         self._is_attached: bool = False
         self._is_vverts_overridden: bool = False
+        # The dynamic textures its visual geoms draw, which the scene lists as it builds
+        self._dynamic_textures: list[DynamicTextureHandle] = []
 
         # The names from the root of the kinematic tree down to each link, by local link index, which the link options
         # select on (see 'gs.LinkIndex')
@@ -1094,39 +1095,29 @@ class KinematicEntity(Entity):
         return gs.List(vgeom for link in self._links for vgeom in link.vgeoms)
 
     @gs.assert_built
-    def get_texture(self, slot: "TEXTURE_SLOT | None" = None, envs_idx=None) -> torch.Tensor:
-        """Return the image each environment shows on the dynamic texture of the visual geoms of the entity.
+    def get_texture(self, name: str | None = None, envs_idx=None) -> torch.Tensor:
+        """Return the image each environment shows on a dynamic texture drawn by the visual geoms of the entity.
 
-        See ``set_texture`` for 'slot', and ``DynamicTextureHandle.get_texture`` for 'envs_idx' and the returned value.
+        'name' picks the texture of that name, and may be None when they draw a single one. See
+        ``DynamicTextureHandle.get_texture`` for 'envs_idx' and the returned value.
         """
-        return self._get_dynamic_texture(slot).get_texture(envs_idx)
+        return get_dynamic_texture(self._dynamic_textures, name, f"entity '{self.name}'").get_texture(envs_idx)
 
     @gs.assert_built
-    def set_texture(self, texture, slot: "TEXTURE_SLOT | None" = None, envs_idx=None):
-        """Show a declared image, or draw pixels, on the dynamic texture of the visual geoms of the entity.
+    def set_texture(self, image, name: str | None = None, envs_idx=None):
+        """Show a declared image of a dynamic texture drawn by the visual geoms of the entity.
 
-        'slot' picks the texture filling that slot of their surfaces, any slot if None. Several dynamic textures matching
-        it raise an error: set one from its visual geom with ``RigidVisGeom.set_texture`` instead. See
-        ``DynamicTextureHandle.set_texture`` for 'texture' and 'envs_idx'.
+        See ``get_texture`` for 'name', and ``DynamicTextureHandle.set_texture`` for 'image' and 'envs_idx'.
         """
-        self._get_dynamic_texture(slot).set_texture(texture, envs_idx)
+        get_dynamic_texture(self._dynamic_textures, name, f"entity '{self.name}'").set_texture(image, envs_idx)
 
-    def _get_dynamic_texture(self, slot: "TEXTURE_SLOT | None") -> "DynamicTextureHandle":
-        vgeoms_id = {id(vgeom) for vgeom in self.vgeoms}
-        handles = [
-            handle
-            for handle in self._scene.dynamic_textures
-            if any(id(b.vgeom) in vgeoms_id and (slot is None or b.slot == slot) for b in handle.bindings)
-        ]
-        slot_name = "any" if slot is None else f"the {slot.name.lower()}"
-        if not handles:
-            gs.raise_exception(f"No visual geom of entity '{self.name}' holds a dynamic texture in {slot_name} slot.")
-        if len(handles) > 1:
-            gs.raise_exception(
-                f"The visual geoms of entity '{self.name}' hold {len(handles)} dynamic textures in {slot_name} slot. Set "
-                "one from its visual geom instead."
-            )
-        return handles[0]
+    @gs.assert_built
+    def draw_texture(self, pixels, name: str | None = None, envs_idx=None):
+        """Draw pixels on a dynamic texture drawn by the visual geoms of the entity.
+
+        See ``get_texture`` for 'name', and ``DynamicTextureHandle.draw_texture`` for 'pixels' and 'envs_idx'.
+        """
+        get_dynamic_texture(self._dynamic_textures, name, f"entity '{self.name}'").draw_texture(pixels, envs_idx)
 
     @gs.assert_built
     def set_vverts(self, vverts, envs_idx=None):
