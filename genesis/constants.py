@@ -215,6 +215,12 @@ class IMAGE_TYPE(IntEnum):
         return self.name
 
 
+# surface slots a dynamic texture binds to
+class TEXTURE_SLOT(IntEnum):
+    DIFFUSE = 0
+    EMISSIVE = 1
+
+
 # parallelize
 class PARA_LEVEL(IntEnum):
     NEVER = 0  # when using cpu
