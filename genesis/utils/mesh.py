@@ -295,20 +295,31 @@ def surface_uvs_to_trimesh_visual(surface, uvs=None, n_verts=None):
             emissive_kwargs = dict(
                 emissiveTexture=Image.fromarray(emission.image_array), emissiveFactor=emission.image_color
             )
+        elif isinstance(emission, gs.textures.DynamicTexture):
+            # The renderer writes the image of a dynamic texture into the texture this one seeds
+            emissive_kwargs = dict(
+                emissiveTexture=Image.fromarray(emission.get_initial_image()[..., :3]), emissiveFactor=(1.0, 1.0, 1.0)
+            )
         elif isinstance(emission, gs.textures.ColorTexture):
             emissive_kwargs = dict(emissiveFactor=emission.color)
 
-    if isinstance(texture, gs.textures.ImageTexture):
+    if isinstance(texture, (gs.textures.ImageTexture, gs.textures.DynamicTexture)):
         if flipped_uvs is not None:
-            assert texture.image_array.dtype == np.uint8
-            image = Image.fromarray(texture.image_array)
-            if emissive_kwargs:
+            if isinstance(texture, gs.textures.DynamicTexture):
+                image = Image.fromarray(texture.get_initial_image())
+            else:
+                assert texture.image_array.dtype == np.uint8
+                image = Image.fromarray(texture.image_array)
+            # A dynamic texture may turn transparent at runtime, which the blending of a PBR material follows
+            if emissive_kwargs or isinstance(texture, gs.textures.DynamicTexture):
                 material = trimesh.visual.material.PBRMaterial(
                     baseColorTexture=image, baseColorFactor=(255, 255, 255, 255), **emissive_kwargs
                 )
             else:
                 material = trimesh.visual.material.SimpleMaterial(image=image, diffuse=(1.0, 1.0, 1.0, 1.0))
             visual = trimesh.visual.TextureVisuals(uv=flipped_uvs, material=material)
+        elif isinstance(texture, gs.textures.DynamicTexture):
+            gs.raise_exception("A dynamic texture requires a mesh with texture coordinates, which this mesh lacks.")
         else:
             # fall back to color texture
             visual = trimesh.visual.ColorVisuals(vertex_colors=np.tile(texture.mean_color, [n_verts, 1]))

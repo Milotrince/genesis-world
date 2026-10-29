@@ -203,6 +203,137 @@ def test_emissive_composites(base_plus_emissive_glb, show_viewer, renderer):
 
 
 @pytest.mark.required
+def test_dynamic_texture(show_viewer):
+    # Three horizontal planes seen from above under flat ambient light, each showing one dynamic texture:
+    #  - screen: an emissive texture of its own per environment, drawn as the color of an Emission surface.
+    #  - label: a diffuse texture of its own per environment, given through the options of the visual geom.
+    #  - lamp: an emissive texture shared by every environment, added on top of a dark red base color.
+    # A camera sensor renders through a rasterizer of its own, so it uploads the images independently of the camera.
+    scene = gs.Scene(
+        viewer_options=gs.options.ViewerOptions(
+            camera_pos=(0.0, 0.0, 4.0),
+            camera_lookat=(0.0, 0.0, 0.0),
+        ),
+        vis_options=gs.options.VisOptions(
+            shadow=False,
+            ambient_light=(1.0, 1.0, 1.0),
+            split_envs=True,
+        ),
+        show_viewer=show_viewer,
+    )
+    screen = scene.add_entity(
+        morph=gs.morphs.Plane(
+            pos=(-1.2, 0.0, 0.0),
+            plane_size=(1.0, 1.0),
+            fixed=True,
+        ),
+        surface=gs.surfaces.Emission(
+            emissive_texture=gs.textures.DynamicTexture(
+                res=(16, 16),
+                initial=gs.textures.ColorTexture(
+                    color=(0.0, 0.0, 1.0),
+                ),
+                name="screen",
+            ),
+        ),
+    )
+    label = scene.add_entity(
+        options=gs.options.RigidEntityOptions(
+            morph=gs.morphs.Plane(
+                plane_size=(1.0, 1.0),
+                fixed=True,
+            ),
+            vgeoms={
+                gs.VGeomIndex.all(): gs.options.VGeomOptions(
+                    surface=gs.surfaces.Rough(
+                        diffuse_texture=gs.textures.DynamicTexture(
+                            res=(8, 8),
+                        ),
+                    ),
+                ),
+            },
+        ),
+    )
+    lamp = scene.add_entity(
+        morph=gs.morphs.Plane(
+            pos=(1.2, 0.0, 0.0),
+            plane_size=(1.0, 1.0),
+            fixed=True,
+        ),
+        surface=gs.surfaces.Default(
+            color=(0.3, 0.0, 0.0),
+            emissive_texture=gs.textures.DynamicTexture(
+                res=(4, 4),
+                is_batched=False,
+            ),
+        ),
+    )
+    camera = scene.add_camera(
+        pos=(0.0, 0.0, 4.0),
+        lookat=(0.0, 0.0, 0.0),
+        res=(192, 64),
+        fov=40.0,
+        GUI=show_viewer,
+    )
+    sensor = scene.add_sensor(
+        RasterizerCameraOptions(
+            res=(192, 64),
+            pos=(0.0, 0.0, 4.0),
+            lookat=(0.0, 0.0, 0.0),
+            fov=40.0,
+        )
+    )
+    scene.build(n_envs=2)
+
+    entities = (screen, label, lamp)
+    rgb, _, segmentation, _ = camera.render(rgb=True, segmentation=True)
+    masks = [[segmentation[i_b] == entity.idx + 1 for entity in entities] for i_b in range(2)]
+    for i_b in range(2):
+        for mask in masks[i_b]:
+            assert mask.sum() > 100
+
+    def get_colors(rgb):
+        return np.stack([[rgb[i_b][mask].mean(axis=0) for mask in masks[i_b]] for i_b in range(2)])
+
+    # The images at build: blue, opaque black, and the dark red base without emission
+    colors = get_colors(rgb)
+    assert (colors[:, 0, 2] > 150.0).all() and (colors[:, 0, :2] < 30.0).all()
+    assert (colors[:, 1] < 30.0).all()
+    lamp_base = colors[:, 2]
+    assert (lamp_base[:, 0] > 40.0).all() and (lamp_base[:, 1:] < 30.0).all()
+
+    screen_texture = screen.get_dynamic_texture(gs.TEXTURE_SLOT.EMISSIVE)
+    assert scene.get_dynamic_texture("screen") is screen_texture
+    label_texture = label.vgeoms[0].get_dynamic_texture(gs.TEXTURE_SLOT.DIFFUSE)
+    lamp_texture = lamp.get_dynamic_texture(gs.TEXTURE_SLOT.EMISSIVE)
+    # One image copied to one environment, one image per environment, and an in-place write of one environment
+    screen_texture.set_image(np.array([255, 0, 0], dtype=np.uint8), envs_idx=[1])
+    label_texture.set_image(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None])
+    lamp_texture.image[..., 1] = 255
+    lamp_texture.notify_changed()
+    # The camera shows the images as soon as they are written, while the sensor renders them at the next step
+    scene.step()
+    for rgb in (camera.render(rgb=True)[0], tensor_to_array(sensor.read().rgb)):
+        colors = get_colors(rgb)
+        assert colors[0, 0, 2] > 100.0 and (colors[0, 0, :2] < 30.0).all()
+        assert colors[1, 0, 0] > 100.0 and (colors[1, 0, 1:] < 30.0).all()
+        assert colors[0, 1, 1] > 100.0 and colors[0, 1, 0] < 30.0
+        assert (colors[1, 1, :2] > 100.0).all()
+        assert (colors[:, 1, 2] < 30.0).all()
+        # The emission adds green on top of the base color, which keeps its red
+        assert (colors[:, 2, 0] > 40.0).all() and (colors[:, 2, 1] > 100.0).all() and (colors[:, 2, 2] < 30.0).all()
+
+    # A texture shared by every environment refuses a selection of environments, and a reset restores the images
+    with pytest.raises(gs.GenesisException, match="envs_idx"):
+        lamp_texture.set_image(np.zeros(3), envs_idx=[0])
+    scene.reset()
+    colors = get_colors(camera.render(rgb=True)[0])
+    assert (colors[:, 0, 2] > 150.0).all() and (colors[:, 0, :2] < 30.0).all()
+    assert (colors[:, 1] < 30.0).all()
+    assert_allclose(colors[:, 2], lamp_base, atol=5.0)
+
+
+@pytest.mark.required
 @pytest.mark.parametrize(
     "renderer_type",
     [RENDERER_TYPE.RASTERIZER, RENDERER_TYPE.BATCHRENDER_RASTERIZER, RENDERER_TYPE.BATCHRENDER_RAYTRACER],

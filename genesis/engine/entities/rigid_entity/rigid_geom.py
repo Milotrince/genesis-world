@@ -16,6 +16,8 @@ from genesis.utils.misc import DeprecationError, qd_to_torch, tensor_to_array
 from .description import RigidGeomDescription, RigidVisGeomDescription
 
 if TYPE_CHECKING:
+    from genesis.constants import TEXTURE_SLOT
+    from genesis.engine.dynamic_texture import DynamicTextureHandle
     from genesis.engine.solvers.rigid.rigid_solver import RigidSolver
 
     from .rigid_entity import RigidEntity
@@ -722,6 +724,14 @@ class RigidVisGeom(RBC):
         quat = vgeoms_quat[..., self.idx, :].unsqueeze(-2)
         tensor = gu.transform_by_trans_quat(init, pos, quat)
         return tensor[0] if self._solver.n_envs == 0 else tensor
+
+    @gs.assert_built
+    def get_dynamic_texture(self, slot: "TEXTURE_SLOT") -> "DynamicTextureHandle":
+        """Return the handle writing the dynamic texture that fills a slot of the surface of this visual geom."""
+        for handle in self._entity.scene.dynamic_textures:
+            if any(binding.vgeom is self and binding.slot == slot for binding in handle.bindings):
+                return handle
+        gs.raise_exception(f"The {slot.name.lower()} slot of this visual geom holds no dynamic texture.")
 
     # ------------------------------------------------------------------------------------
     # ----------------------------------- properties -------------------------------------
