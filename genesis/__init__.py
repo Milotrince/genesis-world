@@ -494,6 +494,7 @@ from .constants import (
     EQUALITY_TYPE,
     CTRL_MODE,
     PARA_LEVEL,
+    TEXTURE_SLOT,
     ACTIVE,
     INACTIVE,
     integrator,
@@ -515,7 +516,7 @@ from .options import sensors
 from .options import renderers
 from .options import surfaces
 from .options import textures
-from .options.indices import GeomIndex, LinkIndex, VertexIndex
+from .options.indices import GeomIndex, LinkIndex, VertexIndex, VGeomIndex
 
 from .datatypes import List
 

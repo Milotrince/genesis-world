@@ -21,6 +21,8 @@ import trimesh
 import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
+from genesis.constants import TEXTURE_SLOT
+from genesis.engine.dynamic_texture import DynamicTextureBinding, DynamicTextureHandle
 from genesis.engine.entities.base_entity import Entity, EntityDescription
 from genesis.engine.entities.rigid_entity import KinematicEntity
 from genesis.engine.force_fields import ForceField
@@ -57,6 +59,7 @@ from genesis.options.morphs import Morph
 from genesis.options.recorders import RecorderOptions, TrajectoryFile
 from genesis.options.renderers import RendererOptions
 from genesis.options.surfaces import Surface
+from genesis.options.textures import DynamicTexture
 from genesis.recorders import RecorderManager
 from genesis.recorders.trajectory import Trajectory, save_checkpoint
 from genesis.repr_base import RBC
@@ -273,6 +276,7 @@ class Scene(RBC):
 
         # emitters
         self._emitters = gs.List()
+        self._dynamic_textures: list[DynamicTextureHandle] = []
 
         self._uid = gs.UID()
         self._is_built = False
@@ -916,6 +920,32 @@ class Scene(RBC):
         with gs.logger.timer(f"Building scene ~~~<{self._uid}>~~~..."):
             self._parallelize(n_envs, env_spacing, n_envs_per_row, center_envs_at_origin)
 
+            # The dynamic textures, each with the visual geoms drawing it, which every renderer binds to as it builds, the
+            # camera sensors building with the simulator
+            bindings_by_texture: dict[DynamicTexture, list[DynamicTextureBinding]] = {}
+            for entity in self.entities:
+                if isinstance(entity, KinematicEntity):
+                    for vgeom in entity.vgeoms:
+                        surface_textures = dict(vgeom.surface)
+                        for slot, field_name in (
+                            (TEXTURE_SLOT.DIFFUSE, "diffuse_texture"),
+                            (TEXTURE_SLOT.EMISSIVE, "emissive_texture"),
+                        ):
+                            texture = surface_textures.get(field_name)
+                            if isinstance(texture, DynamicTexture):
+                                bindings_by_texture.setdefault(texture, []).append(DynamicTextureBinding(vgeom, slot))
+                elif any(isinstance(texture, DynamicTexture) for _, texture in entity.surface):
+                    gs.raise_exception(
+                        f"Only rigid and kinematic entities draw a dynamic texture, got '{entity.name}'."
+                    )
+            self._dynamic_textures = [
+                DynamicTextureHandle(self, texture, bindings) for texture, bindings in bindings_by_texture.items()
+            ]
+            textures_name = [handle.name for handle in self._dynamic_textures if handle.name is not None]
+            for name, count in Counter(textures_name).items():
+                if count > 1:
+                    gs.raise_exception(f"Several dynamic textures are named '{name}'.")
+
             # simulator
             self._sim.build()
 
@@ -1016,6 +1046,12 @@ class Scene(RBC):
             self._recorder_manager.record(self._sim.cur_step_global)
         self._recorder_manager.reset(envs_idx)
         self._reset(state, envs_idx=envs_idx)
+        # A texture shared by every environment is restored with the whole scene alone
+        for handle in self._dynamic_textures:
+            if handle.is_batched:
+                handle.reset(envs_idx)
+            elif envs_idx is None:
+                handle.reset()
 
     def _reset(self, state: SimState | None = None, *, envs_idx=None, keep_init: bool = False):
         if self._is_built:
@@ -2079,10 +2115,25 @@ class Scene(RBC):
                 return match
             gs.raise_exception(f"Entity not found for uid: '{uid}'.")
 
+    @gs.assert_built
+    def get_dynamic_texture(self, name: str) -> DynamicTextureHandle:
+        """Return the handle writing the dynamic texture of a given name (see ``gs.textures.DynamicTexture``)."""
+        for handle in self._dynamic_textures:
+            if handle.name == name:
+                return handle
+        gs.raise_exception(
+            f"No dynamic texture is named '{name}'. Existing names: {[h.name for h in self._dynamic_textures]}."
+        )
+
     @property
     def emitters(self):
         """All the emitters in the scene."""
         return self._emitters
+
+    @property
+    def dynamic_textures(self) -> list[DynamicTextureHandle]:
+        """The handles writing the dynamic textures of the scene, one per declaration, once it is built."""
+        return self._dynamic_textures
 
     @property
     def rigid_solver(self):
