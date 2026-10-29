@@ -311,6 +311,9 @@ class UsdContext:
             surface_id = self._prim_material_bindings[geom_path]
             surface_dict, uv_name = self._material_properties.get(surface_id, ({}, "st"))
             # accepted keys: color_texture, opacity_texture, roughness_texture, metallic_texture, normal_texture, emissive_texture, ior
+            applied_surface.record_dynamic_texture_seeds(
+                color_texture=surface_dict.get("color_texture"), emissive_texture=surface_dict.get("emissive_texture")
+            )
             applied_surface.update_texture(**surface_dict)
             if surface_id in self._bake_material_paths:
                 bake_success = True if surface_dict else False

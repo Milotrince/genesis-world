@@ -1094,25 +1094,26 @@ class KinematicEntity(Entity):
         return gs.List(vgeom for link in self._links for vgeom in link.vgeoms)
 
     @gs.assert_built
-    def get_dynamic_texture(self, slot: "TEXTURE_SLOT", link: str | None = None) -> "DynamicTextureHandle":
+    def get_dynamic_texture(self, slot: "TEXTURE_SLOT") -> "DynamicTextureHandle":
         """Return the handle writing the dynamic texture that fills a slot of the visual geoms of the entity.
 
-        'link' names the link whose visual geoms to look at, all of them if None. Several dynamic textures filling the
-        slot raise an error, the visual geoms telling them apart (see ``RigidVisGeom.get_dynamic_texture``).
+        Several dynamic textures filling the slot raise an error. Get one by its name with ``Scene.get_dynamic_texture``
+        or from its visual geom with ``RigidVisGeom.get_dynamic_texture`` instead.
         """
-        vgeoms_id = {id(vgeom) for vgeom in (self.vgeoms if link is None else self.get_link(link).vgeoms)}
+        vgeoms_id = {id(vgeom) for vgeom in self.vgeoms}
         handles = [
             handle
             for handle in self._scene.dynamic_textures
             if any(id(binding.vgeom) in vgeoms_id and binding.slot == slot for binding in handle.bindings)
         ]
-        target = f"entity '{self.name}'" if link is None else f"link '{link}'"
         if not handles:
-            gs.raise_exception(f"No visual geom of {target} holds a dynamic texture in its {slot.name.lower()} slot.")
+            gs.raise_exception(
+                f"No visual geom of entity '{self.name}' holds a dynamic texture in its {slot.name.lower()} slot."
+            )
         if len(handles) > 1:
             gs.raise_exception(
-                f"The visual geoms of {target} hold {len(handles)} dynamic textures in their {slot.name.lower()} slot. "
-                "Get one from its visual geom or by name instead."
+                f"The visual geoms of entity '{self.name}' hold {len(handles)} dynamic textures in their "
+                f"{slot.name.lower()} slot. Get one by name or from its visual geom instead."
             )
         return handles[0]
 
