@@ -531,8 +531,10 @@ class JITRenderer:
         self.mode = np.zeros(n, np.int32)
         self.n_instances = np.zeros(n, np.int32)
         # Per-(primitive, env) visibility used only when a primitive is "env filtered" (render_flags column 8), i.e. a
-        # heterogeneous variant present in a subset of environments. n_env spans the per-env instance poses.
+        # heterogeneous variant present in a subset of environments. n_env spans the per-env instance poses, and the
+        # rendered environments that a pass drawing one environment indexes it by.
         n_env = max((len(p.poses) for p in primitive_list if p.poses is not None), default=1)
+        n_env = max(n_env, len(self.envs_offset))
         self.env_active = np.ones((n, n_env), np.bool_)
         self.n_indices = np.zeros(n, np.int32)  # positive: indices, negative: positions
         self.model_buffer_id = np.zeros(n, np.int32)
