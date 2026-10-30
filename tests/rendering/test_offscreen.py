@@ -233,7 +233,7 @@ def test_dynamic_texture(show_viewer, png_snapshot):
         ),
         surface=gs.surfaces.Emission(
             emissive_texture=gs.textures.DynamicTexture(
-                res=(16, 16),
+                resolution=(16, 16),
                 variants={
                     "blue": gs.textures.ColorTexture(
                         color=(0.0, 0.0, 1.0),
@@ -256,7 +256,7 @@ def test_dynamic_texture(show_viewer, png_snapshot):
                 gs.VGeomIndex.all(): gs.options.VGeomOptions(
                     surface=gs.surfaces.Rough(
                         diffuse_texture=gs.textures.DynamicTexture(
-                            res=(8, 8),
+                            resolution=(8, 8),
                             variants=(gs.textures.AssetTexture(),),
                             is_batched=True,
                         ),
@@ -274,7 +274,7 @@ def test_dynamic_texture(show_viewer, png_snapshot):
         surface=gs.surfaces.Default(
             color=(0.3, 0.0, 0.0),
             emissive_texture=gs.textures.DynamicTexture(
-                res=(16, 16),
+                resolution=(16, 16),
             ),
         ),
     )
@@ -365,22 +365,22 @@ def test_dynamic_texture(show_viewer, png_snapshot):
             duplicate_scene.add_entity(
                 morph=gs.morphs.Plane(pos=(x, 0.0, 0.0), plane_size=(1.0, 1.0), fixed=True),
                 surface=gs.surfaces.Emission(
-                    emissive_texture=gs.textures.DynamicTexture(res=(4, 4), texture_name="lcd")
+                    emissive_texture=gs.textures.DynamicTexture(resolution=(4, 4), texture_name="lcd")
                 ),
             )
         duplicate_scene.build()
     with pytest.raises(gs.GenesisException, match="diffuse_texture"):
-        gs.surfaces.Default(roughness_texture=gs.textures.DynamicTexture(res=(4, 4)))
+        gs.surfaces.Default(roughness_texture=gs.textures.DynamicTexture(resolution=(4, 4)))
     with pytest.raises(gs.GenesisException, match="texture coordinates"):
         gs.Scene().add_entity(
             morph=gs.morphs.Box(size=(0.1, 0.1, 0.1)),
-            surface=gs.surfaces.Emission(emissive_texture=gs.textures.DynamicTexture(res=(4, 4))),
+            surface=gs.surfaces.Emission(emissive_texture=gs.textures.DynamicTexture(resolution=(4, 4))),
         )
     with pytest.raises(gs.GenesisException, match="custom visual vertices"):
         unsupported_scene = gs.Scene()
         unsupported_scene.add_entity(
             morph=gs.morphs.Mesh(file="meshes/duck.obj", enable_custom_vverts=True),
-            surface=gs.surfaces.Emission(emissive_texture=gs.textures.DynamicTexture(res=(4, 4))),
+            surface=gs.surfaces.Emission(emissive_texture=gs.textures.DynamicTexture(resolution=(4, 4))),
         )
         unsupported_scene.build()
 

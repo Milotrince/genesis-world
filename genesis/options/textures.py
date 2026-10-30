@@ -323,14 +323,16 @@ class AssetTexture(Texture):
         return True
 
 
-def texture_to_rgba(texture: "ColorTexture | ImageTexture | AssetTexture | None", res: tuple[int, int]) -> np.ndarray:
+def texture_to_rgba(
+    texture: "ColorTexture | ImageTexture | AssetTexture | None", resolution: tuple[int, int]
+) -> np.ndarray:
     """Return a color or an image texture as an RGBA uint8 array of shape (height, width, 4), and no texture as a black
     and magenta checkerboard of 8 by 8 cells, an asset texture left unresolved included.
 
-    An image is resized to 'res', given as (width, height). A gray or gray-alpha color spans the three color channels,
+    An image is resized to 'resolution', given as (width, height). A gray or gray-alpha color spans the three color channels,
     as an image of one or two channels does.
     """
-    width, height = res
+    width, height = resolution
     if not isinstance(texture, (ColorTexture, ImageTexture)):
         is_magenta = ((np.arange(height)[:, None] * 8 // height) + (np.arange(width) * 8 // width)) % 2 == 1
         return np.where(is_magenta[..., None], [255, 0, 255, 255], [0, 0, 0, 255]).astype(np.uint8)
@@ -363,15 +365,15 @@ class DynamicTexture(Texture):
 
     Parameters
     ----------
-    res : tuple[int, int]
+    resolution : tuple[int, int]
         The resolution of every variant and canvas, as (width, height) in pixels. Rendering uploads a canvas each time
         it is drawn, so a larger image costs more per drawing, while showing a variant costs nothing.
     variants : tuple[ColorTexture | ImageTexture | AssetTexture | None, ...] | dict[str, ...], optional
-        The images an environment switches between, each a color or an image resized to 'res', an ``AssetTexture``
-        for the texture the asset gives the slot, or None for no texture, which shows a black and magenta checkerboard.
-        A mapping names them, so that they are shown by name as well as by position. The variants are fixed once the
-        scene is built, and their memory is independent of the number of environments. Default is one variant with no
-        texture.
+        The images an environment switches between, each a color or an image resized to 'resolution', an
+        ``AssetTexture`` for the texture the asset gives the slot, or None for no texture, which shows a black and
+        magenta checkerboard. A mapping names them, so that they are shown by name as well as by position. The variants
+        are fixed once the scene is built, and their memory is independent of the number of environments. Default is
+        one variant with no texture.
     is_batched : bool, optional
         Whether each parallel environment draws pixels on a canvas of its own. Its own canvases cost the memory of one
         image per environment, while a texture that is not batched holds a single canvas, whose one drawing every
@@ -385,7 +387,7 @@ class DynamicTexture(Texture):
         dynamic textures pick it. Default is None.
     """
 
-    res: PositiveVec2IType
+    resolution: PositiveVec2IType
     variants: (
         Annotated[tuple[ColorTexture | ImageTexture | AssetTexture | None, ...], Field(min_length=1, strict=False)]
         | Annotated[dict[str, ColorTexture | ImageTexture | AssetTexture | None], Field(min_length=1)]
@@ -431,12 +433,12 @@ class DynamicTexture(Texture):
 
     def get_variants_image(self) -> np.ndarray:
         """Return the variants as an RGBA uint8 array of shape (n_variants, height, width, 4)."""
-        return np.stack([texture_to_rgba(texture, self.res) for texture in self.variants_texture])
+        return np.stack([texture_to_rgba(texture, self.resolution) for texture in self.variants_texture])
 
     def get_initial_image(self) -> np.ndarray:
         """Return the image every environment shows at build, as an RGBA uint8 array of shape (height, width, 4)."""
         (i_variant,) = self.get_variants_idx(self.initial_variant)
-        return texture_to_rgba(self.variants_texture[i_variant], self.res)
+        return texture_to_rgba(self.variants_texture[i_variant], self.resolution)
 
     def check_dim(self, dim: int) -> Texture | None:
         return None

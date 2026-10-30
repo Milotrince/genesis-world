@@ -17,7 +17,7 @@ import numpy as np
 import genesis as gs
 from genesis.vis.keybindings import Key, KeyAction, Keybind
 
-TEXTURE_RES = (256, 256)
+TEXTURE_RESOLUTION = (256, 256)
 
 
 def main():
@@ -41,7 +41,7 @@ def main():
     )
     # The variants to switch between, named and each the size of the dynamic texture: the texture of the asset, a
     # checkerboard, vertical stripes and a flat color
-    width, height = TEXTURE_RES
+    width, height = TEXTURE_RESOLUTION
     cols, rows = np.arange(width) // 32, np.arange(height)[:, None] // 32
     is_checker_dark = (rows + cols) % 2 == 0
     is_stripe = np.broadcast_to(cols % 2 == 0, (height, width))
@@ -67,7 +67,7 @@ def main():
         ),
         surface=gs.surfaces.Default(
             diffuse_texture=gs.textures.DynamicTexture(
-                res=TEXTURE_RES,
+                resolution=TEXTURE_RESOLUTION,
                 variants=variants,
                 is_batched=True,
             ),
