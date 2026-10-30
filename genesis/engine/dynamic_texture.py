@@ -7,17 +7,13 @@ import numpy as np
 import torch
 
 import genesis as gs
-from genesis.constants import TEXTURE_SLOT
+from genesis.constants import DRAWN_IMAGE, TEXTURE_SLOT
 from genesis.options.textures import ColorTexture, DynamicTexture, ImageTexture, texture_to_rgba
 from genesis.utils.misc import broadcast_tensor, tensor_to_array
 
 if TYPE_CHECKING:
     from genesis.engine.entities.rigid_entity.rigid_geom import RigidVisGeom
     from genesis.engine.scene import Scene
-
-
-# The selection of an environment showing the pixels drawn on its canvas, in place of a variant
-DRAWN_IMAGE = -1
 
 
 class DynamicTextureBinding(NamedTuple):

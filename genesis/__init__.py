@@ -502,6 +502,8 @@ from .constants import (
     contact_resolution,
     broadphase_traversal,
     link_ref_frame,
+    TEXTURE_SLOT,
+    DRAWN_IMAGE,
 )
 
 from .utils.uid import UID
