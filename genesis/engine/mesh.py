@@ -569,7 +569,6 @@ class Mesh(RBC, serialization.SerializationMixin):
             color_texture, opacity_texture = color_textures
             roughness_texture = mu.create_texture(None, roughness_factor, "linear")
 
-            surface.record_dynamic_texture_seeds(color_texture=color_texture)
             surface.update_texture(
                 color_texture=color_texture,
                 opacity_texture=opacity_texture,
@@ -688,10 +687,12 @@ class Mesh(RBC, serialization.SerializationMixin):
             and name not in surface.model_fields_set
             and value is not None
         }
-        # A dynamic texture of the given surface starts from what its slot held, the texture of the asset
-        seeds = {**dict(self._surface), **self._surface.dynamic_texture_seeds}
+        # A dynamic texture of the given surface shows the texture of the asset that its slot held
+        slots_texture = dict(self._surface)
         surface = surface.model_copy(update=fields)
-        surface.record_dynamic_texture_seeds(seeds=seeds)
+        for name, texture in dict(surface).items():
+            if isinstance(texture, gs.textures.DynamicTexture):
+                setattr(surface, name, texture.resolve_asset_texture(slots_texture.get(name)))
         self._surface = surface
         self._check_uvs()
         self.update_trimesh_visual()

@@ -293,7 +293,6 @@ def parse_glb_material(glb, material_index, surface, images=None):
             ior = extension_material.get("ior", 1.5)
 
     material_surface = surface.model_copy()
-    material_surface.record_dynamic_texture_seeds(color_texture=color_texture, emissive_texture=emissive_texture)
     material_surface.update_texture(
         color_texture=color_texture,
         opacity_texture=opacity_texture,
