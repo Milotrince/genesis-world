@@ -5,7 +5,7 @@ from typing import Annotated, Iterable, Literal, Sequence, cast
 import numpy as np
 
 from PIL import Image
-from pydantic import BeforeValidator, Field, StrictBool, computed_field, model_validator
+from pydantic import BeforeValidator, Field, PrivateAttr, StrictBool, computed_field, model_validator
 from typing_extensions import Self
 
 import genesis as gs
@@ -397,10 +397,42 @@ class DynamicTexture(Texture):
     encoding: Annotated[Literal["srgb", "linear"], BeforeValidator(lambda e: str(e).lower())] = "srgb"
     texture_name: str | None = None
 
+    # The dynamic texture this one is a copy of, and the texture an asset gives the slot it fills, which its asset
+    # texture variants show (see 'resolve_asset_texture')
+    _declaration: "DynamicTexture | None" = PrivateAttr(default=None)
+    _asset_texture: "ColorTexture | ImageTexture | None" = PrivateAttr(default=None)
+
     @model_validator(mode="after")
     def _check_variants(self) -> Self:
         self.get_variants_idx(self.initial_variant)
         return self
+
+    @property
+    def declaration(self) -> "DynamicTexture":
+        """The dynamic texture as declared, which every copy resolving its asset texture variants shares."""
+        return self if self._declaration is None else self._declaration
+
+    def resolve_asset_texture(self, asset_texture: Texture | None) -> "DynamicTexture":
+        """Return a copy whose asset texture variants show the texture an asset gives the slot.
+
+        A dynamic texture given as 'asset_texture' gives the texture its own asset texture variants show. The texture
+        itself is returned when it holds no asset texture variant, or when the asset gives no color and no image.
+        """
+        if isinstance(asset_texture, DynamicTexture):
+            asset_texture = asset_texture._asset_texture
+        if not isinstance(asset_texture, (ColorTexture, ImageTexture)) or not any(
+            isinstance(variant, AssetTexture) for variant in self.variants_texture
+        ):
+            return self
+        variants = tuple(
+            asset_texture if isinstance(variant, AssetTexture) else variant for variant in self.variants_texture
+        )
+        if self.variants_name:
+            variants = dict(zip(self.variants_name, variants))
+        texture = self.model_copy(update={"variants": variants})
+        texture._declaration = self.declaration
+        texture._asset_texture = asset_texture
+        return texture
 
     @property
     def variants_name(self) -> tuple[str, ...]:
@@ -458,6 +490,19 @@ class DynamicTexture(Texture):
     @cached_property
     def requires_uv(self) -> bool:
         return True
+
+
+def is_same_texture(texture: Texture | None, other: Texture | None) -> bool:
+    """Whether two textures hold the same color or the same image."""
+    if texture is other:
+        return True
+    if isinstance(texture, ColorTexture) and isinstance(other, ColorTexture):
+        return np.allclose(texture.color, other.color, atol=gs.EPS)
+    if isinstance(texture, ImageTexture) and isinstance(other, ImageTexture):
+        return np.array_equal(texture.image_array, other.image_array) and np.allclose(
+            texture.image_color, other.image_color, atol=gs.EPS
+        )
+    return False
 
 
 class BatchTexture(Texture):

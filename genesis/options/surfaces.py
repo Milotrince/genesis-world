@@ -3,7 +3,7 @@ from typing import Any, ClassVar, Literal
 
 import numpy as np
 
-from pydantic import Field, PrivateAttr, StrictBool, model_validator
+from pydantic import Field, StrictBool, model_validator
 from typing_extensions import Self
 
 import genesis as gs
@@ -79,10 +79,6 @@ class Surface(Options):
 
     _color_target: ClassVar[str] = "diffuse_texture"
 
-    # The textures an asset gives the slots holding a dynamic texture, which its images left as None start from (see
-    # 'record_dynamic_texture_seeds')
-    _dynamic_texture_seeds: dict[str, Texture] = PrivateAttr(default_factory=dict)
-
     # Shortcut fields — resolved to texture fields by _resolve_shortcuts, excluded from serialization.
     color: FArrayType | None = Field(default=None, exclude=True, repr=False)
     opacity: UnitInterval | None = Field(default=None, exclude=True, repr=False)
@@ -143,36 +139,6 @@ class Surface(Options):
         return self
 
     @property
-    def dynamic_texture_seeds(self) -> dict[str, Texture]:
-        """The texture an asset gives each slot holding a dynamic texture, keyed by the name of the slot."""
-        return self._dynamic_texture_seeds
-
-    def record_dynamic_texture_seeds(
-        self,
-        color_texture: Texture | None = None,
-        emissive_texture: Texture | None = None,
-        seeds: "dict[str, Texture] | None" = None,
-    ) -> None:
-        """Remember the textures an asset gives the slots of the surface that hold a dynamic texture.
-
-        The primary slot takes the color of the asset, the emissive slot its emission, and 'seeds' gives textures by
-        slot name directly. A slot holding no dynamic texture records nothing. The record is replaced rather than
-        mutated, since a copy of the surface shares it.
-        """
-        recorded = dict(self._dynamic_texture_seeds)
-        for name, value in self:
-            if not isinstance(value, DynamicTexture):
-                continue
-            seed = (seeds or {}).get(name)
-            if seed is None and name == self._color_target:
-                seed = color_texture
-            if seed is None and name == "emissive_texture":
-                seed = emissive_texture
-            if isinstance(seed, (ColorTexture, ImageTexture)):
-                recorded[name] = seed
-        self._dynamic_texture_seeds = recorded
-
-    @property
     def texture(self) -> Texture | None:
         raise NotImplementedError
 
@@ -212,6 +178,8 @@ class Surface(Options):
                 self.texture = color_texture
             elif not force:
                 self.texture = ColorTexture()
+        elif isinstance(self.texture, DynamicTexture):
+            self.texture = self.texture.resolve_asset_texture(color_texture)
 
         # update ior
         if self.ior is None or force:
@@ -234,6 +202,8 @@ class Surface(Options):
                 return new
             elif not force and default is not None:
                 return default
+        elif isinstance(current, DynamicTexture):
+            return current.resolve_asset_texture(new)
         return current
 
     @staticmethod

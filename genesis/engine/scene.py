@@ -59,7 +59,7 @@ from genesis.options.morphs import Morph
 from genesis.options.recorders import RecorderOptions, TrajectoryFile
 from genesis.options.renderers import RendererOptions
 from genesis.options.surfaces import Surface
-from genesis.options.textures import DynamicTexture
+from genesis.options.textures import DynamicTexture, is_same_texture
 from genesis.recorders import RecorderManager
 from genesis.recorders.trajectory import Trajectory, save_checkpoint
 from genesis.repr_base import RBC
@@ -953,8 +953,10 @@ class Scene(RBC):
             self._parallelize(n_envs, env_spacing, n_envs_per_row, center_envs_at_origin)
 
             # The dynamic textures, each with the visual geoms drawing it, which every renderer binds to as it builds,
-            # the camera sensors building with the simulator
-            bindings_by_texture: dict[DynamicTexture, list[DynamicTextureBinding]] = {}
+            # the camera sensors building with the simulator. Each visual geom holds its own copy of a declared texture,
+            # whose asset texture variants show what its asset gives (see 'DynamicTexture.resolve_asset_texture').
+            # The copies of one declaration must agree, and its visual geoms draw a single one of them from then on.
+            bindings_by_texture: dict[DynamicTexture, list[tuple[DynamicTextureBinding, str, DynamicTexture]]] = {}
             for entity in self.entities:
                 if isinstance(entity, KinematicEntity):
                     for vgeom in entity.vgeoms:
@@ -970,7 +972,9 @@ class Scene(RBC):
                                         "A dynamic texture cannot be drawn on an entity with custom visual vertices, "
                                         f"got '{entity.name}'."
                                     )
-                                bindings_by_texture.setdefault(texture, []).append(DynamicTextureBinding(vgeom, slot))
+                                bindings_by_texture.setdefault(texture.declaration, []).append(
+                                    (DynamicTextureBinding(vgeom, slot), field_name, texture)
+                                )
                 elif any(isinstance(texture, DynamicTexture) for _, texture in entity.surface):
                     gs.raise_exception(
                         f"Only rigid and kinematic entities draw a dynamic texture, got '{entity.name}'."
@@ -980,7 +984,17 @@ class Scene(RBC):
             ]
             if len(set(textures_name)) != len(textures_name):
                 gs.raise_exception(f"The dynamic textures of a scene take distinct names, got {textures_name}.")
-            for texture, bindings in bindings_by_texture.items():
+            for texture_bindings in bindings_by_texture.values():
+                _, _, texture = texture_bindings[0]
+                for binding, field_name, texture_copy in texture_bindings:
+                    if not all(map(is_same_texture, texture_copy.variants_texture, texture.variants_texture)):
+                        gs.raise_exception(
+                            "The visual geoms drawing one dynamic texture get different textures from their asset, "
+                            "so its asset texture variants resolve to no single one. Bind one dynamic texture per "
+                            "material with 'gs.VGeomIndex.with_material', or give those variants explicitly."
+                        )
+                    setattr(binding.vgeom.surface, field_name, texture)
+                bindings = [binding for binding, _, _ in texture_bindings]
                 handle = DynamicTextureHandle(self, texture, bindings)
                 self._dynamic_textures.append(handle)
                 for vgeom in dict.fromkeys(binding.vgeom for binding in bindings):
