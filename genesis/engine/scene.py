@@ -22,7 +22,7 @@ import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
 from genesis.constants import TEXTURE_SLOT
-from genesis.engine.dynamic_texture import DynamicTextureBinding, DynamicTextureHandle
+from genesis.engine.dynamic_texture import DynamicTextureHandle
 from genesis.engine.entities.base_entity import Entity, EntityDescription
 from genesis.engine.entities.rigid_entity import KinematicEntity
 from genesis.engine.force_fields import ForceField
@@ -74,6 +74,7 @@ from genesis.vis import Visualizer
 if TYPE_CHECKING:
     from genesis.engine.entities.base_entity import Entity
     from genesis.engine.entities.rigid_entity import RigidEntity
+    from genesis.engine.entities.rigid_entity.rigid_geom import RigidVisGeom
     from genesis.engine.sensors.base_sensor import Sensor
     from genesis.engine.simulator import Simulator
     from genesis.options.sensors.options import SensorOptions, SensorT
@@ -956,7 +957,10 @@ class Scene(RBC):
             # the camera sensors building with the simulator. Each visual geom holds its own copy of a declared texture,
             # whose asset texture variants show what its asset gives (see 'DynamicTexture.resolve_asset_texture').
             # The copies of one declaration must agree, and its visual geoms draw a single one of them from then on.
-            bindings_by_texture: dict[DynamicTexture, list[tuple[DynamicTextureBinding, str, DynamicTexture]]] = {}
+            # The slot sets the format of the images, so that a declaration fills a single slot.
+            bindings_by_texture: dict[
+                DynamicTexture, list[tuple["RigidVisGeom", TEXTURE_SLOT, str, DynamicTexture]]
+            ] = {}
             for entity in self.entities:
                 if isinstance(entity, KinematicEntity):
                     for vgeom in entity.vgeoms:
@@ -973,7 +977,7 @@ class Scene(RBC):
                                         f"got '{entity.name}'."
                                     )
                                 bindings_by_texture.setdefault(texture.declaration, []).append(
-                                    (DynamicTextureBinding(vgeom, slot), field_name, texture)
+                                    (vgeom, slot, field_name, texture)
                                 )
                 elif any(isinstance(texture, DynamicTexture) for _, texture in entity.surface):
                     gs.raise_exception(
@@ -985,21 +989,26 @@ class Scene(RBC):
             if len(set(textures_name)) != len(textures_name):
                 gs.raise_exception(f"The dynamic textures of a scene take distinct names, got {textures_name}.")
             for texture_bindings in bindings_by_texture.values():
-                _, _, texture = texture_bindings[0]
-                for binding, field_name, texture_copy in texture_bindings:
+                _, slot, _, texture = texture_bindings[0]
+                for vgeom, vgeom_slot, field_name, texture_copy in texture_bindings:
+                    if vgeom_slot != slot:
+                        gs.raise_exception(
+                            "A dynamic texture fills either the diffuse or the emissive slot, which sets the format of "
+                            "its images. Declare one dynamic texture per slot."
+                        )
                     if not all(map(is_same_texture, texture_copy.variants_texture, texture.variants_texture)):
                         gs.raise_exception(
                             "The visual geoms drawing one dynamic texture get different textures from their asset, "
                             "so its asset texture variants resolve to no single one. Bind one dynamic texture per "
                             "material with 'gs.VGeomIndex.with_material', or give those variants explicitly."
                         )
-                    setattr(binding.vgeom.surface, field_name, texture)
-                bindings = [binding for binding, _, _ in texture_bindings]
-                handle = DynamicTextureHandle(self, texture, bindings)
+                    setattr(vgeom.surface, field_name, texture)
+                vgeoms = [vgeom for vgeom, _, _, _ in texture_bindings]
+                handle = DynamicTextureHandle(self, texture, slot, vgeoms)
                 self._dynamic_textures.append(handle)
-                for vgeom in dict.fromkeys(binding.vgeom for binding in bindings):
+                for vgeom in vgeoms:
                     vgeom._dynamic_textures.append(handle)
-                for entity in dict.fromkeys(binding.vgeom.entity for binding in bindings):
+                for entity in dict.fromkeys(vgeom.entity for vgeom in vgeoms):
                     entity._dynamic_textures.append(handle)
 
             # simulator

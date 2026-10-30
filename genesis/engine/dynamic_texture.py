@@ -1,7 +1,7 @@
 """Runtime state of the dynamic textures of a scene (see ``gs.textures.DynamicTexture``)."""
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
@@ -16,31 +16,27 @@ if TYPE_CHECKING:
     from genesis.engine.scene import Scene
 
 
-class DynamicTextureBinding(NamedTuple):
-    """A visual geom drawing a dynamic texture, and the slot of its surface that the texture fills."""
-
-    vgeom: "RigidVisGeom"
-    slot: TEXTURE_SLOT
-
-
 class DynamicTextureHandle:
     """The variant each environment shows for one dynamic texture, and the renderers drawing it.
 
     Genesis holds the selection alone: the position of the variant each environment shows, or 'DRAWN_IMAGE' for the
     pixels drawn on its canvas. The renderers hold the pixels, and each one implements the same contract:
 
-    - at build, it allocates the variants ('texture.get_variants_image()'), then the canvases, one per
-      environment it renders when 'texture.is_batched' and a single shared one otherwise, binds them to the visual
-      geoms in 'bindings', and subscribes a callback with 'subscribe';
-    - on every drawing, the callback receives the environments drawn and their pixels, as a uint8 RGBA tensor on the
-      device of shape (len(envs_idx), height, width, 4), or (1, height, width, 4) when the texture is not batched;
+    - at build, it allocates the variants ('texture.get_variants_image(slot)'), then the canvases, one per
+      environment it renders when 'texture.is_batched' and a single shared one otherwise, binds them to the 'slot' of
+      the visual geoms in 'vgeoms', and subscribes a callback with 'subscribe';
+    - on every drawing, the callback receives the environments drawn and their pixels, as an RGBA tensor on the device
+      of shape (len(envs_idx), height, width, 4), or (1, height, width, 4) when the texture is not batched;
     - at sync, it reads 'selection' when 'selection_version' moved since it last read it.
+
+    The images are uint8 sRGB values in the diffuse slot, and float16 linear values in the emissive slot.
     """
 
-    def __init__(self, scene: "Scene", texture: DynamicTexture, bindings: list[DynamicTextureBinding]):
+    def __init__(self, scene: "Scene", texture: DynamicTexture, slot: TEXTURE_SLOT, vgeoms: "list[RigidVisGeom]"):
         self._scene = scene
         self._texture = texture
-        self._bindings = bindings
+        self._slot = slot
+        self._vgeoms = vgeoms
         (self._initial_variant,) = texture.get_variants_idx(texture.initial_variant)
         self._selection = np.full(scene._B, self._initial_variant, dtype=gs.np_int)
         self._selection_version = 0
@@ -57,9 +53,14 @@ class DynamicTextureHandle:
         return self._texture
 
     @property
-    def bindings(self) -> list[DynamicTextureBinding]:
-        """The visual geoms drawing the texture, each with the slot of its surface that the texture fills."""
-        return self._bindings
+    def slot(self) -> TEXTURE_SLOT:
+        """The slot of the surfaces that the texture fills, which sets the format of its images."""
+        return self._slot
+
+    @property
+    def vgeoms(self) -> "list[RigidVisGeom]":
+        """The visual geoms drawing the texture."""
+        return self._vgeoms
 
     @property
     def selection(self) -> np.ndarray:
@@ -97,20 +98,29 @@ class DynamicTextureHandle:
 
         'texture' is either variants or pixels. A variant is given by position or by name, one for all the selected
         environments, or a sequence of them, one per selected environment. Pixels are a ``ColorTexture``, an
-        ``ImageTexture``, or an RGB or RGBA array of uint8 values or of floats between 0 and 1, of shape (height, width,
-        channels) for all the selected environments or (len(envs_idx), height, width, channels) for one each. Integer
-        and float values are clamped to the range of a channel. Pixels go to the canvas of each selected environment
+        ``ImageTexture``, or an RGB or RGBA array of shape (height, width, channels) for all the selected environments
+        or (len(envs_idx), height, width, channels) for one each. Pixels go to the canvas of each selected environment
         when the texture is batched, and to the canvas every environment shares otherwise, which takes a single image.
+
+        An array holds uint8 values, or floats on the scale where 1 stands for 255. In the diffuse slot, they are sRGB
+        values clamped between 0 and 1. In the emissive slot, they are linear values clamped at 0 alone, so that an
+        emission may exceed 1.
         """
         is_envs_selected = envs_idx is not None
         envs_idx = tensor_to_array(self._scene._sanitize_envs_idx(envs_idx))
         if isinstance(texture, (ColorTexture, ImageTexture)):
-            texture = texture_to_rgba(texture, self._texture.resolution)
+            texture = texture_to_rgba(texture, self._texture.resolution, self._slot)
         texture_ndim = texture.ndim if torch.is_tensor(texture) else np.ndim(texture)
         if texture_ndim <= 1:
             if torch.is_tensor(texture):
                 texture = tensor_to_array(texture)
-            self._selection[envs_idx] = self._texture.get_variants_idx(texture)
+            variants_idx = self._texture.get_variants_idx(texture)
+            if len(variants_idx) not in (1, len(envs_idx)):
+                gs.raise_exception(
+                    f"A dynamic texture shows one variant, or one per selected environment, got {len(variants_idx)} "
+                    f"variants for {len(envs_idx)} environments."
+                )
+            self._selection[envs_idx] = variants_idx
             self._selection_version += 1
             return
         if texture_ndim not in (3, 4):
@@ -134,12 +144,23 @@ class DynamicTextureHandle:
         n_channels = image.shape[-1]
         if n_channels not in (3, 4):
             gs.raise_exception(f"Pixels are drawn as RGB or RGBA, got {n_channels} channels.")
-        image = image.mul(255.0).clamp_(0.0, 255.0).round_() if image.is_floating_point() else image.clamp(0, 255)
+        if self._slot == TEXTURE_SLOT.EMISSIVE:
+            dtype, alpha = torch.float16, 1.0
+            if image.is_floating_point():
+                image = image.clamp(0.0, torch.finfo(dtype).max)
+            else:
+                image = image.clamp(0, 255) / 255.0
+        else:
+            dtype, alpha = torch.uint8, 255
+            if image.is_floating_point():
+                image = image.mul(255.0).clamp_(0.0, 255.0).round_()
+            else:
+                image = image.clamp(0, 255)
         width, height = self._texture.resolution
         n_images = len(envs_idx) if self._texture.is_batched else 1
-        image = broadcast_tensor(image, torch.uint8, (n_images, height, width, n_channels))
+        image = broadcast_tensor(image, dtype, (n_images, height, width, n_channels))
         if n_channels == 3:
-            image = torch.cat((image, image.new_full((n_images, height, width, 1), 255)), dim=-1)
+            image = torch.cat((image, image.new_full((n_images, height, width, 1), alpha)), dim=-1)
         self._selection[envs_idx] = DRAWN_IMAGE
         self._selection_version += 1
         for callback in self._callbacks:

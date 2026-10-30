@@ -7,13 +7,13 @@ import numpy as np
 import torch
 import trimesh
 
-from OpenGL.GL import GL_TEXTURE_2D_ARRAY
+from OpenGL.GL import GL_HALF_FLOAT, GL_TEXTURE_2D_ARRAY, GL_UNSIGNED_BYTE
 
 import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
 import genesis.utils.particle as pu
-from genesis.constants import DRAWN_IMAGE
+from genesis.constants import DRAWN_IMAGE, TEXTURE_SLOT
 from genesis.engine.dynamic_texture import DynamicTextureHandle
 from genesis.engine.state_change import StateChange, Subscriber
 from genesis.ext import pyrender
@@ -45,12 +45,12 @@ class RigidNodeBatch(NamedTuple):
 class DynamicTextureTargets:
     """The nodes drawing one dynamic texture, and the texture arrays holding its images that they sample.
 
-    An array holds the variants, then the canvases of the rendered environments. A node samples the array of its
-    slot, one per slot the texture fills ('textures', keyed by whether the slot is the base color), at the layer each
-    rendered environment selects. 'canvases_layer' holds the layer of the canvas of each environment of the scene, -1
-    for one not rendered. 'nodes' holds the node each visual geom was last bound through, so that a node drawn anew is
-    bound again. 'selection_version' holds the version of the selection the nodes show, and 'callback' is the callback
-    subscribed to the handle.
+    An array holds the variants, then the canvases of the rendered environments. A node samples the array of the
+    material texture it binds, the base color or the emissive ('textures', keyed by whether it is the base color), at
+    the layer each rendered environment selects. 'canvases_layer' holds the layer of the canvas of each environment of
+    the scene, -1 for one not rendered. 'nodes' holds the node each visual geom was last bound through, so that a node
+    drawn anew is bound again. 'selection_version' holds the version of the selection the nodes show, and 'callback'
+    is the callback subscribed to the handle.
     """
 
     handle: "DynamicTextureHandle"
@@ -629,18 +629,23 @@ class RasterizerContext:
                         vis_materials.setdefault(surface_key, mesh_node.primitives[0].material)
 
         # A dynamic texture is the base color of the material when the surface draws it as its color, and its emissive
-        # texture otherwise (see 'surface_uvs_to_trimesh_visual')
+        # texture otherwise (see 'surface_uvs_to_trimesh_visual'). Its arrays hold its images in the format of its slot,
+        # which the shaders read from the type of the array.
         for handle in self.scene.dynamic_textures:
             texture = handle.texture
-            images = texture.get_variants_image()
+            images = texture.get_variants_image(handle.slot)
             canvases_layer = np.full(self.sim._B, -1, dtype=gs.np_int)
             n_canvases = len(self.rendered_envs_idx) if texture.is_batched else 1
             canvases_layer[self.rendered_envs_idx] = len(images) + np.arange(len(self.rendered_envs_idx)) % n_canvases
-            images = np.concatenate((images, np.zeros((n_canvases, *images.shape[1:]), dtype=np.uint8)))
-            is_base_color = [binding.vgeom.surface.get_rgba() is texture for binding in handle.bindings]
+            images = np.concatenate((images, np.zeros((n_canvases, *images.shape[1:]), dtype=images.dtype)))
+            data_format = GL_HALF_FLOAT if handle.slot == TEXTURE_SLOT.EMISSIVE else GL_UNSIGNED_BYTE
+            is_base_color = [vgeom.surface.get_rgba() is texture for vgeom in handle.vgeoms]
             textures = {
                 is_base: pyrender.Texture(
-                    source=images, source_channels="RGBA" if is_base else "RGB", tex_type=GL_TEXTURE_2D_ARRAY
+                    source=images,
+                    source_channels="RGBA" if is_base else "RGB",
+                    tex_type=GL_TEXTURE_2D_ARRAY,
+                    data_format=data_format,
                 )
                 for is_base in set(is_base_color)
             }
@@ -648,9 +653,9 @@ class RasterizerContext:
                 handle,
                 textures,
                 canvases_layer,
-                [binding.vgeom.uid for binding in handle.bindings],
+                [vgeom.uid for vgeom in handle.vgeoms],
                 is_base_color,
-                [None] * len(handle.bindings),
+                [None] * len(handle.vgeoms),
                 -1,
                 partial(self._on_dynamic_texture_draw, handle),
             )

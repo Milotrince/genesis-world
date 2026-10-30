@@ -852,6 +852,8 @@ class Renderer(object):
                 defines["HAS_BASE_COLOR_TEX"] = 1
                 if primitive.material.baseColorTexture.tex_type == GL_TEXTURE_2D_ARRAY:
                     defines["BASE_COLOR_TEX_ARRAY"] = 1
+                    if primitive.material.baseColorTexture.data_format == GL_HALF_FLOAT:
+                        defines["BASE_COLOR_TEX_LINEAR"] = 1
             if tf & TexFlags.METALLIC_ROUGHNESS:
                 defines["HAS_METALLIC_ROUGHNESS_TEX"] = 1
             if tf & TexFlags.DIFFUSE:

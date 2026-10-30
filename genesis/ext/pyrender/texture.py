@@ -27,7 +27,7 @@ class Texture(object):
     source : (h,w,c) uint8 or (h,w,c) float or :class:`PIL.Image.Image`
         The image used by this texture. If None, the texture is created
         empty and width and height must be specified. A texture array takes
-        (n_layers,h,w,c) uint8 images.
+        (n_layers,h,w,c) uint8 or float16 images.
     source_channels : str
         Either `D`, `R`, `RG`, `GB`, `RGB`, or `RGBA`. Indicates the
         channels to extract from `source`. Any missing channels will be filled
@@ -39,7 +39,7 @@ class Texture(object):
     tex_type : int
         Either GL_TEXTURE_2D, GL_TEXTURE_2D_ARRAY or GL_TEXTURE_CUBE.
     data_format : int
-        For now, just GL_FLOAT.
+        GL_UNSIGNED_BYTE, GL_HALF_FLOAT or GL_FLOAT.
     """
 
     def __init__(
@@ -183,7 +183,7 @@ class Texture(object):
         return GL_DEPTH_COMPONENT
 
     def set_layers(self, layers_idx, images):
-        """Write (len(layers_idx),h,w,c) uint8 images into layers of a texture array, uploaded by 'upload_source'."""
+        """Write (len(layers_idx),h,w,c) images into layers of a texture array, uploaded by 'upload_source'."""
         self._source[layers_idx] = images[..., : len(self.source_channels)]
         self._pending_layers.update(layers_idx.tolist())
 
@@ -237,6 +237,9 @@ class Texture(object):
         internal_fmt = fmt
         if fmt == GL_DEPTH_COMPONENT and self.data_format == GL_UNSIGNED_SHORT:
             internal_fmt = GL_DEPTH_COMPONENT16
+        # An unsized format would let the driver store half floats at 8 bits per channel
+        if self.data_format == GL_HALF_FLOAT:
+            internal_fmt = GL_RGBA16F if fmt == GL_RGBA else GL_RGB16F
 
         # Bind texture and generate mipmaps
         if is_array:
@@ -270,7 +273,7 @@ class Texture(object):
         glTexParameteri(self.tex_type, GL_TEXTURE_WRAP_S, self.sampler.wrapS)
         glTexParameteri(self.tex_type, GL_TEXTURE_WRAP_T, self.sampler.wrapT)
         border_color = np.full((4,), fill_value=255, dtype=np.uint8)
-        if fmt == GL_DEPTH_COMPONENT or self.data_format == GL_FLOAT:
+        if fmt == GL_DEPTH_COMPONENT or self.data_format in (GL_FLOAT, GL_HALF_FLOAT):
             border_color = np.ones((4,), dtype=np.float32)
         glTexParameterfv(self.tex_type, GL_TEXTURE_BORDER_COLOR, border_color)
 
