@@ -21,7 +21,7 @@ class SFSolver(TimeBasedMixin, Solver):
         if options is None:
             return
 
-        self.n_grid = options.res
+        self.n_grid = options.resolution
         self.dx = 1 / self.n_grid
         self.res = (self.n_grid, self.n_grid, self.n_grid)
         self.solver_iters = options.solver_iters

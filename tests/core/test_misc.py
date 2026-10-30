@@ -1481,7 +1481,7 @@ def test_derived_substeps(show_viewer, tol):
         ),
         sf_options=gs.options.SFOptions(
             dt=0.01 / SUBSTEPS,
-            res=16,
+            resolution=16,
             solver_iters=2,
         ),
         viewer_options=gs.options.ViewerOptions(
@@ -1539,7 +1539,7 @@ def test_derived_substeps(show_viewer, tol):
         ),
         sf_options=gs.options.SFOptions(
             dt=0.01 / SUBSTEPS,
-            res=16,
+            resolution=16,
             solver_iters=2,
         ),
         show_viewer=False,
@@ -1593,7 +1593,7 @@ def test_derived_substeps(show_viewer, tol):
         scene = gs.Scene(
             sim_options=gs.options.SimOptions(dt=0.01),
             rigid_options=gs.options.RigidOptions(dt=0.005),
-            sf_options=gs.options.SFOptions(dt=0.0025, res=16, solver_iters=2),
+            sf_options=gs.options.SFOptions(dt=0.0025, resolution=16, solver_iters=2),
             show_viewer=False,
         )
         scene.add_entity(gs.morphs.Sphere(pos=(0.0, 0.0, 1.0)))

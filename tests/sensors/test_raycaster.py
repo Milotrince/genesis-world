@@ -94,7 +94,7 @@ def test_hits(show_viewer, n_envs, enable_mujoco_compatibility, tol):
     depth_camera = scene.add_sensor(
         gs.sensors.DepthCamera(
             pattern=gs.sensors.raycaster.DepthCameraPattern(
-                res=NUM_RAYS_XY[::-1],
+                resolution=NUM_RAYS_XY[::-1],
             ),
             entity_idx=spherical_sensor.idx,
             draw_debug=show_viewer,
@@ -105,7 +105,7 @@ def test_hits(show_viewer, n_envs, enable_mujoco_compatibility, tol):
     depth_camera_depth_only = scene.add_sensor(
         gs.sensors.DepthCamera(
             pattern=gs.sensors.raycaster.DepthCameraPattern(
-                res=NUM_RAYS_XY[::-1],
+                resolution=NUM_RAYS_XY[::-1],
             ),
             entity_idx=spherical_sensor.idx,
             return_points=False,
@@ -352,7 +352,7 @@ def test_against_visual(tmp_path, show_viewer, n_envs, kin_raycastable):
     cam_kin = scene.add_sensor(
         gs.sensors.DepthCamera(
             pattern=gs.sensors.DepthCameraPattern(
-                res=(40, 30),
+                resolution=(40, 30),
                 fov_horizontal=30.0,
             ),
             entity_idx=plane.idx,
@@ -366,7 +366,7 @@ def test_against_visual(tmp_path, show_viewer, n_envs, kin_raycastable):
     cam_rigid = scene.add_sensor(
         gs.sensors.DepthCamera(
             pattern=gs.sensors.DepthCameraPattern(
-                res=(40, 30),
+                resolution=(40, 30),
                 fov_horizontal=30.0,
             ),
             entity_idx=plane.idx,
