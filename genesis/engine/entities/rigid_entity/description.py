@@ -29,7 +29,6 @@ from genesis.options.materials import Material
 from genesis.options.morphs import Morph
 from genesis.options.options import Options
 from genesis.options.surfaces import Surface
-from genesis.options.textures import AssetTexture, ColorTexture, DynamicTexture, ImageTexture, Texture
 from genesis.typing import PositiveVec3FType, PositiveVec3IType
 from genesis.utils import geom as gu
 from genesis.utils import mesh as mu
@@ -366,19 +365,6 @@ def is_link_fixed(links: Sequence[KinematicLinkDescription], idx: int) -> bool:
         idx = l_desc.parent_idx
 
 
-def _is_same_texture(texture: "Texture | None", other: "Texture | None") -> bool:
-    """Whether two textures an asset gives hold the same color or the same image."""
-    if texture is other:
-        return True
-    if isinstance(texture, ColorTexture) and isinstance(other, ColorTexture):
-        return np.allclose(texture.color, other.color, atol=gs.EPS)
-    if isinstance(texture, ImageTexture) and isinstance(other, ImageTexture):
-        return np.array_equal(texture.image_array, other.image_array) and np.allclose(
-            texture.image_color, other.image_color, atol=gs.EPS
-        )
-    return False
-
-
 @dataclass
 class Resolution:
     """Transient state of one resolution, dropped once the description is complete.
@@ -501,35 +487,6 @@ class KinematicEntityDescription(EntityDescription):
                         f"No collision geom of the entity matches {list(geom_index.names)}. Existing geoms: "
                         f"{resolution.geoms_name}."
                     )
-        # An asset texture variant of a dynamic texture resolves to the texture the asset gives its slot, which every
-        # visual geom drawing the texture must agree on. The variants are resolved once the whole entity is parsed, so
-        # that one declaration stays one texture, and an asset giving none leaves no texture.
-        bindings_by_texture: dict[DynamicTexture, list[tuple[gs.Mesh, str]]] = {}
-        for l_desc in chain(desc.links, *(variant.links for variant in desc.variants)):
-            for vg_desc in l_desc.vgeoms:
-                for slot_name, texture in dict(vg_desc.vmesh.surface).items():
-                    if isinstance(texture, DynamicTexture) and any(
-                        isinstance(variant, AssetTexture) for variant in texture.variants_texture
-                    ):
-                        bindings_by_texture.setdefault(texture, []).append((vg_desc.vmesh, slot_name))
-        for texture, bindings in bindings_by_texture.items():
-            seeds = [vmesh.surface.dynamic_texture_seeds.get(slot_name) for vmesh, slot_name in bindings]
-            seed = seeds[0]
-            if any(not _is_same_texture(other, seed) for other in seeds[1:]):
-                gs.raise_exception(
-                    "The visual geoms drawing one dynamic texture get different textures from their asset, so its "
-                    "asset texture variants resolve to no single one. Bind one dynamic texture per material with "
-                    "'gs.VGeomIndex.with_material', or give those variants explicitly."
-                )
-            variants = tuple(
-                seed if isinstance(variant, AssetTexture) else variant for variant in texture.variants_texture
-            )
-            if texture.variants_name:
-                variants = dict(zip(texture.variants_name, variants))
-            filled = texture.model_copy(update={"variants": variants})
-            for vmesh, slot_name in bindings:
-                setattr(vmesh.surface, slot_name, filled)
-                vmesh.update_trimesh_visual()
         vgeoms_index = [
             *options.vgeoms,
             *(i_vg for link_options in options.links.values() for i_vg in link_options.vgeoms),
