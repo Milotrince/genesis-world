@@ -1392,33 +1392,35 @@ class RasterizerContext:
         `solvers` restricts the sync to the nodes of those solvers, whose state changed since the last sync, the others
         being current. A sync after a step updates the nodes of every solver, whatever `solvers`.
         """
-        # The dynamic textures are drawn and switched at any time, stepping or not
-        with self.scene._visualizer.viewer_lock:
-            for targets in self._dynamic_texture_targets.values():
-                selection = targets.handle.selection[self.rendered_envs_idx]
-                canvases_layer = targets.canvases_layer[self.rendered_envs_idx]
-                layers = np.where(selection == DRAWN_IMAGE, canvases_layer, selection)
-                for i_n, (node_key, is_base_color) in enumerate(zip(targets.nodes_key, targets.is_base_color)):
-                    node = self.rigid_nodes.get(node_key)
-                    if node is None:
-                        continue
-                    primitive = node.mesh.primitives[0]
-                    # A node drawn anew samples the texture its trimesh visual seeds, which the array replaces
-                    if node is not targets.nodes[i_n]:
-                        if is_base_color:
-                            primitive.material.baseColorTexture = targets.textures[True]
-                        else:
-                            primitive.material.emissiveTexture = targets.textures[False]
-                        if primitive.texture_layers is None:
-                            primitive.texture_layers = np.zeros((len(self.rendered_envs_idx), 2), np.float32)
-                        self._scene._meshes_updated = True
-                        targets.nodes[i_n] = node
-                    elif targets.selection_version == targets.handle.selection_version:
-                        continue
-                    texture_layers = primitive.texture_layers.copy()
-                    texture_layers[:, 0 if is_base_color else 1] = layers
-                    self.jit.update_texture_layers(node, texture_layers)
-                targets.selection_version = targets.handle.selection_version
+        # The dynamic textures are drawn and switched at any time, stepping or not. The lock is taken only for them, so
+        # that a scene without any renders without waiting for the viewer.
+        if self._dynamic_texture_targets:
+            with self.scene._visualizer.viewer_lock:
+                for targets in self._dynamic_texture_targets.values():
+                    selection = targets.handle.selection[self.rendered_envs_idx]
+                    canvases_layer = targets.canvases_layer[self.rendered_envs_idx]
+                    layers = np.where(selection == DRAWN_IMAGE, canvases_layer, selection)
+                    for i_n, (node_key, is_base_color) in enumerate(zip(targets.nodes_key, targets.is_base_color)):
+                        node = self.rigid_nodes.get(node_key)
+                        if node is None:
+                            continue
+                        primitive = node.mesh.primitives[0]
+                        # A node drawn anew samples the texture its trimesh visual seeds, which the array replaces
+                        if node is not targets.nodes[i_n]:
+                            if is_base_color:
+                                primitive.material.baseColorTexture = targets.textures[True]
+                            else:
+                                primitive.material.emissiveTexture = targets.textures[False]
+                            if primitive.texture_layers is None:
+                                primitive.texture_layers = np.zeros((len(self.rendered_envs_idx), 2), np.float32)
+                            self._scene._meshes_updated = True
+                            targets.nodes[i_n] = node
+                        elif targets.selection_version == targets.handle.selection_version:
+                            continue
+                        texture_layers = primitive.texture_layers.copy()
+                        texture_layers[:, 0 if is_base_color else 1] = layers
+                        self.jit.update_texture_layers(node, texture_layers)
+                    targets.selection_version = targets.handle.selection_version
 
         # Early return if already updated previously
         if not force_render and self._t >= self.scene.sim.cur_step_global:
