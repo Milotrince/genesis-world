@@ -68,6 +68,7 @@ class BaseCameraOptions(KinematicSensorOptionsMixin[SensorT]):
                 gs.raise_exception("'res' is deprecated and replaced by 'resolution'; set only one of them.")
             gs.logger.warning("'res' is deprecated and will be removed; it now maps to 'resolution'.")
             self.resolution = self.res
+            self.res = None
         if self.history_length > 0:
             gs.raise_exception(
                 "Camera sensors do not support `history_length`. The camera read path renders lazily on read() "
