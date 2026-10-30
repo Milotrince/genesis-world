@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -12,7 +13,8 @@ import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
 import genesis.utils.particle as pu
-from genesis.engine.dynamic_texture import DRAWN_IMAGE, DynamicTextureHandle
+from genesis.constants import DRAWN_IMAGE
+from genesis.engine.dynamic_texture import DynamicTextureHandle
 from genesis.engine.state_change import StateChange, Subscriber
 from genesis.ext import pyrender
 from genesis.ext.pyrender.jit_render import JITRenderer
@@ -39,7 +41,8 @@ class RigidNodeBatch(NamedTuple):
     is_plane: list[bool]
 
 
-class DynamicTextureTargets(NamedTuple):
+@dataclass
+class DynamicTextureTargets:
     """The nodes drawing one dynamic texture, and the texture arrays holding its images that they sample.
 
     An array holds the variants, then the canvases of the rendered environments. A node samples the array of its
@@ -56,7 +59,7 @@ class DynamicTextureTargets(NamedTuple):
     nodes_key: list["gs.UID"]
     is_base_color: list[bool]
     nodes: list["pyrender.Node | None"]
-    selection_version: np.ndarray
+    selection_version: int
     callback: Callable[[np.ndarray, torch.Tensor], None]
 
 
@@ -648,7 +651,7 @@ class RasterizerContext:
                 [binding.vgeom.uid for binding in handle.bindings],
                 is_base_color,
                 [None] * len(handle.bindings),
-                np.array([-1]),
+                -1,
                 partial(self._on_dynamic_texture_draw, handle),
             )
             handle.subscribe(targets.callback)
@@ -1405,12 +1408,12 @@ class RasterizerContext:
                             primitive.texture_layers = np.zeros((len(self.rendered_envs_idx), 2), np.float32)
                         self._scene._meshes_updated = True
                         targets.nodes[i_n] = node
-                    elif targets.selection_version[0] == targets.handle.selection_version:
+                    elif targets.selection_version == targets.handle.selection_version:
                         continue
                     texture_layers = primitive.texture_layers.copy()
                     texture_layers[:, 0 if is_base_color else 1] = layers
                     self.jit.update_texture_layers(node, texture_layers)
-                targets.selection_version[0] = targets.handle.selection_version
+                targets.selection_version = targets.handle.selection_version
 
         # Early return if already updated previously
         if not force_render and self._t >= self.scene.sim.cur_step_global:
