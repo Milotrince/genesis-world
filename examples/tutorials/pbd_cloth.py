@@ -11,7 +11,7 @@ scene = gs.Scene(
         substeps=10,
     ),
     viewer_options=gs.options.ViewerOptions(
-        res=(1280, 720),
+        resolution=(1280, 720),
         camera_fov=30,
     ),
     show_viewer=True,

@@ -307,7 +307,7 @@ class BatchRenderer(RBC):
 
         # Make sure that all cameras have identical resolution
         try:
-            ((camera_width, camera_height),) = set(camera.res for camera in self._cameras)
+            ((camera_width, camera_height),) = set(camera.resolution for camera in self._cameras)
         except ValueError as e:
             gs.raise_exception_from("All cameras must have the exact same resolution when using BatchRender.", e)
 

@@ -66,7 +66,7 @@ def main():
     # Recording every simulation step would be far denser than any player needs, and the step size here is tiny.
     video_fps = min(100.0, 1.0 / args.dt)
     cam = scene.add_camera(
-        res=(640, 480),
+        resolution=(640, 480),
         pos=(-2.0, 3.0, 2.0),
         lookat=(0.5, 0.5, 0.5),
         fov=30,

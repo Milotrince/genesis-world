@@ -493,7 +493,7 @@ def test_export_before_build(n_envs, checkpoint_scene, tmp_path, caplog):
     assert_equal(restored.options.viewer.camera_fov, 60)
     assert_equal(restored.options.viewer.camera_pos, scene.options.viewer.camera_pos)
     # The viewer options are recorded as authored, whatever display and platform the scene was viewed with
-    assert restored.options.viewer.res is None
+    assert restored.options.viewer.resolution is None
     assert restored.options.viewer.run_in_thread is None
     assert restored.options.sim.dt == scene.options.sim.dt
     assert [entity.name for entity in restored.entities] == [entity.name for entity in scene.entities]
