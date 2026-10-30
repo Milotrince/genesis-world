@@ -274,6 +274,12 @@ def test_dynamic_texture(show_viewer, png_snapshot):
             color=(0.3, 0.0, 0.0),
             emissive_texture=gs.textures.DynamicTexture(
                 resolution=(16, 16),
+                variants=(
+                    None,
+                    gs.textures.ImageTexture(
+                        image_array=np.full((1, 1, 3), (0, 128, 0), dtype=np.uint8),
+                    ),
+                ),
             ),
         ),
     )
@@ -345,9 +351,15 @@ def test_dynamic_texture(show_viewer, png_snapshot):
     lamp.set_texture(np.array([[[0, 300, -5]]]))
     colors = get_colors(camera.render(rgb=True)[0])
     assert (colors[:, 2, 1] > 100.0).all() and (colors[:, 2, 2] < 30.0).all()
+    # The emissive slot holds linear values: an sRGB image variant shows as its decoded value drawn as pixels
+    lamp.set_texture(1)
+    colors_variant = get_colors(camera.render(rgb=True)[0])
+    lamp.set_texture(np.array([[[0.0, ((128 / 255 + 0.055) / 1.055) ** 2.4, 0.0]]]))
+    colors_drawn = get_colors(camera.render(rgb=True)[0])
+    assert_allclose(colors_variant[:, 2], colors_drawn[:, 2], atol=2.0)
     # Refused inputs: a variant the texture does not declare, a value that is neither a variant nor pixels, one
-    # drawing per environment on a texture that is not batched, a name no texture of the entity holds, and two textures
-    # of one name
+    # drawing per environment on a texture that is not batched, a number of variants matching neither one nor the
+    # environments, a name no texture of the entity holds, two textures of one name, and one texture in both slots
     with pytest.raises(gs.GenesisException, match="No variant is named"):
         screen.set_texture("green")
     with pytest.raises(gs.GenesisException, match="integer position"):
@@ -356,6 +368,8 @@ def test_dynamic_texture(show_viewer, png_snapshot):
         screen.set_texture(np.zeros((16, 16)))
     with pytest.raises(gs.GenesisException, match="single image"):
         lamp.set_texture(np.zeros((2, 16, 16, 3)))
+    with pytest.raises(gs.GenesisException, match="one per selected environment"):
+        screen.set_texture(["red", "blue", "red"])
     with pytest.raises(gs.GenesisException, match="named 'lamp'"):
         screen.set_texture("red", texture_name="lamp")
     with pytest.raises(gs.GenesisException, match="distinct names"):
@@ -368,6 +382,14 @@ def test_dynamic_texture(show_viewer, png_snapshot):
                 ),
             )
         duplicate_scene.build()
+    with pytest.raises(gs.GenesisException, match="one dynamic texture per slot"):
+        two_slots_scene = gs.Scene()
+        two_slots_texture = gs.textures.DynamicTexture(resolution=(4, 4))
+        two_slots_scene.add_entity(
+            morph=gs.morphs.Plane(plane_size=(1.0, 1.0), fixed=True),
+            surface=gs.surfaces.Default(diffuse_texture=two_slots_texture, emissive_texture=two_slots_texture),
+        )
+        two_slots_scene.build()
     with pytest.raises(gs.GenesisException, match="diffuse_texture"):
         gs.surfaces.Default(roughness_texture=gs.textures.DynamicTexture(resolution=(4, 4)))
     with pytest.raises(gs.GenesisException, match="texture coordinates"):
