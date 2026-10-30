@@ -168,7 +168,7 @@ def test_export_and_load_rigid(
                 image_path="textures/checker.png",
             ),
             emissive_texture=gs.textures.DynamicTexture(
-                res=(4, 2),
+                resolution=(4, 2),
                 variants=(
                     gs.textures.ColorTexture(
                         color=(0.0, 0.5, 0.0),
