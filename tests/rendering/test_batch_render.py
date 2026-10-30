@@ -41,7 +41,7 @@ def _batch_render_scene(
 
     # cameras
     cam = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=(1.5, -0.5, 1.5),
         lookat=(0.0, 0.0, 0.5),
         fov=45,

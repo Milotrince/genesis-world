@@ -557,6 +557,7 @@ def test_raytracer_attached_without_offset_T():
     # Sensor camera attached WITHOUT offset_T - should use pos as offset.
     # The off-axis pos/lookat produce a non-identity rotation in the offset transform.
     camera_common_options = dict(
+        resolution=CAM_RES,
         lookat=(0.0, 0.0, 0.0),
         up=(0.0, 1.0, 0.0),
         fov=30.0,
@@ -566,7 +567,6 @@ def test_raytracer_attached_without_offset_T():
     sensor_camera = scene.add_sensor(
         gs.sensors.RaytracerCameraOptions(
             **camera_common_options,
-            resolution=CAM_RES,
             pos=CAM_POS,
             entity_idx=sphere.idx,
         )
@@ -575,7 +575,6 @@ def test_raytracer_attached_without_offset_T():
     # Scene-level camera with the same pose, attached with explicit offset_T
     scene_camera = scene.add_camera(
         **camera_common_options,
-        res=CAM_RES,
     )
 
     scene.build()

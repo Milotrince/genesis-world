@@ -142,7 +142,7 @@ def build_genesis_sim(
             constraint_timeconst=None,
         ),
         viewer_options=gs.options.ViewerOptions(
-            res=(960, 640),
+            resolution=(960, 640),
             camera_pos=(3, -1, 1.5),
             camera_lookat=(0.0, 0.0, 0.5),
             camera_fov=30,
