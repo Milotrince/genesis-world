@@ -42,7 +42,7 @@ class RigidNodeBatch(NamedTuple):
 class DynamicTextureTargets(NamedTuple):
     """The nodes drawing one dynamic texture, and the texture arrays holding its images that they sample.
 
-    An array holds the declared images, then the canvases of the rendered environments. A node samples the array of its
+    An array holds the variants, then the canvases of the rendered environments. A node samples the array of its
     slot, one per slot the texture fills ('textures', keyed by whether the slot is the base color), at the layer each
     rendered environment selects. 'canvases_layer' holds the layer of the canvas of each environment of the scene, -1
     for one not rendered. 'nodes' holds the node each visual geom was last bound through, so that a node drawn anew is
@@ -629,7 +629,7 @@ class RasterizerContext:
         # texture otherwise (see 'surface_uvs_to_trimesh_visual')
         for handle in self.scene.dynamic_textures:
             texture = handle.texture
-            images = texture.get_initial_images()
+            images = texture.get_variants_image()
             canvases_layer = np.full(self.sim._B, -1, dtype=gs.np_int)
             n_canvases = len(self.rendered_envs_idx) if texture.is_batched else 1
             canvases_layer[self.rendered_envs_idx] = len(images) + np.arange(len(self.rendered_envs_idx)) % n_canvases
@@ -1368,7 +1368,7 @@ class RasterizerContext:
         if handle.texture.is_batched:
             layers_idx = targets.canvases_layer[envs_idx]
         else:
-            layers_idx = np.array([len(handle.texture.images)])
+            layers_idx = np.array([len(handle.texture.variants)])
         (images_idx,) = np.nonzero(layers_idx >= 0)
         if len(images_idx) > 0:
             images = tensor_to_array(image[torch.as_tensor(images_idx, device=image.device)])

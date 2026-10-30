@@ -169,7 +169,7 @@ def test_export_and_load_rigid(
             ),
             emissive_texture=gs.textures.DynamicTexture(
                 res=(4, 2),
-                images=(
+                variants=(
                     gs.textures.ColorTexture(
                         color=(0.0, 0.5, 0.0),
                     ),
@@ -363,7 +363,7 @@ def test_export_and_load_rigid(
     assert_equal(restored_visual.uv, anchored.vgeoms[0].trimesh.visual.uv)
     restored_texture = restored.entities[6].vgeoms[0].vmesh.surface.emissive_texture
     assert_equal(
-        restored_texture.get_initial_images(), anchored.vgeoms[0].vmesh.surface.emissive_texture.get_initial_images()
+        restored_texture.get_variants_image(), anchored.vgeoms[0].vmesh.surface.emissive_texture.get_variants_image()
     )
     assert restored_texture.is_batched
     # A morph names the asset it was created from, since the description stands for what was parsed out of it
