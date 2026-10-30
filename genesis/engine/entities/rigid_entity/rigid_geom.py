@@ -737,20 +737,12 @@ class RigidVisGeom(RBC):
         return get_dynamic_texture(self._dynamic_textures, name, "this visual geom").get_texture(envs_idx)
 
     @gs.assert_built
-    def set_texture(self, image, name: str | None = None, envs_idx=None):
-        """Show a declared image of a dynamic texture of this visual geom.
+    def set_texture(self, texture, name: str | None = None, envs_idx=None):
+        """Show a declared image, or draw pixels, on a dynamic texture of this visual geom.
 
-        See ``get_texture`` for 'name', and ``DynamicTextureHandle.set_texture`` for 'image' and 'envs_idx'.
+        See ``get_texture`` for 'name', and ``DynamicTextureHandle.set_texture`` for 'texture' and 'envs_idx'.
         """
-        get_dynamic_texture(self._dynamic_textures, name, "this visual geom").set_texture(image, envs_idx)
-
-    @gs.assert_built
-    def draw_texture(self, pixels, name: str | None = None, envs_idx=None):
-        """Draw pixels on a dynamic texture of this visual geom.
-
-        See ``get_texture`` for 'name', and ``DynamicTextureHandle.draw_texture`` for 'pixels' and 'envs_idx'.
-        """
-        get_dynamic_texture(self._dynamic_textures, name, "this visual geom").draw_texture(pixels, envs_idx)
+        get_dynamic_texture(self._dynamic_textures, name, "this visual geom").set_texture(texture, envs_idx)
 
     # ------------------------------------------------------------------------------------
     # ----------------------------------- properties -------------------------------------

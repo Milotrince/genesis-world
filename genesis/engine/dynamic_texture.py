@@ -33,11 +33,11 @@ class DynamicTextureHandle:
     Genesis holds the selection alone: the position of the declared image each environment shows, or 'DRAWN_IMAGE' for
     the pixels drawn on its canvas. The renderers hold the pixels, and each one implements the same contract:
 
-    - at build, it allocates the declared images ('texture.get_initial_images()'), then the canvases that
-      'texture.canvas' asks for (one per environment it renders, or one shared), binds them to the visual geoms in
-      'bindings', and subscribes a callback with 'subscribe';
+    - at build, it allocates the declared images ('texture.get_initial_images()'), then the canvases, one per
+      environment it renders when 'texture.is_batched' and a single shared one otherwise, binds them to the visual
+      geoms in 'bindings', and subscribes a callback with 'subscribe';
     - on every drawing, the callback receives the environments drawn and their pixels, as a uint8 RGBA tensor on the
-      device of shape (len(envs_idx), height, width, 4), or (1, height, width, 4) for a canvas every environment shares;
+      device of shape (len(envs_idx), height, width, 4), or (1, height, width, 4) when the texture is not batched;
     - at sync, it reads 'selection' when 'selection_version' moved since it last read it.
     """
 
@@ -96,49 +96,51 @@ class DynamicTextureHandle:
         selection = torch.as_tensor(selection, dtype=gs.tc_int, device=gs.device)
         return selection[0] if self._scene.n_envs == 0 else selection
 
-    def set_texture(self, image, envs_idx=None) -> None:
-        """Show a declared image in the selected environments.
+    def set_texture(self, texture, envs_idx=None) -> None:
+        """Show a declared image, or draw pixels, in the selected environments.
 
-        'image' is a declared image given by position or by name, one for all the selected environments, or a sequence
-        of them, one per selected environment.
+        'texture' is either declared images or pixels. A declared image is given by position or by name, one for all the
+        selected environments, or a sequence of them, one per selected environment. Pixels are a ``ColorTexture``, an
+        ``ImageTexture``, or an RGB or RGBA array of uint8 values or of floats between 0 and 1, of shape (height, width,
+        channels) for all the selected environments or (len(envs_idx), height, width, channels) for one each. Integer
+        and float values are clamped to the range of a channel. Pixels go to the canvas of each selected environment
+        when the texture is batched, and to the canvas every environment shares otherwise, which takes a single image.
         """
+        is_envs_selected = envs_idx is not None
         envs_idx = tensor_to_array(self._scene._sanitize_envs_idx(envs_idx))
-        if torch.is_tensor(image):
-            image = tensor_to_array(image)
-        if np.ndim(image) > 1:
-            gs.raise_exception("'set_texture' shows a declared image. Draw pixels with 'draw_texture' instead.")
-        self._selection[envs_idx] = self._texture.get_images_idx(image)
-        self._selection_version += 1
-
-    def draw_texture(self, pixels, envs_idx=None) -> None:
-        """Draw pixels on the canvas of each selected environment.
-
-        'pixels' is a ``ColorTexture``, an ``ImageTexture``, or an RGB or RGBA array of uint8 values or of floats between
-        0 and 1, of shape (height, width, channels) for all the selected environments or (len(envs_idx), height, width,
-        channels) for one each. Integer and float values are clamped to the range of a channel. A texture whose canvas
-        every environment shares takes a single image.
-        """
-        if self._texture.canvas is None:
-            gs.raise_exception("Pixels are drawn on a dynamic texture declared with a 'canvas'.")
-        envs_idx = tensor_to_array(self._scene._sanitize_envs_idx(envs_idx))
-        if isinstance(pixels, (ColorTexture, ImageTexture)):
-            pixels = texture_to_rgba(pixels, self._texture.res)
-        # Torch warns on wrapping a read-only array, such as one read from an image, which the copy below never writes
-        if isinstance(pixels, np.ndarray) and not pixels.flags.writeable:
-            pixels = pixels.copy()
-        image = torch.as_tensor(pixels, device=gs.device)
-        if image.ndim not in (3, 4):
+        if isinstance(texture, (ColorTexture, ImageTexture)):
+            texture = texture_to_rgba(texture, self._texture.res)
+        texture_ndim = texture.ndim if torch.is_tensor(texture) else np.ndim(texture)
+        if texture_ndim <= 1:
+            if torch.is_tensor(texture):
+                texture = tensor_to_array(texture)
+            self._selection[envs_idx] = self._texture.get_images_idx(texture)
+            self._selection_version += 1
+            return
+        if texture_ndim not in (3, 4):
             gs.raise_exception(
-                f"Pixels are drawn as an array of shape (height, width, channels), got {image.ndim} dims."
+                "A dynamic texture is set to declared images, or to pixels of shape (height, width, channels), got an "
+                f"array of {texture_ndim} dims."
             )
-        if self._texture.canvas == "shared" and image.ndim == 4:
-            gs.raise_exception("A dynamic texture whose canvas every environment shares takes a single image.")
+
+        # Torch warns on wrapping a read-only array, such as one read from an image, which the copy below never writes
+        if isinstance(texture, np.ndarray) and not texture.flags.writeable:
+            texture = texture.copy()
+        image = torch.as_tensor(texture, device=gs.device)
+        if not self._texture.is_batched:
+            if image.ndim == 4:
+                gs.raise_exception("A dynamic texture that is not batched takes a single image.")
+            if is_envs_selected:
+                gs.logger.warning(
+                    "Pixels drawn on a dynamic texture that is not batched are shared by every environment showing "
+                    "them. Declare it with 'is_batched=True' to draw per environment."
+                )
         n_channels = image.shape[-1]
         if n_channels not in (3, 4):
             gs.raise_exception(f"Pixels are drawn as RGB or RGBA, got {n_channels} channels.")
         image = image.mul(255.0).clamp_(0.0, 255.0).round_() if image.is_floating_point() else image.clamp(0, 255)
         width, height = self._texture.res
-        n_images = len(envs_idx) if self._texture.canvas == "per_env" else 1
+        n_images = len(envs_idx) if self._texture.is_batched else 1
         image = broadcast_tensor(image, torch.uint8, (n_images, height, width, n_channels))
         if n_channels == 3:
             image = torch.cat((image, image.new_full((n_images, height, width, 1), 255)), dim=-1)

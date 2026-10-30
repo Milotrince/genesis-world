@@ -69,7 +69,7 @@ def main():
             diffuse_texture=gs.textures.DynamicTexture(
                 res=TEXTURE_RES,
                 images=images,
-                canvas="per_env",
+                is_batched=True,
             ),
         ),
     )
@@ -117,7 +117,7 @@ def main():
             duck.set_texture((i_image + envs_offset) % len(images_name))
             i_image_shown = i_image
         if is_drawing:
-            duck.draw_texture(np.random.rand(len(envs_offset), 1, 1, 3))
+            duck.set_texture(np.random.rand(len(envs_offset), 1, 1, 3))
             is_drawing = False
         scene.step()
         step += 1
