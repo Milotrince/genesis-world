@@ -1,6 +1,6 @@
-"""A duck switching between the images of a dynamic texture, and drawn on, at runtime.
+"""A duck switching between the variants of a dynamic texture, and drawn on, at runtime.
 
-In parallel environments, the duck of environment i starts on image i. Without the viewer, the textures cycle on their
+In parallel environments, the duck of environment i starts on variant i. Without the viewer, the textures cycle on their
 own. With it, the keyboard sets them in every environment:
 Right   - Next texture
 Left    - Previous texture
@@ -39,13 +39,13 @@ def main():
     scene.add_entity(
         gs.morphs.Plane(),
     )
-    # The images to switch between, named and each the size of the dynamic texture: the texture of the asset, a
+    # The variants to switch between, named and each the size of the dynamic texture: the texture of the asset, a
     # checkerboard, vertical stripes and a flat color
     width, height = TEXTURE_RES
     cols, rows = np.arange(width) // 32, np.arange(height)[:, None] // 32
     is_checker_dark = (rows + cols) % 2 == 0
     is_stripe = np.broadcast_to(cols % 2 == 0, (height, width))
-    images = {
+    variants = {
         "duck": gs.textures.AssetTexture(),
         "checker": gs.textures.ImageTexture(
             image_array=np.where(is_checker_dark[..., None], [240, 140, 30], [250, 240, 230]).astype(np.uint8),
@@ -68,27 +68,27 @@ def main():
         surface=gs.surfaces.Default(
             diffuse_texture=gs.textures.DynamicTexture(
                 res=TEXTURE_RES,
-                images=images,
+                variants=variants,
                 is_batched=True,
             ),
         ),
     )
     scene.build(n_envs=args.n_envs, env_spacing=(0.3, 0.3))
 
-    images_name = tuple(images)
+    variants_name = tuple(variants)
 
-    # The image each environment shows is offset by the index of the environment
+    # The variant each environment shows is offset by the index of the environment
     envs_offset = np.arange(max(args.n_envs, 1))
-    i_image = 0
-    i_image_shown = None
+    i_variant = 0
+    i_variant_shown = None
     is_drawing = False
     is_running = True
 
     # Keybind callbacks run on the viewer thread, so they only pick what the main loop sets between steps
     def swap(offset):
-        nonlocal i_image, i_image_shown
-        i_image = (i_image + offset) % len(images_name)
-        i_image_shown = None
+        nonlocal i_variant, i_variant_shown
+        i_variant = (i_variant + offset) % len(variants_name)
+        i_variant_shown = None
 
     def draw():
         nonlocal is_drawing
@@ -113,9 +113,9 @@ def main():
     while is_running and step < horizon:
         if not args.vis and step % 100 == 99:
             swap(1)
-        if i_image != i_image_shown:
-            duck.set_texture((i_image + envs_offset) % len(images_name))
-            i_image_shown = i_image
+        if i_variant != i_variant_shown:
+            duck.set_texture((i_variant + envs_offset) % len(variants_name))
+            i_variant_shown = i_variant
         if is_drawing:
             duck.set_texture(np.random.rand(len(envs_offset), 1, 1, 3))
             is_drawing = False
