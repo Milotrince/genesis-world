@@ -631,12 +631,9 @@ class RasterizerContext:
             texture = handle.texture
             images = texture.get_initial_images()
             canvases_layer = np.full(self.sim._B, -1, dtype=gs.np_int)
-            if texture.canvas is not None:
-                n_canvases = len(self.rendered_envs_idx) if texture.canvas == "per_env" else 1
-                canvases_layer[self.rendered_envs_idx] = (
-                    len(images) + np.arange(len(self.rendered_envs_idx)) % n_canvases
-                )
-                images = np.concatenate((images, np.zeros((n_canvases, *images.shape[1:]), dtype=np.uint8)))
+            n_canvases = len(self.rendered_envs_idx) if texture.is_batched else 1
+            canvases_layer[self.rendered_envs_idx] = len(images) + np.arange(len(self.rendered_envs_idx)) % n_canvases
+            images = np.concatenate((images, np.zeros((n_canvases, *images.shape[1:]), dtype=np.uint8)))
             is_base_color = [binding.vgeom.surface.get_rgba() is texture for binding in handle.bindings]
             textures = {
                 is_base: pyrender.Texture(
@@ -1368,7 +1365,7 @@ class RasterizerContext:
     ) -> None:
         """Queue the upload of the pixels drawn on the canvases of the rendered environments."""
         targets = self._dynamic_texture_targets[handle]
-        if handle.texture.canvas == "per_env":
+        if handle.texture.is_batched:
             layers_idx = targets.canvases_layer[envs_idx]
         else:
             layers_idx = np.array([len(handle.texture.images)])

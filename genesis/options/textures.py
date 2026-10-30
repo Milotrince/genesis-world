@@ -5,7 +5,7 @@ from typing import Annotated, Iterable, Literal, Sequence, cast
 import numpy as np
 
 from PIL import Image
-from pydantic import BeforeValidator, Field, computed_field, model_validator
+from pydantic import BeforeValidator, Field, StrictBool, computed_field, model_validator
 from typing_extensions import Self
 
 import genesis as gs
@@ -355,11 +355,10 @@ class DynamicTexture(Texture):
     A texture whose image changes while the simulation runs, such as a screen or an indicator light.
 
     It fills the diffuse or the emissive slot of a surface, and requires a mesh with texture coordinates. Each parallel
-    environment shows one of a fixed set of images declared here, or, for a texture with a canvas, pixels drawn at
-    runtime on it. The images are RGBA, their alpha channel standing for the opacity in the diffuse slot in place of the
-    opacity of the surface. Once the scene is built, ``entity.set_texture`` shows a declared image in each environment,
-    ``entity.draw_texture`` draws pixels, and ``entity.get_texture`` returns what each environment shows, as do the
-    methods of the same name of a visual geom. Each renderer holds the pixels it draws, and only the rasterizer draws a
+    environment shows one of a fixed set of images declared here, or pixels drawn at runtime on a canvas. The images
+    are RGBA, their alpha channel standing for the opacity in the diffuse slot in place of the opacity of the surface.
+    Once the scene is built, ``entity.set_texture`` shows a declared image or draws pixels in each environment, and
+    ``entity.get_texture`` returns what each environment shows, as do the methods of the same name of a visual geom. Each renderer holds the pixels it draws, and only the rasterizer draws a
     dynamic texture yet.
 
     Parameters
@@ -372,12 +371,10 @@ class DynamicTexture(Texture):
         gives the slot, or None for no texture, which shows a black and magenta checkerboard. A mapping names them, so
         that they are shown by name as well as by position. The images are fixed once the scene is built, and their
         memory is independent of the number of environments. Default is one image with no texture.
-    canvas : str | None, optional
-        Where pixels drawn at runtime go, after the declared images: None draws none, 'per_env' gives each parallel
-        environment a canvas of its own, and 'shared' gives every environment a single canvas, which shows one drawing
-        in all the environments showing it. A canvas costs the memory of one image and an upload per drawing, and one
-        per environment costs that much per environment, so leave it None for a texture switching between known
-        images. Default is None.
+    is_batched : bool, optional
+        Whether each parallel environment draws pixels on a canvas of its own. Its own canvases cost the memory of one
+        image per environment, while a texture that is not batched holds a single canvas, whose one drawing every
+        environment showing it displays. Showing a declared image is per environment either way. Default is False.
     initial_image : int | str, optional
         The image every environment shows at build and after a reset, by position or by name. Default is 0.
     encoding : str, optional
@@ -392,7 +389,7 @@ class DynamicTexture(Texture):
         Annotated[tuple[ColorTexture | ImageTexture | AssetTexture | None, ...], Field(min_length=1, strict=False)]
         | Annotated[dict[str, ColorTexture | ImageTexture | AssetTexture | None], Field(min_length=1)]
     ) = (None,)
-    canvas: Literal["per_env", "shared"] | None = None
+    is_batched: StrictBool = False
     initial_image: StrictInt | str = 0
     encoding: Annotated[Literal["srgb", "linear"], BeforeValidator(lambda e: str(e).lower())] = "srgb"
     name: str | None = None
@@ -422,7 +419,10 @@ class DynamicTexture(Texture):
                     gs.raise_exception(f"No image is named '{image}'. Existing names: {list(images_name)}.")
                 image = images_name.index(image)
             elif not isinstance(image, (int, np.integer)) or isinstance(image, bool):
-                gs.raise_exception(f"An image is given by an integer position or a name, got {image!r}.")
+                gs.raise_exception(
+                    f"An image is given by an integer position or a name, got {image!r}. Give a color as a "
+                    "'gs.textures.ColorTexture'."
+                )
             if not 0 <= image < len(self.images):
                 gs.raise_exception(f"Image {image} is out of range for {len(self.images)} images.")
             images_idx.append(image)
