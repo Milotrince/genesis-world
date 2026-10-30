@@ -839,7 +839,7 @@ def test_destroy_after_aborted_camera_build(monkeypatch, raise_before_build):
     scene = gs.Scene(show_viewer=False)
     camera = scene.add_sensor(
         gs.sensors.RasterizerCameraOptions(
-            res=(64, 64),
+            resolution=(64, 64),
         )
     )
 

@@ -714,7 +714,7 @@ def test_read_sensors_bulk_api(show_viewer, n_envs):
     )
     static_cam = scene.add_sensor(
         gs.sensors.RasterizerCameraOptions(
-            res=(32, 32),
+            resolution=(32, 32),
         ),
     )
 
