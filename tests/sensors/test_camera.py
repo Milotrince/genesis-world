@@ -88,7 +88,7 @@ def test_rasterizer_non_batched(n_envs, show_viewer):
 
     raster_cam0 = scene.add_sensor(
         gs.sensors.RasterizerCameraOptions(
-            res=(512, 512),
+            resolution=(512, 512),
             pos=(6.0, 0.0, 4.0),
             lookat=(0.0, 0.0, 1.0),
             up=(0.0, 0.0, 1.0),
@@ -106,7 +106,7 @@ def test_rasterizer_non_batched(n_envs, show_viewer):
     )
     raster_cam1 = scene.add_sensor(
         gs.sensors.RasterizerCameraOptions(
-            res=(256, 256),
+            resolution=(256, 256),
             pos=(0.0, 3.0, 2.0),
             lookat=(0.0, 0.0, 1.0),
             up=(0.0, 0.0, 1.0),
@@ -115,7 +115,7 @@ def test_rasterizer_non_batched(n_envs, show_viewer):
     )
     raster_cam_attached = scene.add_sensor(
         gs.sensors.RasterizerCameraOptions(
-            res=(320, 240),
+            resolution=(320, 240),
             pos=(0.0, 0.0, 1.0),  # Relative to link when attached
             lookat=(0.0, 0.0, 0.0),
             up=(0.0, 0.0, 1.0),
@@ -128,7 +128,7 @@ def test_rasterizer_non_batched(n_envs, show_viewer):
     offset_T[2, 3] = 1.0
     raster_cam_offset_T = scene.add_sensor(
         gs.sensors.RasterizerCameraOptions(
-            res=(320, 240),
+            resolution=(320, 240),
             pos=(0.0, 0.0, 1.0),
             lookat=(0.0, 0.0, 0.0),
             up=(0.0, 0.0, 1.0),
@@ -140,7 +140,7 @@ def test_rasterizer_non_batched(n_envs, show_viewer):
     )
     raster_cam_attached_kin = scene.add_sensor(
         gs.sensors.RasterizerCameraOptions(
-            res=(320, 240),
+            resolution=(320, 240),
             pos=(0.0, 0.0, 1.0),
             lookat=(0.0, 0.0, 0.0),
             up=(0.0, 0.0, 1.0),
@@ -239,7 +239,7 @@ def test_rasterizer_batched(show_viewer, png_snapshot):
     )
     camera = scene.add_sensor(
         gs.sensors.RasterizerCameraOptions(
-            res=CAM_RES,
+            resolution=CAM_RES,
             pos=(4.0, 0.0, 1.5),
             lookat=(0.0, 0.0, 0.5),
             fov=60.0,
@@ -301,7 +301,7 @@ def test_rasterizer_attached_batched(show_viewer, png_snapshot, tol):
     cam_up = (0.0, 0.0, 1.0)
     camera = scene.add_sensor(
         gs.sensors.RasterizerCameraOptions(
-            res=(64, 64),
+            resolution=(64, 64),
             pos=cam_pos,
             lookat=cam_lookat,
             up=cam_up,
@@ -359,8 +359,8 @@ def test_rasterizer_attached_batched(show_viewer, png_snapshot, tol):
 @pytest.mark.required
 def test_rasterizer_destroy():
     scene = gs.Scene(show_viewer=False)
-    cam1 = scene.add_sensor(gs.sensors.RasterizerCameraOptions(res=(64, 64)))
-    cam2 = scene.add_sensor(gs.sensors.RasterizerCameraOptions(res=(32, 32)))
+    cam1 = scene.add_sensor(gs.sensors.RasterizerCameraOptions(resolution=(64, 64)))
+    cam2 = scene.add_sensor(gs.sensors.RasterizerCameraOptions(resolution=(32, 32)))
 
     scene.build()
     cam1.read()
@@ -395,7 +395,7 @@ def test_batch_renderer(n_envs, png_snapshot):
     )
 
     camera_common_options = dict(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=(-2.0, 0.0, 1.5),
         lookat=(0.0, 0.0, 1.0),
         up=(0.0, 0.0, 1.5),
@@ -441,8 +441,8 @@ def test_batch_renderer_destroy():
     scene.add_entity(
         morph=gs.morphs.Plane(),
     )
-    cam1 = scene.add_sensor(gs.sensors.BatchRendererCameraOptions(res=(64, 64), use_rasterizer=True))
-    cam2 = scene.add_sensor(gs.sensors.BatchRendererCameraOptions(res=(64, 64), use_rasterizer=True))
+    cam1 = scene.add_sensor(gs.sensors.BatchRendererCameraOptions(resolution=(64, 64), use_rasterizer=True))
+    cam2 = scene.add_sensor(gs.sensors.BatchRendererCameraOptions(resolution=(64, 64), use_rasterizer=True))
 
     scene.build()
     cam1.read()
@@ -492,7 +492,7 @@ def test_raytracer(n_envs, png_snapshot):
     )
 
     camera_common_options = dict(
-        res=(128, 256),
+        resolution=(128, 256),
         pos=(-2.0, 0.0, 1.5),
         lookat=(0.0, 0.0, 1.0),
         up=(0.0, 0.0, 1.5),
@@ -557,7 +557,6 @@ def test_raytracer_attached_without_offset_T():
     # Sensor camera attached WITHOUT offset_T - should use pos as offset.
     # The off-axis pos/lookat produce a non-identity rotation in the offset transform.
     camera_common_options = dict(
-        res=CAM_RES,
         lookat=(0.0, 0.0, 0.0),
         up=(0.0, 1.0, 0.0),
         fov=30.0,
@@ -567,6 +566,7 @@ def test_raytracer_attached_without_offset_T():
     sensor_camera = scene.add_sensor(
         gs.sensors.RaytracerCameraOptions(
             **camera_common_options,
+            resolution=CAM_RES,
             pos=CAM_POS,
             entity_idx=sphere.idx,
         )
@@ -575,6 +575,7 @@ def test_raytracer_attached_without_offset_T():
     # Scene-level camera with the same pose, attached with explicit offset_T
     scene_camera = scene.add_camera(
         **camera_common_options,
+        res=CAM_RES,
     )
 
     scene.build()
@@ -615,8 +616,8 @@ def test_raytracer_destroy():
         show_viewer=False,
     )
 
-    cam1 = scene.add_sensor(gs.sensors.RaytracerCameraOptions(res=(64, 64)))
-    cam2 = scene.add_sensor(gs.sensors.RaytracerCameraOptions(res=(64, 64)))
+    cam1 = scene.add_sensor(gs.sensors.RaytracerCameraOptions(resolution=(64, 64)))
+    cam2 = scene.add_sensor(gs.sensors.RaytracerCameraOptions(resolution=(64, 64)))
 
     scene.build()
     cam1.read()
@@ -677,7 +678,7 @@ def test_lookat_entity(show_viewer, png_snapshot):
     ):
         camera = scene.add_sensor(
             gs.sensors.RasterizerCameraOptions(
-                res=(64, 64),
+                resolution=(64, 64),
                 up=(0.0, 0.0, 1.0),
                 **camera_options,
             ),
@@ -706,7 +707,7 @@ def test_destroy_unbuilt_scene_with_camera():
     scene.add_entity(
         morph=gs.morphs.Plane(),
     )
-    scene.add_sensor(gs.sensors.RasterizerCameraOptions(res=(64, 64)))
+    scene.add_sensor(gs.sensors.RasterizerCameraOptions(resolution=(64, 64)))
 
     scene.destroy()
 
@@ -714,7 +715,7 @@ def test_destroy_unbuilt_scene_with_camera():
 @pytest.mark.required
 def test_destroy_idempotent_with_camera():
     scene = gs.Scene(show_viewer=False)
-    camera = scene.add_sensor(gs.sensors.RasterizerCameraOptions(res=(64, 64)))
+    camera = scene.add_sensor(gs.sensors.RasterizerCameraOptions(resolution=(64, 64)))
 
     scene.build()
     camera.read()

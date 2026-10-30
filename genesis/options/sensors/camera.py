@@ -29,7 +29,7 @@ class BaseCameraOptions(KinematicSensorOptionsMixin[SensorT]):
 
     Parameters
     ----------
-    res : tuple[int, int]
+    resolution : tuple[int, int]
         Resolution as (width, height). Default is (512, 512).
     pos : array-like[float, float, float]
         Camera position offset. If attached to a link, this is relative to the link frame.
@@ -52,7 +52,7 @@ class BaseCameraOptions(KinematicSensorOptionsMixin[SensorT]):
         The local index of the RigidLink of the RigidEntity to which this sensor is attached.
     """
 
-    res: PositiveVec2IType = (512, 512)
+    resolution: PositiveVec2IType = (512, 512)
     pos: Vec3FType = (3.5, 0.0, 1.5)
     lookat: Vec3FType = (0.0, 0.0, 0.0)
     up: Vec3FType = (0.0, 0.0, 1.0)

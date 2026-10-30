@@ -295,7 +295,7 @@ def test_dynamic_texture(show_viewer, png_snapshot):
     )
     sensor = scene.add_sensor(
         RasterizerCameraOptions(
-            res=(192, 64),
+            resolution=(192, 64),
             pos=(0.0, 0.0, 4.0),
             lookat=(0.0, 0.0, 0.0),
             fov=40.0,
@@ -1852,7 +1852,7 @@ def test_rasterizer_sensor_env_spacing_invariance(renderer, context_mode):
         lights.append({"type": "point", "pos": (1.0, -1.0, 2.0), "color": (1.0, 0.5, 0.25), "intensity": 5.0})
     sensor = scene.add_sensor(
         RasterizerCameraOptions(
-            res=CAM_RES,
+            resolution=CAM_RES,
             pos=(2.0, -2.0, 1.5),
             lookat=(0.0, 0.0, 0.3),
             fov=40.0,

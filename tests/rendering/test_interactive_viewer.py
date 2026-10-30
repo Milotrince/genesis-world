@@ -832,7 +832,7 @@ def test_rasterizer_camera_sensor(renderer):
     )
     camera_sensor = scene.add_sensor(
         RasterizerCameraOptions(
-            res=CAM_RES,
+            resolution=CAM_RES,
         )
     )
     scene.build()
