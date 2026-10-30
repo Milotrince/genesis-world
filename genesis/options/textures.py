@@ -10,6 +10,7 @@ from typing_extensions import Self
 
 import genesis as gs
 import genesis.utils.mesh as mu
+from genesis.constants import TEXTURE_SLOT
 from genesis.typing import (
     LaxFArrayType,
     LaxUnitIntervalArrayType,
@@ -324,32 +325,47 @@ class AssetTexture(Texture):
 
 
 def texture_to_rgba(
-    texture: "ColorTexture | ImageTexture | AssetTexture | None", resolution: tuple[int, int]
+    texture: "ColorTexture | ImageTexture | AssetTexture | None",
+    resolution: tuple[int, int],
+    slot: TEXTURE_SLOT = TEXTURE_SLOT.DIFFUSE,
 ) -> np.ndarray:
-    """Return a texture as an RGBA uint8 array of shape (height, width, 4).
+    """Return a texture as an RGBA array of shape (height, width, 4), in the format of a dynamic texture in 'slot'.
 
-    An image is resized to 'resolution', given as (width, height). A gray or gray-alpha color spans the three color
-    channels, as an image of one or two channels does. No texture, an unresolved asset texture included, gives a black
-    and magenta checkerboard of 8 by 8 cells.
+    The diffuse slot holds sRGB uint8 values and the emissive slot linear float16 values (see ``DynamicTexture``). An
+    image is resized to 'resolution', given as (width, height), and converted from its own encoding. A color is sRGB in
+    the diffuse slot and linear in the emissive slot, as for a static texture. A gray or gray-alpha color spans the
+    three color channels, as an image of one or two channels does. No texture, an unresolved asset texture included,
+    gives a black and magenta checkerboard of 8 by 8 cells.
     """
     width, height = resolution
     if not isinstance(texture, (ColorTexture, ImageTexture)):
         is_magenta = ((np.arange(height)[:, None] * 8 // height) + (np.arange(width) * 8 // width)) % 2 == 1
-        return np.where(is_magenta[..., None], [255, 0, 255, 255], [0, 0, 0, 255]).astype(np.uint8)
-    if isinstance(texture, ImageTexture):
-        image_array = texture.image_array
-        if image_array.ndim == 3 and image_array.shape[-1] == 1:
-            image_array = image_array[..., 0]
-        image = Image.fromarray(image_array).convert("RGBA")
-        base, channels = np.asarray(image.resize((width, height), Image.Resampling.BILINEAR)), texture.image_color
+        rgba = np.where(is_magenta[..., None], [1.0, 0.0, 1.0, 1.0], [0.0, 0.0, 0.0, 1.0])
     else:
-        base = np.full((height, width, 4), 255, dtype=np.uint8)
-        channels = texture.color
-    rgba = np.ones(4)
-    rgba[:3] = channels[:3] if len(channels) >= 3 else channels[0]
-    if len(channels) in (2, 4):
-        rgba[3] = channels[-1]
-    return (base * rgba).round().astype(np.uint8)
+        if isinstance(texture, ImageTexture):
+            image_array = texture.image_array
+            if image_array.ndim == 3 and image_array.shape[-1] == 1:
+                image_array = image_array[..., 0]
+            image = Image.fromarray(image_array).convert("RGBA").resize((width, height), Image.Resampling.BILINEAR)
+            rgba, channels, is_srgb = np.asarray(image) / 255.0, texture.image_color, texture.encoding == "srgb"
+        else:
+            rgba, channels = np.ones((height, width, 4)), texture.color
+            is_srgb = slot == TEXTURE_SLOT.DIFFUSE
+        # sRGB transfer function of IEC 61966-2-1, between the encoded values and the linear ones
+        if slot == TEXTURE_SLOT.EMISSIVE and is_srgb:
+            color = rgba[..., :3]
+            rgba[..., :3] = np.where(color <= 0.04045, color / 12.92, ((color + 0.055) / 1.055) ** 2.4)
+        elif slot == TEXTURE_SLOT.DIFFUSE and not is_srgb:
+            color = rgba[..., :3]
+            rgba[..., :3] = np.where(color <= 0.0031308, color * 12.92, 1.055 * color ** (1.0 / 2.4) - 0.055)
+        factor = np.ones(4)
+        factor[:3] = channels[:3] if len(channels) >= 3 else channels[0]
+        if len(channels) in (2, 4):
+            factor[3] = channels[-1]
+        rgba = rgba * factor
+    if slot == TEXTURE_SLOT.EMISSIVE:
+        return rgba.astype(np.float16)
+    return (rgba * 255.0).round().astype(np.uint8)
 
 
 class DynamicTexture(Texture):
@@ -357,11 +373,14 @@ class DynamicTexture(Texture):
     A texture whose image changes while the simulation runs, such as a screen or an indicator light.
 
     It fills the diffuse or the emissive slot of a surface, and requires a mesh with texture coordinates. Each parallel
-    environment shows one of a fixed set of variants declared here, or pixels drawn at runtime on a canvas. The variants
-    are RGBA images, their alpha channel standing for the opacity in the diffuse slot in place of the opacity of the
-    surface. Once the scene is built, ``entity.set_texture`` shows a variant or draws pixels in each environment, and
+    environment shows one of a fixed set of variants declared here, or pixels drawn at runtime on a canvas. Once the
+    scene is built, ``entity.set_texture`` shows a variant or draws pixels in each environment, and
     ``entity.get_texture`` returns what each environment shows, as do the methods of the same name of a visual geom.
     Each renderer holds the pixels it draws, and only the rasterizer draws a dynamic texture yet.
+
+    The variants and canvases are RGBA images, whose format the slot sets. The diffuse slot holds 8-bit sRGB values,
+    the alpha channel standing for the opacity in place of the opacity of the surface. The emissive slot holds 16-bit
+    linear values, which let an emission exceed 1 at twice the memory per pixel.
 
     Parameters
     ----------
@@ -380,8 +399,6 @@ class DynamicTexture(Texture):
         environment showing it displays. Showing a variant is per environment either way. Default is False.
     initial_variant : int | str, optional
         The variant every environment shows at build and after a reset, by position or by name. Default is 0.
-    encoding : str, optional
-        The encoding of the variants, 'srgb' for colors or 'linear'. Default is 'srgb'.
     texture_name : str | None, optional
         The name of the texture, unique in the scene, by which the methods of an entity whose visual geoms draw several
         dynamic textures pick it. Default is None.
@@ -394,7 +411,6 @@ class DynamicTexture(Texture):
     ) = (None,)
     is_batched: StrictBool = False
     initial_variant: StrictInt | str = 0
-    encoding: Annotated[Literal["srgb", "linear"], BeforeValidator(lambda e: str(e).lower())] = "srgb"
     texture_name: str | None = None
 
     # The dynamic texture this one is a copy of, and the texture an asset gives the slot it fills, which its asset
@@ -463,9 +479,9 @@ class DynamicTexture(Texture):
             variants_idx.append(variant)
         return np.array(variants_idx, dtype=gs.np_int)
 
-    def get_variants_image(self) -> np.ndarray:
-        """Return the variants as an RGBA uint8 array of shape (n_variants, height, width, 4)."""
-        return np.stack([texture_to_rgba(texture, self.resolution) for texture in self.variants_texture])
+    def get_variants_image(self, slot: TEXTURE_SLOT) -> np.ndarray:
+        """Return the variants as an RGBA array of shape (n_variants, height, width, 4), in the format of 'slot'."""
+        return np.stack([texture_to_rgba(texture, self.resolution, slot) for texture in self.variants_texture])
 
     def get_initial_image(self) -> np.ndarray:
         """Return the image every environment shows at build, as an RGBA uint8 array of shape (height, width, 4)."""
