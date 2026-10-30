@@ -80,7 +80,7 @@ class BaseCameraWrapper:
     def __init__(self, sensor):
         self.sensor = sensor
         self.uid = sensor._idx
-        self.res = sensor._options.resolution
+        self.resolution = sensor._options.resolution
         self.fov = sensor._options.fov
         self.near = sensor._options.near
         self.far = sensor._options.far
@@ -91,7 +91,7 @@ class RasterizerCameraWrapper(BaseCameraWrapper):
 
     def __init__(self, sensor: "RasterizerCameraSensor"):
         super().__init__(sensor)
-        self.aspect_ratio = self.res[0] / self.res[1]
+        self.aspect_ratio = self.resolution[0] / self.resolution[1]
 
 
 class BatchRendererCameraWrapper(BaseCameraWrapper):
@@ -637,7 +637,7 @@ class RaytracerCameraSensor(
             pass
 
         self._camera_obj = visualizer.add_camera(
-            res=self._options.resolution,
+            resolution=self._options.resolution,
             pos=pos,
             lookat=lookat,
             up=up,
