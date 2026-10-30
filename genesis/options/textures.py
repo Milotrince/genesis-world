@@ -295,12 +295,12 @@ class ImageTexture(Texture, SerializationMixin):
 
 class AssetTexture(Texture):
     """
-    The texture the asset gives the slot of a surface holding a dynamic texture, as an image of that dynamic texture.
+    The texture the asset gives the slot of a surface holding a dynamic texture, as a variant of that dynamic texture.
 
-    It stands in the 'images' of a ``DynamicTexture`` alone, and resolves when the entity is added: to the image or the
-    color the asset gives the slot, or to no texture where it gives none. The visual geoms drawing one dynamic texture
-    must get the same texture from their asset, so a multi-material asset takes one dynamic texture per material,
-    bound through ``gs.VGeomIndex.with_material``.
+    It stands in the 'variants' of a ``DynamicTexture`` alone, and resolves when the entity is added: to the image or
+    the color the asset gives the slot, or to no texture where it gives none. The visual geoms drawing one dynamic
+    texture must get the same texture from their asset, so a multi-material asset takes one dynamic texture per
+    material, bound through ``gs.VGeomIndex.with_material``.
     """
 
     def check_dim(self, dim: int) -> Texture | None:
@@ -355,87 +355,88 @@ class DynamicTexture(Texture):
     A texture whose image changes while the simulation runs, such as a screen or an indicator light.
 
     It fills the diffuse or the emissive slot of a surface, and requires a mesh with texture coordinates. Each parallel
-    environment shows one of a fixed set of images declared here, or pixels drawn at runtime on a canvas. The images
-    are RGBA, their alpha channel standing for the opacity in the diffuse slot in place of the opacity of the surface.
-    Once the scene is built, ``entity.set_texture`` shows a declared image or draws pixels in each environment, and
-    ``entity.get_texture`` returns what each environment shows, as do the methods of the same name of a visual geom. Each renderer holds the pixels it draws, and only the rasterizer draws a
-    dynamic texture yet.
+    environment shows one of a fixed set of variants declared here, or pixels drawn at runtime on a canvas. The variants
+    are RGBA images, their alpha channel standing for the opacity in the diffuse slot in place of the opacity of the
+    surface. Once the scene is built, ``entity.set_texture`` shows a variant or draws pixels in each environment, and
+    ``entity.get_texture`` returns what each environment shows, as do the methods of the same name of a visual geom.
+    Each renderer holds the pixels it draws, and only the rasterizer draws a dynamic texture yet.
 
     Parameters
     ----------
     res : tuple[int, int]
-        The resolution of every image, as (width, height) in pixels. Rendering uploads a canvas each time it is drawn,
-        so a larger image costs more per drawing, while showing a declared image costs nothing.
-    images : tuple[ColorTexture | ImageTexture | AssetTexture | None, ...] | dict[str, ...], optional
-        The declared images, each a color or an image resized to 'res', an ``AssetTexture`` for the texture the asset
-        gives the slot, or None for no texture, which shows a black and magenta checkerboard. A mapping names them, so
-        that they are shown by name as well as by position. The images are fixed once the scene is built, and their
-        memory is independent of the number of environments. Default is one image with no texture.
+        The resolution of every variant and canvas, as (width, height) in pixels. Rendering uploads a canvas each time
+        it is drawn, so a larger image costs more per drawing, while showing a variant costs nothing.
+    variants : tuple[ColorTexture | ImageTexture | AssetTexture | None, ...] | dict[str, ...], optional
+        The images an environment switches between, each a color or an image resized to 'res', an ``AssetTexture``
+        for the texture the asset gives the slot, or None for no texture, which shows a black and magenta checkerboard.
+        A mapping names them, so that they are shown by name as well as by position. The variants are fixed once the
+        scene is built, and their memory is independent of the number of environments. Default is one variant with no
+        texture.
     is_batched : bool, optional
         Whether each parallel environment draws pixels on a canvas of its own. Its own canvases cost the memory of one
         image per environment, while a texture that is not batched holds a single canvas, whose one drawing every
-        environment showing it displays. Showing a declared image is per environment either way. Default is False.
-    initial_image : int | str, optional
-        The image every environment shows at build and after a reset, by position or by name. Default is 0.
+        environment showing it displays. Showing a variant is per environment either way. Default is False.
+    initial_variant : int | str, optional
+        The variant every environment shows at build and after a reset, by position or by name. Default is 0.
     encoding : str, optional
-        The encoding of the images, 'srgb' for colors or 'linear'. Default is 'srgb'.
-    name : str | None, optional
+        The encoding of the variants, 'srgb' for colors or 'linear'. Default is 'srgb'.
+    texture_name : str | None, optional
         The name of the texture, unique in the scene, by which the methods of an entity whose visual geoms draw several
         dynamic textures pick it. Default is None.
     """
 
     res: PositiveVec2IType
-    images: (
+    variants: (
         Annotated[tuple[ColorTexture | ImageTexture | AssetTexture | None, ...], Field(min_length=1, strict=False)]
         | Annotated[dict[str, ColorTexture | ImageTexture | AssetTexture | None], Field(min_length=1)]
     ) = (None,)
     is_batched: StrictBool = False
-    initial_image: StrictInt | str = 0
+    initial_variant: StrictInt | str = 0
     encoding: Annotated[Literal["srgb", "linear"], BeforeValidator(lambda e: str(e).lower())] = "srgb"
-    name: str | None = None
+    texture_name: str | None = None
 
     @model_validator(mode="after")
-    def _check_images(self) -> Self:
-        self.get_images_idx(self.initial_image)
+    def _check_variants(self) -> Self:
+        self.get_variants_idx(self.initial_variant)
         return self
 
     @property
-    def images_name(self) -> tuple[str, ...]:
-        """The name of each declared image, empty when the images are not named."""
-        return tuple(self.images) if isinstance(self.images, dict) else ()
+    def variants_name(self) -> tuple[str, ...]:
+        """The name of each variant, empty when the variants are not named."""
+        return tuple(self.variants) if isinstance(self.variants, dict) else ()
 
     @property
-    def images_texture(self) -> tuple["ColorTexture | ImageTexture | AssetTexture | None", ...]:
-        """The texture of each declared image, in the order of their positions."""
-        return tuple(self.images.values()) if isinstance(self.images, dict) else self.images
+    def variants_texture(self) -> tuple["ColorTexture | ImageTexture | AssetTexture | None", ...]:
+        """The texture of each variant, in the order of their positions."""
+        return tuple(self.variants.values()) if isinstance(self.variants, dict) else self.variants
 
-    def get_images_idx(self, images: "int | str | Sequence[int | str] | np.ndarray") -> np.ndarray:
-        """Return the positions of images given by position or by name, raising on one the set does not hold."""
-        images_name = self.images_name
-        images_idx = []
-        for image in np.atleast_1d(np.asarray(images, dtype=object)).tolist():
-            if isinstance(image, str):
-                if image not in images_name:
-                    gs.raise_exception(f"No image is named '{image}'. Existing names: {list(images_name)}.")
-                image = images_name.index(image)
-            elif not isinstance(image, (int, np.integer)) or isinstance(image, bool):
+    def get_variants_idx(self, variants: "int | str | Sequence[int | str] | np.ndarray") -> np.ndarray:
+        """Return the positions of variants given by position or by name, raising on one the set does not hold."""
+        variants_name = self.variants_name
+        variants_idx = []
+        for variant in np.atleast_1d(np.asarray(variants, dtype=object)).tolist():
+            if isinstance(variant, str):
+                if variant not in variants_name:
+                    gs.raise_exception(f"No variant is named '{variant}'. Existing names: {list(variants_name)}.")
+                variant = variants_name.index(variant)
+            elif not isinstance(variant, (int, np.integer)) or isinstance(variant, bool):
                 gs.raise_exception(
-                    f"An image is given by an integer position or a name, got {image!r}. Give a color as a "
+                    f"A variant is given by an integer position or a name, got {variant!r}. Give a color as a "
                     "'gs.textures.ColorTexture'."
                 )
-            if not 0 <= image < len(self.images):
-                gs.raise_exception(f"Image {image} is out of range for {len(self.images)} images.")
-            images_idx.append(image)
-        return np.array(images_idx, dtype=gs.np_int)
+            if not 0 <= variant < len(self.variants):
+                gs.raise_exception(f"Variant {variant} is out of range for {len(self.variants)} variants.")
+            variants_idx.append(variant)
+        return np.array(variants_idx, dtype=gs.np_int)
 
-    def get_initial_images(self) -> np.ndarray:
-        """Return the declared images as an RGBA uint8 array of shape (n_images, height, width, 4)."""
-        return np.stack([texture_to_rgba(texture, self.res) for texture in self.images_texture])
+    def get_variants_image(self) -> np.ndarray:
+        """Return the variants as an RGBA uint8 array of shape (n_variants, height, width, 4)."""
+        return np.stack([texture_to_rgba(texture, self.res) for texture in self.variants_texture])
 
     def get_initial_image(self) -> np.ndarray:
         """Return the image every environment shows at build, as an RGBA uint8 array of shape (height, width, 4)."""
-        (i_image,) = self.get_images_idx(self.initial_image)
-        return texture_to_rgba(self.images_texture[i_image], self.res)
+        (i_variant,) = self.get_variants_idx(self.initial_variant)
+        return texture_to_rgba(self.variants_texture[i_variant], self.res)
 
     def check_dim(self, dim: int) -> Texture | None:
         return None

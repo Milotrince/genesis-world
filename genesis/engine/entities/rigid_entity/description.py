@@ -501,15 +501,15 @@ class KinematicEntityDescription(EntityDescription):
                         f"No collision geom of the entity matches {list(geom_index.names)}. Existing geoms: "
                         f"{resolution.geoms_name}."
                     )
-        # An asset texture image of a dynamic texture resolves to the texture the asset gives its slot, which every
-        # visual geom drawing the texture must agree on. The images are resolved once the whole entity is parsed, so
+        # An asset texture variant of a dynamic texture resolves to the texture the asset gives its slot, which every
+        # visual geom drawing the texture must agree on. The variants are resolved once the whole entity is parsed, so
         # that one declaration stays one texture, and an asset giving none leaves no texture.
         bindings_by_texture: dict[DynamicTexture, list[tuple[gs.Mesh, str]]] = {}
         for l_desc in chain(desc.links, *(variant.links for variant in desc.variants)):
             for vg_desc in l_desc.vgeoms:
                 for slot_name, texture in dict(vg_desc.vmesh.surface).items():
                     if isinstance(texture, DynamicTexture) and any(
-                        isinstance(image, AssetTexture) for image in texture.images_texture
+                        isinstance(variant, AssetTexture) for variant in texture.variants_texture
                     ):
                         bindings_by_texture.setdefault(texture, []).append((vg_desc.vmesh, slot_name))
         for texture, bindings in bindings_by_texture.items():
@@ -518,13 +518,15 @@ class KinematicEntityDescription(EntityDescription):
             if any(not _is_same_texture(other, seed) for other in seeds[1:]):
                 gs.raise_exception(
                     "The visual geoms drawing one dynamic texture get different textures from their asset, so its asset "
-                    "texture images resolve to no single one. Bind one dynamic texture per material with "
-                    "'gs.VGeomIndex.with_material', or give those images explicitly."
+                    "texture variants resolve to no single one. Bind one dynamic texture per material with "
+                    "'gs.VGeomIndex.with_material', or give those variants explicitly."
                 )
-            images = tuple(seed if isinstance(image, AssetTexture) else image for image in texture.images_texture)
-            if texture.images_name:
-                images = dict(zip(texture.images_name, images))
-            filled = texture.model_copy(update={"images": images})
+            variants = tuple(
+                seed if isinstance(variant, AssetTexture) else variant for variant in texture.variants_texture
+            )
+            if texture.variants_name:
+                variants = dict(zip(texture.variants_name, variants))
+            filled = texture.model_copy(update={"variants": variants})
             for vmesh, slot_name in bindings:
                 setattr(vmesh.surface, slot_name, filled)
                 vmesh.update_trimesh_visual()

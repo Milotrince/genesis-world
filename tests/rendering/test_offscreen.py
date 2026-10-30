@@ -234,7 +234,7 @@ def test_dynamic_texture(show_viewer, png_snapshot):
         surface=gs.surfaces.Emission(
             emissive_texture=gs.textures.DynamicTexture(
                 res=(16, 16),
-                images={
+                variants={
                     "blue": gs.textures.ColorTexture(
                         color=(0.0, 0.0, 1.0),
                     ),
@@ -242,7 +242,7 @@ def test_dynamic_texture(show_viewer, png_snapshot):
                         color=(1.0, 0.0, 0.0),
                     ),
                 },
-                name="screen",
+                texture_name="screen",
             ),
         ),
     )
@@ -257,7 +257,7 @@ def test_dynamic_texture(show_viewer, png_snapshot):
                     surface=gs.surfaces.Rough(
                         diffuse_texture=gs.textures.DynamicTexture(
                             res=(8, 8),
-                            images=(gs.textures.AssetTexture(),),
+                            variants=(gs.textures.AssetTexture(),),
                             is_batched=True,
                         ),
                     ),
@@ -313,7 +313,7 @@ def test_dynamic_texture(show_viewer, png_snapshot):
     def get_colors(rgb):
         return np.stack([[rgb[i_b][mask].mean(axis=0) for mask in masks[i_b]] for i_b in range(2)])
 
-    # The images at build: the first color of the screen, the asset texture of the plane, and no texture, whose black
+    # The variants at build: the first color of the screen, the asset texture of the plane, and no texture, whose black
     # and magenta checkerboard adds red and blue on top of the dark red base
     colors = get_colors(rgb)
     assert (colors[:, 0, 2] > 150.0).all() and (colors[:, 0, :2] < 30.0).all()
@@ -321,13 +321,13 @@ def test_dynamic_texture(show_viewer, png_snapshot):
     lamp_initial = colors[:, 2]
     assert (lamp_initial[:, [0, 2]] > 40.0).all() and (lamp_initial[:, 1] < 30.0).all()
 
-    # An image shown by name in one environment, one drawing per environment, and a drawing shared by every one
-    screen.set_texture("red", name="screen", envs_idx=[1])
+    # A variant shown by name in one environment, one drawing per environment, and a drawing shared by every one
+    screen.set_texture("red", texture_name="screen", envs_idx=[1])
     label.vgeoms[0].set_texture(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None])
     lamp.set_texture(gs.textures.ColorTexture(color=(0.0, 1.0, 0.0)))
     assert_equal(screen.get_texture(), [0, 1])
     assert_equal(label.get_texture(envs_idx=[1]), [DRAWN_IMAGE])
-    # The camera shows the images as soon as they change, while the sensor renders them at the next step
+    # The camera shows the variants as soon as they change, while the sensor renders them at the next step
     scene.step()
     rgb_switched = camera.render(rgb=True)[0]
     for frame in rgb_switched:
@@ -346,10 +346,10 @@ def test_dynamic_texture(show_viewer, png_snapshot):
     lamp.set_texture(np.array([[[0, 300, -5]]]))
     colors = get_colors(camera.render(rgb=True)[0])
     assert (colors[:, 2, 1] > 100.0).all() and (colors[:, 2, 2] < 30.0).all()
-    # Refused inputs: an image the texture does not declare, a value that is neither a declared image nor pixels, one
+    # Refused inputs: a variant the texture does not declare, a value that is neither a variant nor pixels, one
     # drawing per environment on a texture that is not batched, a name no texture of the entity holds, and two textures
     # of one name
-    with pytest.raises(gs.GenesisException, match="No image is named"):
+    with pytest.raises(gs.GenesisException, match="No variant is named"):
         screen.set_texture("green")
     with pytest.raises(gs.GenesisException, match="integer position"):
         screen.set_texture(0.5)
@@ -358,13 +358,15 @@ def test_dynamic_texture(show_viewer, png_snapshot):
     with pytest.raises(gs.GenesisException, match="single image"):
         lamp.set_texture(np.zeros((2, 16, 16, 3)))
     with pytest.raises(gs.GenesisException, match="named 'lamp'"):
-        screen.set_texture("red", name="lamp")
+        screen.set_texture("red", texture_name="lamp")
     with pytest.raises(gs.GenesisException, match="distinct names"):
         duplicate_scene = gs.Scene()
         for x in (0.0, 2.0):
             duplicate_scene.add_entity(
                 morph=gs.morphs.Plane(pos=(x, 0.0, 0.0), plane_size=(1.0, 1.0), fixed=True),
-                surface=gs.surfaces.Emission(emissive_texture=gs.textures.DynamicTexture(res=(4, 4), name="lcd")),
+                surface=gs.surfaces.Emission(
+                    emissive_texture=gs.textures.DynamicTexture(res=(4, 4), texture_name="lcd")
+                ),
             )
         duplicate_scene.build()
     with pytest.raises(gs.GenesisException, match="diffuse_texture"):
@@ -382,7 +384,7 @@ def test_dynamic_texture(show_viewer, png_snapshot):
         )
         unsupported_scene.build()
 
-    # A reset of one environment shows its initial images again, and a reset of the scene those of every environment
+    # A reset of one environment shows its initial variants again, and a reset of the scene those of every environment
     scene.reset(envs_idx=[1])
     assert_equal(label.get_texture(), [DRAWN_IMAGE, 0])
     scene.reset()

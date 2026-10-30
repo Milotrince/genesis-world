@@ -967,7 +967,9 @@ class Scene(RBC):
                     gs.raise_exception(
                         f"Only rigid and kinematic entities draw a dynamic texture, got '{entity.name}'."
                     )
-            textures_name = [texture.name for texture in bindings_by_texture if texture.name is not None]
+            textures_name = [
+                texture.texture_name for texture in bindings_by_texture if texture.texture_name is not None
+            ]
             if len(set(textures_name)) != len(textures_name):
                 gs.raise_exception(f"The dynamic textures of a scene take distinct names, got {textures_name}.")
             for texture, bindings in bindings_by_texture.items():
