@@ -209,8 +209,8 @@ class DepthCameraPattern(RaycastPattern):
 
     Parameters
     ----------
-    resolution: tuple[int, int]
-        The resolution of the camera, specified as a tuple (width, height).
+    resolution: tuple[int, int] | None
+        The resolution of the camera, specified as a tuple (width, height). Default is (128, 96).
     fx : float | None
         Focal length in x direction in pixels. Computed from fov_horizontal if None.
     fy : float | None
@@ -227,7 +227,7 @@ class DepthCameraPattern(RaycastPattern):
 
     def __init__(
         self,
-        resolution: tuple[int, int] = (128, 96),
+        resolution: tuple[int, int] | None = None,
         fx: float | None = None,
         fy: float | None = None,
         cx: float | None = None,
@@ -237,8 +237,12 @@ class DepthCameraPattern(RaycastPattern):
         res: tuple[int, int] | None = None,
     ):
         if res is not None:
+            if resolution is not None:
+                gs.raise_exception("'res' is deprecated and replaced by 'resolution'; set only one of them.")
             gs.logger.warning("'res' is deprecated and will be removed; it now maps to 'resolution'.")
             resolution = res
+        if resolution is None:
+            resolution = (128, 96)
         self.width, self.height = resolution
 
         if self.width <= 0 or self.height <= 0:
