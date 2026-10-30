@@ -95,7 +95,7 @@ def main():
         pos=(1, 1, 1),
         lookat=drone.morph.pos,
         GUI=False,
-        res=(640, 480),
+        resolution=(640, 480),
         fov=30,
     )
 

@@ -96,7 +96,7 @@ def _build_default_scene(*, enable_gui, run_in_thread=False):
         viewer_options=gs.options.ViewerOptions(
             # Keep ``res`` small enough to fit the virtual display area of GitHub-hosted Apple M1 macos-15 runners:
             # the on-screen capture below reads from the window framebuffer, whose size the OS clamps to the display.
-            res=(640, 480),
+            resolution=(640, 480),
             # The snapshot test keeps the default ``run_in_thread=False``: its capture path calls
             # ``pyrender_viewer.on_draw`` and reads the window framebuffer directly, which can only run on the
             # thread that owns the GL context.

@@ -8,7 +8,7 @@ scene = gs.Scene(
         rendered_envs_idx=list(range(10, 15)),  # render the 11th to 15th environments
     ),
     viewer_options=gs.options.ViewerOptions(
-        res=(1280, 960),
+        resolution=(1280, 960),
         camera_pos=(3.5, 0.0, 2.5),
         camera_lookat=(0.0, 0.0, 0.5),
         camera_fov=50,

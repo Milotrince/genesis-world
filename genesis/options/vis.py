@@ -29,7 +29,7 @@ class ViewerOptions(Options):
 
     Parameters
     ----------
-    res : tuple, shape (2,), optional
+    resolution : tuple, shape (2,), optional
         The resolution of the viewer. If not set, will auto-compute using resolution of the connected display.
     run_in_thread : bool
         Whether to run the viewer in a background thread, where it stays responsive while the simulation is idle. If
@@ -67,7 +67,7 @@ class ViewerOptions(Options):
         is managed by a gs.InteractiveScene that supports them.
     """
 
-    res: PositiveVec2IType | None = None
+    resolution: PositiveVec2IType | None = None
     # MacOS serves the viewer window from its main thread only (see Visualizer).
     run_in_thread: Annotated[
         StrictBool | None, ignore_invalid_load((None, False) if sys.platform == "darwin" else (None, False, True))
@@ -81,8 +81,9 @@ class ViewerOptions(Options):
     enable_help_text: StrictBool = True
     enable_default_keybinds: StrictBool = True
     enable_gui: StrictBool = False
-    # Deprecated alias for refresh_rate, resolved in model_post_init.
+    # Deprecated aliases for refresh_rate and resolution, resolved in model_post_init.
     max_FPS: PositiveInt | None = None
+    res: PositiveVec2IType | None = None
 
     def model_post_init(self, context: Any) -> None:
         super().model_post_init(context)
@@ -94,6 +95,11 @@ class ViewerOptions(Options):
             gs.logger.warning("'max_FPS' is deprecated and will be removed; it now maps to 'refresh_rate'.")
             self.refresh_rate = self.max_FPS
             self.max_FPS = None
+        if self.res is not None:
+            if "resolution" in self.model_fields_set:
+                gs.raise_exception("'res' is deprecated and replaced by 'resolution'; set only one of them.")
+            gs.logger.warning("'res' is deprecated and will be removed; it now maps to 'resolution'.")
+            self.resolution = self.res
         if not self.enable_gui:
             return
         # The GUI overlay renders its own controls and captures keyboard input, so the help-text overlay and default

@@ -40,7 +40,7 @@ class ViewerLock:
 class Viewer(RBC):
     def __init__(self, options: "ViewerOptions", context):
         self._is_built = False
-        self._res = options.res
+        self._resolution = options.resolution
         self._run_in_thread = options.run_in_thread
         self._refresh_rate = options.refresh_rate
         self._realtime_factor = options.realtime_factor
@@ -132,7 +132,7 @@ class Viewer(RBC):
                 with open(os.devnull, "w") as stderr, redirect_libc_stderr(stderr):
                     self._pyrender_viewer = pyrender.Viewer(
                         context=self.context,
-                        viewport_size=self._res,
+                        viewport_size=self._resolution,
                         run_in_thread=self._run_in_thread,
                         auto_start=False,
                         view_center=self._camera_init_lookat,
@@ -174,7 +174,7 @@ class Viewer(RBC):
         # whether the loop is real-time-bounded (X ~ target) or compute-bounded (X < target).
         target = "uncapped" if self._realtime_factor is None else f"{self._realtime_factor / dt:.1f} FPS"
         gs.logger.info(
-            f"Viewer created. Resolution: ~<{self._res[0]}×{self._res[1]}>~, refresh_rate: ~<{self._refresh_rate}>~, "
+            f"Viewer created. Resolution: ~<{self._resolution[0]}×{self._resolution[1]}>~, refresh_rate: ~<{self._refresh_rate}>~, "
             f"dt: ~<{dt}>~s, realtime_factor: ~<{self._realtime_factor}>~ (real-time target: ~<{target}>~)."
         )
 
@@ -502,8 +502,14 @@ class Viewer(RBC):
         return self._is_built
 
     @property
+    def resolution(self):
+        return self._resolution
+
+    @property
     def res(self):
-        return self._res
+        """Deprecated alias for 'resolution'."""
+        gs.logger.warning("'res' is deprecated and will be removed; use 'resolution' instead.")
+        return self._resolution
 
     @property
     def refresh_rate(self):

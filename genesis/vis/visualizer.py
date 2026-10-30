@@ -75,10 +75,10 @@ class Visualizer(RBC):
             # The platform defaults are resolved into a copy handed to the viewer, so the options the scene was authored
             # with stay as written and an export of the scene opens on any display and platform.
             resolved = {}
-            if viewer_options.res is None:
+            if viewer_options.resolution is None:
                 viewer_height = (screen_height * screen_scale) * VIEWER_DEFAULT_HEIGHT_RATIO
                 viewer_width = viewer_height / VIEWER_DEFAULT_ASPECT_RATIO
-                resolved["res"] = (int(viewer_width), int(viewer_height))
+                resolved["resolution"] = (int(viewer_width), int(viewer_height))
             run_in_thread = viewer_options.run_in_thread
             if run_in_thread is None:
                 run_in_thread = sys.platform != "darwin"
@@ -134,14 +134,29 @@ class Visualizer(RBC):
         self._renderer = None
 
     def add_camera(
-        self, res, pos, lookat, up, model, fov, aperture, focus_dist, GUI, spp, denoise, near, far, env_idx, debug
+        self,
+        resolution,
+        pos,
+        lookat,
+        up,
+        model,
+        fov,
+        aperture,
+        focus_dist,
+        GUI,
+        spp,
+        denoise,
+        near,
+        far,
+        env_idx,
+        debug,
     ):
         cam_idx = len([camera for camera in self._cameras if camera.debug == debug])
         camera = Camera(
             self,
             cam_idx,
             model,
-            res,
+            resolution,
             pos,
             lookat,
             up,

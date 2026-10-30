@@ -30,7 +30,7 @@ def test_draw_debug(renderer, show_viewer):
         pos=(3.5, 0.5, 2.5),
         lookat=(0.0, 0.0, 0.5),
         up=(0.0, 0.0, 1.0),
-        res=(640, 640),
+        resolution=(640, 640),
         env_idx=2,
         debug=True,
         GUI=show_viewer,
@@ -108,7 +108,7 @@ def test_sensors_draw_debug(n_envs, renderer_type, renderer, png_snapshot):
         ),
         viewer_options=gs.options.ViewerOptions(
             # Force screen-independent low-quality resolution when running unit tests for consistency
-            res=(320, 320),
+            resolution=(320, 320),
             # Enable running in background thread if supported by the platform
             run_in_thread=(sys.platform == "linux"),
             camera_pos=(1.2, 1.2, 1.2),
@@ -236,7 +236,7 @@ def test_draw_debug_frustum_and_trajectory(n_envs, renderer_type, renderer, png_
         ),
         viewer_options=gs.options.ViewerOptions(
             # Force screen-independent low-quality resolution when running unit tests for consistency
-            res=(480, 320),
+            resolution=(480, 320),
             # Enable running in background thread if supported by the platform
             run_in_thread=(sys.platform == "linux"),
             camera_pos=(3.5, 0.0, 2.5),
@@ -262,7 +262,7 @@ def test_draw_debug_frustum_and_trajectory(n_envs, renderer_type, renderer, png_
     )
 
     sensor_cam = scene.add_camera(
-        res=(640, 480),
+        resolution=(640, 480),
         pos=(0.0, 0.0, 0.9),
         lookat=(0.8, 0.0, 0.5),
         up=(0.0, 1.0, 0.0),

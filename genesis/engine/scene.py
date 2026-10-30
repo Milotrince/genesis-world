@@ -748,7 +748,7 @@ class Scene(RBC):
     def add_camera(
         self,
         model="pinhole",
-        res=(320, 320),
+        resolution=None,
         pos=(0.5, 2.5, 3.5),
         lookat=(0.5, 0.5, 0.5),
         up=(0.0, 0.0, 1.0),
@@ -762,6 +762,7 @@ class Scene(RBC):
         far=20.0,
         env_idx=None,
         debug=False,
+        res=None,
     ):
         """
         Add a camera to the scene.
@@ -781,8 +782,8 @@ class Scene(RBC):
         ----------
         model : str
             Specifies the camera model. Options are 'pinhole' or 'thinlens'.
-        res : tuple of int, shape (2,)
-            The resolution of the camera, specified as a tuple (width, height).
+        resolution : tuple of int, shape (2,)
+            The resolution of the camera, specified as a tuple (width, height). Defaults to (320, 320).
         pos : tuple of float, shape (3,)
             The position of the camera in the scene, specified as (x, y, z).
         lookat : tuple of float, shape (3,)
@@ -827,10 +828,17 @@ class Scene(RBC):
         camera : genesis.Camera
             The created camera object.
         """
+        if res is not None:
+            if resolution is not None:
+                gs.raise_exception("'res' is deprecated and replaced by 'resolution'; set only one of them.")
+            gs.logger.warning("'res' is deprecated and will be removed; it now maps to 'resolution'.")
+            resolution = res
+        if resolution is None:
+            resolution = (320, 320)
         if denoise is None:
             denoise = sys.platform != "darwin"
         return self._visualizer.add_camera(
-            res, pos, lookat, up, model, fov, aperture, focus_dist, GUI, spp, denoise, near, far, env_idx, debug
+            resolution, pos, lookat, up, model, fov, aperture, focus_dist, GUI, spp, denoise, near, far, env_idx, debug
         )
 
     @gs.assert_unbuilt

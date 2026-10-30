@@ -59,8 +59,15 @@ class BaseCameraOptions(KinematicSensorOptionsMixin[SensorT]):
     fov: ValidFloat = Field(default=60.0, gt=0, lt=180)
     lights: list[dict[str, Any]] = []
     offset_T: Matrix4x4Type | None = None
+    # Deprecated alias for resolution, resolved in model_post_init.
+    res: PositiveVec2IType | None = None
 
     def model_post_init(self, context: Any) -> None:
+        if self.res is not None:
+            if "resolution" in self.model_fields_set:
+                gs.raise_exception("'res' is deprecated and replaced by 'resolution'; set only one of them.")
+            gs.logger.warning("'res' is deprecated and will be removed; it now maps to 'resolution'.")
+            self.resolution = self.res
         if self.history_length > 0:
             gs.raise_exception(
                 "Camera sensors do not support `history_length`. The camera read path renders lazily on read() "

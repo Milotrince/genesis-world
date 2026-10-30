@@ -62,7 +62,7 @@ class GraspEnv:
                 rendered_envs_idx=list(range(min(10, self.num_envs))),
             ),
             viewer_options=gs.options.ViewerOptions(
-                res=(1280, 960),
+                resolution=(1280, 960),
                 camera_pos=(2.5, -1.0, 2.5),
                 camera_lookat=(0.5, -0.3, 0.1),
                 camera_fov=55,
@@ -100,7 +100,7 @@ class GraspEnv:
         # Debug-only visualization camera, on the scene camera API.
         if self.env_cfg.get("visualize_camera", False):
             self.vis_cam = self.scene.add_camera(
-                res=(1280, 960),
+                resolution=(1280, 960),
                 pos=(3.5, 0.0, 2.5),
                 lookat=(1.2, 1.0, 0.0),
                 fov=52,
