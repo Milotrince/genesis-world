@@ -23,7 +23,7 @@ def test_jets(show_viewer):
             dt=1e-2,
         ),
         sf_options=gs.options.SFOptions(
-            res=res,
+            resolution=res,
             solver_iters=200,
             decay=0.025,
         ),

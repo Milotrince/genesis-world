@@ -103,7 +103,7 @@ def main():
         "robot": scene.add_sensor(
             gs.sensors.DepthCamera(
                 pattern=gs.sensors.DepthCameraPattern(
-                    res=cam_res,
+                    resolution=cam_res,
                     fov_horizontal=90.0,
                 ),
                 entity_idx=go2.idx,
@@ -118,7 +118,7 @@ def main():
         "world": scene.add_sensor(
             gs.sensors.DepthCamera(
                 pattern=gs.sensors.DepthCameraPattern(
-                    res=cam_res,
+                    resolution=cam_res,
                     fov_horizontal=60.0,
                 ),
                 entity_idx=plane.idx,
