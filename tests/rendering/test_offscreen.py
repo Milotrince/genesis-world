@@ -258,7 +258,7 @@ def test_dynamic_texture(show_viewer, png_snapshot):
                         diffuse_texture=gs.textures.DynamicTexture(
                             res=(8, 8),
                             images=(gs.textures.AssetTexture(),),
-                            canvas="per_env",
+                            is_batched=True,
                         ),
                     ),
                 ),
@@ -275,7 +275,6 @@ def test_dynamic_texture(show_viewer, png_snapshot):
             color=(0.3, 0.0, 0.0),
             emissive_texture=gs.textures.DynamicTexture(
                 res=(16, 16),
-                canvas="shared",
             ),
         ),
     )
@@ -324,8 +323,8 @@ def test_dynamic_texture(show_viewer, png_snapshot):
 
     # An image shown by name in one environment, one drawing per environment, and a drawing shared by every one
     screen.set_texture("red", name="screen", envs_idx=[1])
-    label.vgeoms[0].draw_texture(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None])
-    lamp.draw_texture(gs.textures.ColorTexture(color=(0.0, 1.0, 0.0)))
+    label.vgeoms[0].set_texture(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None])
+    lamp.set_texture(gs.textures.ColorTexture(color=(0.0, 1.0, 0.0)))
     assert_equal(screen.get_texture(), [0, 1])
     assert_equal(label.get_texture(envs_idx=[1]), [DRAWN_IMAGE])
     # The camera shows the images as soon as they change, while the sensor renders them at the next step
@@ -344,22 +343,20 @@ def test_dynamic_texture(show_viewer, png_snapshot):
         assert (colors[:, 2, 0] > 40.0).all() and (colors[:, 2, 1] > 100.0).all() and (colors[:, 2, 2] < 30.0).all()
 
     # Integer pixels are clamped to the range of a channel
-    lamp.draw_texture(np.array([[[0, 300, -5]]]))
+    lamp.set_texture(np.array([[[0, 300, -5]]]))
     colors = get_colors(camera.render(rgb=True)[0])
     assert (colors[:, 2, 1] > 100.0).all() and (colors[:, 2, 2] < 30.0).all()
-    # Refused inputs: an image the texture does not declare, pixels given to show a declared image, pixels on a texture
-    # without a canvas, one drawing per environment on a shared canvas, a name no texture of the entity holds, and two
-    # textures of one name
+    # Refused inputs: an image the texture does not declare, a value that is neither a declared image nor pixels, one
+    # drawing per environment on a texture that is not batched, a name no texture of the entity holds, and two textures
+    # of one name
     with pytest.raises(gs.GenesisException, match="No image is named"):
         screen.set_texture("green")
     with pytest.raises(gs.GenesisException, match="integer position"):
         screen.set_texture(0.5)
-    with pytest.raises(gs.GenesisException, match="draw_texture"):
-        screen.set_texture(np.zeros((16, 16, 3)))
-    with pytest.raises(gs.GenesisException, match="canvas"):
-        screen.draw_texture(np.zeros((16, 16, 3)))
+    with pytest.raises(gs.GenesisException, match="2 dims"):
+        screen.set_texture(np.zeros((16, 16)))
     with pytest.raises(gs.GenesisException, match="single image"):
-        lamp.draw_texture(np.zeros((2, 16, 16, 3)))
+        lamp.set_texture(np.zeros((2, 16, 16, 3)))
     with pytest.raises(gs.GenesisException, match="named 'lamp'"):
         screen.set_texture("red", name="lamp")
     with pytest.raises(gs.GenesisException, match="distinct names"):
