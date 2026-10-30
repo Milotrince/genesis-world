@@ -118,7 +118,7 @@ class GraspEnv:
 
         self.left_cam = self.scene.add_sensor(
             CameraOptions(
-                res=(self.image_width, self.image_height),
+                resolution=(self.image_width, self.image_height),
                 pos=(1.25, 0.3, 0.3),
                 lookat=(0.0, 0.0, 0.0),
                 fov=60,
@@ -127,7 +127,7 @@ class GraspEnv:
         )
         self.right_cam = self.scene.add_sensor(
             CameraOptions(
-                res=(self.image_width, self.image_height),
+                resolution=(self.image_width, self.image_height),
                 pos=(1.25, -0.3, 0.3),
                 lookat=(0.0, 0.0, 0.0),
                 fov=60,
