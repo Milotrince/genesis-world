@@ -517,8 +517,8 @@ class KinematicEntityDescription(EntityDescription):
             seed = seeds[0]
             if any(not _is_same_texture(other, seed) for other in seeds[1:]):
                 gs.raise_exception(
-                    "The visual geoms drawing one dynamic texture get different textures from their asset, so its asset "
-                    "texture variants resolve to no single one. Bind one dynamic texture per material with "
+                    "The visual geoms drawing one dynamic texture get different textures from their asset, so its "
+                    "asset texture variants resolve to no single one. Bind one dynamic texture per material with "
                     "'gs.VGeomIndex.with_material', or give those variants explicitly."
                 )
             variants = tuple(

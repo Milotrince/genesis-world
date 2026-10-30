@@ -326,11 +326,11 @@ class AssetTexture(Texture):
 def texture_to_rgba(
     texture: "ColorTexture | ImageTexture | AssetTexture | None", resolution: tuple[int, int]
 ) -> np.ndarray:
-    """Return a color or an image texture as an RGBA uint8 array of shape (height, width, 4), and no texture as a black
-    and magenta checkerboard of 8 by 8 cells, an asset texture left unresolved included.
+    """Return a texture as an RGBA uint8 array of shape (height, width, 4).
 
-    An image is resized to 'resolution', given as (width, height). A gray or gray-alpha color spans the three color channels,
-    as an image of one or two channels does.
+    An image is resized to 'resolution', given as (width, height). A gray or gray-alpha color spans the three color
+    channels, as an image of one or two channels does. No texture, an unresolved asset texture included, gives a black
+    and magenta checkerboard of 8 by 8 cells.
     """
     width, height = resolution
     if not isinstance(texture, (ColorTexture, ImageTexture)):

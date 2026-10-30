@@ -952,8 +952,8 @@ class Scene(RBC):
         with gs.logger.timer(f"Building scene ~~~<{self._uid}>~~~..."):
             self._parallelize(n_envs, env_spacing, n_envs_per_row, center_envs_at_origin)
 
-            # The dynamic textures, each with the visual geoms drawing it, which every renderer binds to as it builds, the
-            # camera sensors building with the simulator
+            # The dynamic textures, each with the visual geoms drawing it, which every renderer binds to as it builds,
+            # the camera sensors building with the simulator
             bindings_by_texture: dict[DynamicTexture, list[DynamicTextureBinding]] = {}
             for entity in self.entities:
                 if isinstance(entity, KinematicEntity):
