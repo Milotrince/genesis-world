@@ -109,7 +109,7 @@ class DynamicTextureHandle:
         is_envs_selected = envs_idx is not None
         envs_idx = tensor_to_array(self._scene._sanitize_envs_idx(envs_idx))
         if isinstance(texture, (ColorTexture, ImageTexture)):
-            texture = texture_to_rgba(texture, self._texture.res)
+            texture = texture_to_rgba(texture, self._texture.resolution)
         texture_ndim = texture.ndim if torch.is_tensor(texture) else np.ndim(texture)
         if texture_ndim <= 1:
             if torch.is_tensor(texture):
@@ -139,7 +139,7 @@ class DynamicTextureHandle:
         if n_channels not in (3, 4):
             gs.raise_exception(f"Pixels are drawn as RGB or RGBA, got {n_channels} channels.")
         image = image.mul(255.0).clamp_(0.0, 255.0).round_() if image.is_floating_point() else image.clamp(0, 255)
-        width, height = self._texture.res
+        width, height = self._texture.resolution
         n_images = len(envs_idx) if self._texture.is_batched else 1
         image = broadcast_tensor(image, torch.uint8, (n_images, height, width, n_channels))
         if n_channels == 3:
