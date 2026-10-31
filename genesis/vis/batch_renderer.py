@@ -291,6 +291,8 @@ class BatchRenderer(RBC):
 
         if gs.backend != gs.cuda:
             gs.raise_exception("BatchRenderer requires CUDA backend.")
+        if self._visualizer.scene.dynamic_textures:
+            gs.raise_exception("The batch renderer does not draw dynamic textures. Render them with the rasterizer.")
         gpu_id = gs.device.index if gs.device.index is not None else 0
 
         # Extract the complete list of non-debug cameras
@@ -305,7 +307,7 @@ class BatchRenderer(RBC):
 
         # Make sure that all cameras have identical resolution
         try:
-            ((camera_width, camera_height),) = set(camera.res for camera in self._cameras)
+            ((camera_width, camera_height),) = set(camera.resolution for camera in self._cameras)
         except ValueError as e:
             gs.raise_exception_from("All cameras must have the exact same resolution when using BatchRender.", e)
 

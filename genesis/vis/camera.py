@@ -29,7 +29,7 @@ class Camera(RBC):
         The index of the camera.
     model : str
         Specifies the camera model. Options are 'pinhole' or 'thinlens'.
-    res : tuple of int, shape (2,)
+    resolution : tuple of int, shape (2,)
         The resolution of the camera, specified as a tuple (width, height).
     pos : tuple of float, shape (3,)
         The position of the camera in the scene, specified as (x, y, z).
@@ -74,7 +74,7 @@ class Camera(RBC):
         visualizer,
         idx=0,
         model="pinhole",  # pinhole or thinlens
-        res=(320, 320),
+        resolution=(320, 320),
         pos=(0.5, 2.5, 3.5),
         lookat=(0.5, 0.5, 0.5),
         up=(0.0, 0.0, 1.0),
@@ -93,7 +93,7 @@ class Camera(RBC):
         self._idx = idx
         self._uid = gs.UID()
         self._model = model
-        self._res = res
+        self._resolution = resolution
         self._fov = fov
         self._aperture = aperture
         self._focus_dist = focus_dist
@@ -111,7 +111,7 @@ class Camera(RBC):
         self._initial_transform = None
         if transform is not None:
             self._initial_transform = tensor_to_array(transform, dtype=np.float64)
-        self._aspect_ratio = self._res[0] / self._res[1]  # width / height
+        self._aspect_ratio = self._resolution[0] / self._resolution[1]  # width / height
         self._visualizer = visualizer
         self._debug = debug
 
@@ -510,7 +510,7 @@ class Camera(RBC):
         return rgb_arr if rgb else None, depth_arr, seg_arr, normal_arr
 
     def distance_center_to_plane(self, center_dis):
-        width, height = self.res
+        width, height = self.resolution
         fx = fy = self.f
         cx = self.cx
         cy = self.cy
@@ -544,7 +544,7 @@ class Camera(RBC):
         Returns
         -------
         pc : np.ndarray
-            Numpy array of shape (res[0], res[1], 3) or (N, res[0], res[1], 3).
+            Numpy array of shape (resolution[0], resolution[1], 3) or (N, resolution[0], resolution[1], 3).
             Represents the point cloud in each pixel.
         mask_arr : np.ndarray
             The valid depth mask. boolean array of same shape as depth_arr
@@ -561,7 +561,7 @@ class Camera(RBC):
             )
 
         # Convert OpenGL projection matrix to camera intrinsics
-        width, height = self.res
+        width, height = self.resolution
         fx = fy = self.f
         cx = self.cx
         cy = self.cy
@@ -904,9 +904,15 @@ class Camera(RBC):
         return self._model
 
     @property
-    def res(self):
+    def resolution(self):
         """The resolution of the camera."""
-        return self._res
+        return self._resolution
+
+    @property
+    def res(self):
+        """Deprecated alias for 'resolution'."""
+        gs.logger.warning("'res' is deprecated and will be removed; use 'resolution' instead.")
+        return self._resolution
 
     @property
     def fov(self):
@@ -923,14 +929,14 @@ class Camera(RBC):
         """The focal length for thinlens camera. Returns -1 for pinhole camera."""
         tan_half_fov = np.tan(np.deg2rad(self._fov / 2))
         if self.model == "thinlens":
-            if self._res[0] > self._res[1]:
-                projected_pixel_size = min(0.036 / self._res[0], 0.024 / self._res[1])
+            if self._resolution[0] > self._resolution[1]:
+                projected_pixel_size = min(0.036 / self._resolution[0], 0.024 / self._resolution[1])
             else:
-                projected_pixel_size = min(0.036 / self._res[1], 0.024 / self._res[0])
-            image_dist = self._res[1] * projected_pixel_size / (2 * tan_half_fov)
+                projected_pixel_size = min(0.036 / self._resolution[1], 0.024 / self._resolution[0])
+            image_dist = self._resolution[1] * projected_pixel_size / (2 * tan_half_fov)
             return 1.0 / (1.0 / image_dist + 1.0 / self._focus_dist)
         elif self.model in ("pinhole", "fisheye"):
-            return self._res[0] / (2.0 * tan_half_fov)
+            return self._resolution[0] / (2.0 * tan_half_fov)
 
     @property
     def focus_dist(self):
@@ -1040,12 +1046,12 @@ class Camera(RBC):
 
     @cached_property
     def f(self):
-        return 0.5 * self._res[1] / np.tan(np.deg2rad(0.5 * self._fov))
+        return 0.5 * self._resolution[1] / np.tan(np.deg2rad(0.5 * self._fov))
 
     @cached_property
     def cx(self):
-        return 0.5 * self._res[0]
+        return 0.5 * self._resolution[0]
 
     @cached_property
     def cy(self):
-        return 0.5 * self._res[1]
+        return 0.5 * self._resolution[1]

@@ -174,7 +174,7 @@ class Mesh(RBC, serialization.SerializationMixin):
 
         # The uvs stay even when the surface samples no texture, since the surface of a visual geom may be replaced by
         # one that does once its link options are known (see 'set_surface')
-        self._warn_missing_uvs()
+        self._check_uvs()
 
         if convexify:
             self.convexify()
@@ -315,7 +315,12 @@ class Mesh(RBC, serialization.SerializationMixin):
         self._surface.update_texture()
         self._uvs = None
 
-    def _warn_missing_uvs(self):
+    def _check_uvs(self):
+        if self._uvs is None and any(
+            isinstance(texture, gs.textures.DynamicTexture)
+            for texture in (self._surface.texture, self._surface.emission)
+        ):
+            gs.raise_exception("A dynamic texture requires a mesh with texture coordinates, which this mesh lacks.")
         if self._surface.requires_uv and self._uvs is None:
             if "mesh_path" in self._metadata:
                 gs.logger.warning(
@@ -666,8 +671,14 @@ class Mesh(RBC, serialization.SerializationMixin):
             and name not in surface.model_fields_set
             and value is not None
         }
-        self._surface = surface.model_copy(update=fields)
-        self._warn_missing_uvs()
+        # A dynamic texture of the given surface shows the texture of the asset that its slot held
+        slots_texture = dict(self._surface)
+        surface = surface.model_copy(update=fields)
+        for name, texture in dict(surface).items():
+            if isinstance(texture, gs.textures.DynamicTexture):
+                setattr(surface, name, texture.resolve_asset_texture(slots_texture.get(name)))
+        self._surface = surface
+        self._check_uvs()
         self.update_trimesh_visual()
 
     def update_trimesh_visual(self):

@@ -196,6 +196,16 @@ class IMAGE_TYPE(IntEnum):
         return self.name
 
 
+# The selection of an environment showing the pixels drawn on the canvas of a dynamic texture, in place of a variant
+DRAWN_IMAGE = -1
+
+
+# surface slots a dynamic texture binds to
+class TEXTURE_SLOT(IntEnum):
+    DIFFUSE = 0
+    EMISSIVE = 1
+
+
 # parallelize
 class PARA_LEVEL(IntEnum):
     NEVER = 0  # when using cpu

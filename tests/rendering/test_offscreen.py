@@ -181,7 +181,7 @@ def test_emissive_composites(base_plus_emissive_glb, show_viewer, renderer):
     camera = scene.add_camera(
         pos=(0.0, 0.0, 16.0),
         lookat=(0.0, 0.0, 0.0),
-        res=(256, 96),
+        resolution=(256, 96),
         GUI=show_viewer,
     )
     scene.build()
@@ -200,6 +200,224 @@ def test_emissive_composites(base_plus_emissive_glb, show_viewer, renderer):
     # The emissive that get_rgba already packed as albedo renders once, matching the plain green surface.
     assert means[emissive_green][1] > 120.0
     assert abs(means[emissive_green][1] - means[base_green][1]) < 30.0
+
+
+@pytest.mark.required
+def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
+    # Three horizontal planes seen from above under flat ambient light, each showing one dynamic texture:
+    #  - screen: an emissive texture switching between two named colors per environment, drawn as the color of an
+    #    Emission surface.
+    #  - label: a diffuse texture drawn per environment, given through the options of the visual geom, which starts as
+    #    the texture the plane asset gives, as a plain plane beside it shows.
+    #  - lamp: an emissive texture drawn on a canvas shared by every environment, added on top of a dark red base color,
+    #    which starts as the checkerboard of no texture.
+    # A camera sensor renders through a rasterizer of its own, so it uploads the drawings independently of the camera.
+    scene = gs.Scene(
+        viewer_options=gs.options.ViewerOptions(
+            camera_pos=(0.0, 0.0, 4.0),
+            camera_lookat=(0.0, 0.0, 0.0),
+        ),
+        vis_options=gs.options.VisOptions(
+            shadow=False,
+            ambient_light=(1.0, 1.0, 1.0),
+            split_envs=True,
+        ),
+        show_viewer=show_viewer,
+    )
+    screen = scene.add_entity(
+        morph=gs.morphs.Plane(
+            pos=(-1.2, 0.0, 0.0),
+            plane_size=(1.0, 1.0),
+            fixed=True,
+        ),
+        surface=gs.surfaces.Emission(
+            emissive_texture=gs.textures.DynamicTexture(
+                resolution=(16, 16),
+                variants={
+                    "blue": gs.textures.ColorTexture(
+                        color=(0.0, 0.0, 1.0),
+                    ),
+                    "red": gs.textures.ColorTexture(
+                        color=(1.0, 0.0, 0.0),
+                    ),
+                },
+                texture_name="screen",
+            ),
+        ),
+    )
+    label = scene.add_entity(
+        options=gs.options.RigidEntityOptions(
+            morph=gs.morphs.Plane(
+                plane_size=(1.0, 1.0),
+                fixed=True,
+            ),
+            vgeoms={
+                gs.VGeomIndex.all(): gs.options.VGeomOptions(
+                    surface=gs.surfaces.Rough(
+                        diffuse_texture=gs.textures.DynamicTexture(
+                            resolution=(8, 8),
+                            variants=(gs.textures.AssetTexture(),),
+                            is_batched=True,
+                        ),
+                    ),
+                ),
+            },
+        ),
+    )
+    lamp = scene.add_entity(
+        morph=gs.morphs.Plane(
+            pos=(1.2, 0.0, 0.0),
+            plane_size=(1.0, 1.0),
+            fixed=True,
+        ),
+        surface=gs.surfaces.Default(
+            color=(0.3, 0.0, 0.0),
+            emissive_texture=gs.textures.DynamicTexture(
+                resolution=(16, 16),
+                variants=(
+                    None,
+                    gs.textures.ImageTexture(
+                        image_array=np.full((1, 1, 3), (0, 128, 0), dtype=np.uint8),
+                    ),
+                ),
+            ),
+        ),
+    )
+    reference = scene.add_entity(
+        morph=gs.morphs.Plane(
+            pos=(2.4, 0.0, 0.0),
+            plane_size=(1.0, 1.0),
+            fixed=True,
+        ),
+        surface=gs.surfaces.Rough(),
+    )
+    camera = scene.add_camera(
+        pos=(0.0, 0.0, 4.0),
+        lookat=(0.0, 0.0, 0.0),
+        resolution=(192, 64),
+        fov=40.0,
+        GUI=show_viewer,
+    )
+    sensor = scene.add_sensor(
+        RasterizerCameraOptions(
+            resolution=(192, 64),
+            pos=(0.0, 0.0, 4.0),
+            lookat=(0.0, 0.0, 0.0),
+            fov=40.0,
+        )
+    )
+    scene.build(n_envs=2)
+
+    entities = (screen, label, lamp, reference)
+    rgb, _, segmentation, _ = camera.render(rgb=True, segmentation=True)
+    masks = [[segmentation[i_b] == entity.idx + 1 for entity in entities] for i_b in range(2)]
+    for i_b in range(2):
+        for mask in masks[i_b]:
+            assert mask.sum() > 100
+
+    def get_colors(rgb):
+        return np.stack([[rgb[i_b][mask].mean(axis=0) for mask in masks[i_b]] for i_b in range(2)])
+
+    # The variants at build: the first color of the screen, the asset texture of the plane, and no texture, whose black
+    # and magenta checkerboard adds red and blue on top of the dark red base
+    colors = get_colors(rgb)
+    assert (colors[:, 0, 2] > 150.0).all() and (colors[:, 0, :2] < 30.0).all()
+    assert_allclose(colors[:, 1], colors[:, 3], atol=5.0)
+    lamp_initial = colors[:, 2]
+    assert (lamp_initial[:, [0, 2]] > 40.0).all() and (lamp_initial[:, 1] < 30.0).all()
+
+    # A variant shown by name in one environment, one drawing per environment, and a drawing shared by every one
+    screen.set_texture("red", texture_name="screen", envs_idx=[1])
+    label.vgeoms[0].set_texture(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None])
+    lamp.set_texture(gs.textures.ColorTexture(color=(0.0, 1.0, 0.0)))
+    assert_equal(screen.get_texture(), [0, 1])
+    assert_equal(label.get_texture(envs_idx=[1]), [gs.DRAWN_IMAGE])
+    # The camera shows the variants as soon as they change, while the sensor renders them at the next step
+    scene.step()
+    rgb_switched = camera.render(rgb=True)[0]
+    for frame in rgb_switched:
+        assert rgb_array_to_png_bytes(frame) == png_snapshot
+    for rgb in (rgb_switched, tensor_to_array(sensor.read().rgb)):
+        colors = get_colors(rgb)
+        assert colors[0, 0, 2] > 100.0 and (colors[0, 0, :2] < 30.0).all()
+        assert colors[1, 0, 0] > 100.0 and (colors[1, 0, 1:] < 30.0).all()
+        assert colors[0, 1, 1] > 100.0 and colors[0, 1, 0] < 30.0
+        assert (colors[1, 1, :2] > 100.0).all()
+        assert (colors[:, 1, 2] < 30.0).all()
+        # The emission adds green on top of the base color, which keeps its red
+        assert (colors[:, 2, 0] > 40.0).all() and (colors[:, 2, 1] > 100.0).all() and (colors[:, 2, 2] < 30.0).all()
+
+    # Integer pixels are clamped to the range of a channel
+    lamp.set_texture(np.array([[[0, 300, -5]]]))
+    colors = get_colors(camera.render(rgb=True)[0])
+    assert (colors[:, 2, 1] > 100.0).all() and (colors[:, 2, 2] < 30.0).all()
+    # The emissive slot holds linear values: an sRGB image variant shows as its decoded value drawn as pixels
+    lamp.set_texture(1)
+    colors_variant = get_colors(camera.render(rgb=True)[0])
+    lamp.set_texture(np.array([[[0.0, ((128 / 255 + 0.055) / 1.055) ** 2.4, 0.0]]]))
+    colors_drawn = get_colors(camera.render(rgb=True)[0])
+    assert_allclose(colors_variant[:, 2], colors_drawn[:, 2], atol=2.0)
+    # Refused inputs: a variant the texture does not declare, a value that is neither a variant nor pixels, one
+    # drawing per environment on a texture that is not batched, a number of variants matching neither one nor the
+    # environments, an HDR image, a name no texture of the entity holds, two textures of one name, and one texture in
+    # both slots
+    with pytest.raises(gs.GenesisException, match="No variant is named"):
+        screen.set_texture("green")
+    with pytest.raises(gs.GenesisException, match="integer position"):
+        screen.set_texture(0.5)
+    with pytest.raises(gs.GenesisException, match="2 dims"):
+        screen.set_texture(np.zeros((16, 16)))
+    with pytest.raises(gs.GenesisException, match="single image"):
+        lamp.set_texture(np.zeros((2, 16, 16, 3)))
+    with pytest.raises(gs.GenesisException, match="one per selected environment"):
+        screen.set_texture(["red", "blue", "red"])
+    hdr_path = tmp_path / "sky.hdr"
+    hdr_path.touch()
+    with pytest.raises(gs.GenesisException, match="no HDR image"):
+        screen.set_texture(gs.textures.ImageTexture(image_path=str(hdr_path), encoding="linear"))
+    with pytest.raises(gs.GenesisException, match="named 'lamp'"):
+        screen.set_texture("red", texture_name="lamp")
+    with pytest.raises(gs.GenesisException, match="distinct names"):
+        duplicate_scene = gs.Scene()
+        for x in (0.0, 2.0):
+            duplicate_scene.add_entity(
+                morph=gs.morphs.Plane(pos=(x, 0.0, 0.0), plane_size=(1.0, 1.0), fixed=True),
+                surface=gs.surfaces.Emission(
+                    emissive_texture=gs.textures.DynamicTexture(resolution=(4, 4), texture_name="lcd")
+                ),
+            )
+        duplicate_scene.build()
+    with pytest.raises(gs.GenesisException, match="one dynamic texture per slot"):
+        two_slots_scene = gs.Scene()
+        two_slots_texture = gs.textures.DynamicTexture(resolution=(4, 4))
+        two_slots_scene.add_entity(
+            morph=gs.morphs.Plane(plane_size=(1.0, 1.0), fixed=True),
+            surface=gs.surfaces.Default(diffuse_texture=two_slots_texture, emissive_texture=two_slots_texture),
+        )
+        two_slots_scene.build()
+    with pytest.raises(gs.GenesisException, match="diffuse_texture"):
+        gs.surfaces.Default(roughness_texture=gs.textures.DynamicTexture(resolution=(4, 4)))
+    with pytest.raises(gs.GenesisException, match="texture coordinates"):
+        gs.Scene().add_entity(
+            morph=gs.morphs.Box(size=(0.1, 0.1, 0.1)),
+            surface=gs.surfaces.Emission(emissive_texture=gs.textures.DynamicTexture(resolution=(4, 4))),
+        )
+    with pytest.raises(gs.GenesisException, match="custom visual vertices"):
+        unsupported_scene = gs.Scene()
+        unsupported_scene.add_entity(
+            morph=gs.morphs.Mesh(file="meshes/duck.obj", enable_custom_vverts=True),
+            surface=gs.surfaces.Emission(emissive_texture=gs.textures.DynamicTexture(resolution=(4, 4))),
+        )
+        unsupported_scene.build()
+
+    # A reset of one environment shows its initial variants again, and a reset of the scene those of every environment
+    scene.reset(envs_idx=[1])
+    assert_equal(label.get_texture(), [gs.DRAWN_IMAGE, 0])
+    scene.reset()
+    colors = get_colors(camera.render(rgb=True)[0])
+    assert (colors[:, 0, 2] > 150.0).all() and (colors[:, 0, :2] < 30.0).all()
+    assert_allclose(colors[:, 1], colors[:, 3], atol=5.0)
+    assert_allclose(colors[:, 2], lamp_initial, atol=5.0)
 
 
 @pytest.mark.required
@@ -251,7 +469,7 @@ def test_render_api_advanced(tmp_path, n_envs, show_viewer, png_snapshot, render
         ),
     )
     cam_debug = scene.add_camera(
-        res=(640, 480),
+        resolution=(640, 480),
         pos=(1.5, 0.5, 1.5),
         lookat=(0.0, 0.0, 0.5),
         fov=45,
@@ -262,7 +480,7 @@ def test_render_api_advanced(tmp_path, n_envs, show_viewer, png_snapshot, render
     for i in range(max(1 if IS_BATCHRENDER else n_envs, 1)):
         env_idx = None if i < 1 else i
         cam_0 = scene.add_camera(
-            res=CAM_RES,
+            resolution=CAM_RES,
             pos=(1.5, 0.5, 1.5),
             lookat=(0.0, 0.0, 0.5),
             fov=45,
@@ -272,7 +490,7 @@ def test_render_api_advanced(tmp_path, n_envs, show_viewer, png_snapshot, render
             GUI=show_viewer,
         )
         cam_1 = scene.add_camera(
-            res=CAM_RES,
+            resolution=CAM_RES,
             pos=(0.8, -0.5, 0.8),
             lookat=(0.0, 0.0, 0.5),
             fov=45,
@@ -282,7 +500,7 @@ def test_render_api_advanced(tmp_path, n_envs, show_viewer, png_snapshot, render
             GUI=show_viewer,
         )
         cam_2 = scene.add_camera(
-            res=CAM_RES,
+            resolution=CAM_RES,
             fov=45,
             env_idx=env_idx,
             near=0.05,
@@ -594,7 +812,7 @@ def test_deterministic(tmp_path, renderer_type, renderer, show_viewer, tol):
     cam = scene.add_camera(
         pos=CAM_POS_LOCAL,
         lookat=CAM_LOOKAT_LOCAL,
-        res=(500, 500),
+        resolution=(500, 500),
         fov=60,
         spp=512,
         GUI=show_viewer,
@@ -715,7 +933,7 @@ def test_renders_heterogeneous_entities(n_envs, show_viewer, png_snapshot, rende
         ),
     )
     camera = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=(0.0, 5.0, 2.6),
         lookat=(0.0, 0.0, 0.2),
         fov=55.0,
@@ -886,7 +1104,7 @@ def test_segmentation_map(segmentation_level, particle_mode, renderer_type, rend
 
     camera = scene.add_camera(
         # Using very low resolution to speed up rendering
-        res=(128, 128),
+        resolution=(128, 128),
         pos=(2.0, 0.0, 2.0),
         lookat=(0, 0, 0.5),
         fov=40,
@@ -952,7 +1170,7 @@ def test_multi_submesh_fem_render(renderer_type, renderer, show_viewer, png_snap
         ),
     )
     camera = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=(0.6, 0.6, 0.55),
         lookat=(0.0, 0.0, 0.32),
         fov=45,
@@ -1042,7 +1260,7 @@ def test_point_cloud(renderer_type, renderer, show_viewer):
         )
     )
     camera_sphere = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=(0.0, OBJ_OFFSET, CAMERA_DIST),
         lookat=(0.0, OBJ_OFFSET, 0.0),
         near=2.0,
@@ -1050,7 +1268,7 @@ def test_point_cloud(renderer_type, renderer, show_viewer):
         GUI=show_viewer,
     )
     camera_box_1 = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=(0.0, -OBJ_OFFSET, CAMERA_DIST),
         lookat=(0.0, -OBJ_OFFSET, 0.0),
         near=2.0,
@@ -1058,7 +1276,7 @@ def test_point_cloud(renderer_type, renderer, show_viewer):
         GUI=show_viewer,
     )
     camera_box_2 = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=np.array((CAMERA_DIST, CAMERA_DIST - OBJ_OFFSET, CAMERA_DIST)),
         lookat=(0.0, -OBJ_OFFSET, 0.0),
         near=2.0,
@@ -1140,7 +1358,7 @@ def test_render_planes(tmp_path, png_snapshot, renderer_type, renderer):
             gs.morphs.Plane(plane_size=plane_size, tile_size=tile_size),
         )
         camera = scene.add_camera(
-            res=(256, 256),
+            resolution=(256, 256),
             pos=(0.0, 0.0, 8),
             lookat=(0.0, 0.0, 0.0),
             fov=45,
@@ -1167,7 +1385,7 @@ def test_render_oversized_resolution(renderer):
     requested_res = (1920, 1440)
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
-            res=requested_res,
+            resolution=requested_res,
         ),
         renderer=renderer,
         show_viewer=True,
@@ -1208,7 +1426,7 @@ def test_context_isolation(renderer_type):
         )
     )
     camera_a = scene_a.add_camera(
-        res=(64, 64),
+        resolution=(64, 64),
         pos=(1.5, 1.5, 1.0),
         lookat=(0.0, 0.0, 0.0),
     )
@@ -1228,7 +1446,7 @@ def test_context_isolation(renderer_type):
         )
     )
     camera_b = scene_b.add_camera(
-        res=(64, 64),
+        resolution=(64, 64),
         pos=(1.5, 1.5, 1.0),
         lookat=(0.0, 0.0, 0.0),
     )
@@ -1286,7 +1504,7 @@ def test_camera_follow_entity(n_envs, renderer, show_viewer):
             ),
         )
         cam = scene.add_camera(
-            res=CAM_RES,
+            resolution=CAM_RES,
             pos=(0.0, 0.0, 0.0),
             lookat=(1.0, 0, 0.0),
             env_idx=1 if n_envs else None,
@@ -1419,7 +1637,7 @@ def test_rasterizer_env_separate(renderer, png_snapshot, show_viewer, force_show
             rendered_envs_idx=RENDERED_ENVS,
         ),
         viewer_options=gs.options.ViewerOptions(
-            res=CAM_RES,
+            resolution=CAM_RES,
             run_in_thread=False,
             # Far enough back for the whole ground to fit in frame, as every camera below requires
             camera_pos=(3.0, 0.3, 2.0),
@@ -1446,14 +1664,14 @@ def test_rasterizer_env_separate(renderer, png_snapshot, show_viewer, force_show
     )
 
     cam = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=(3.5, 0.0, 2.5),
         lookat=(0.0, 0.0, 0.5),
         fov=30,
         GUI=show_viewer,
     )
     cam_debug = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=(3.5, 0.0, 2.5),
         lookat=(0.0, 0.0, 0.5),
         fov=30,
@@ -1606,7 +1824,7 @@ def test_rasterizer_sensor_env_spacing_invariance(renderer, context_mode):
             split_envs=context_mode == "with_scene_camera",
         ),
         viewer_options=gs.options.ViewerOptions(
-            res=CAM_RES,
+            resolution=CAM_RES,
             run_in_thread=False,
             camera_pos=(2.0, -2.0, 1.5),
             camera_lookat=(0.0, 0.0, 0.3),
@@ -1660,7 +1878,7 @@ def test_rasterizer_sensor_env_spacing_invariance(renderer, context_mode):
         lights.append({"type": "point", "pos": (1.0, -1.0, 2.0), "color": (1.0, 0.5, 0.25), "intensity": 5.0})
     sensor = scene.add_sensor(
         RasterizerCameraOptions(
-            res=CAM_RES,
+            resolution=CAM_RES,
             pos=(2.0, -2.0, 1.5),
             lookat=(0.0, 0.0, 0.3),
             fov=40.0,
@@ -1669,7 +1887,7 @@ def test_rasterizer_sensor_env_spacing_invariance(renderer, context_mode):
     )
     if context_mode == "with_scene_camera":
         cam = scene.add_camera(
-            res=CAM_RES,
+            resolution=CAM_RES,
             pos=(2.0, -2.0, 1.5),
             lookat=(0.0, 0.0, 0.3),
             fov=40.0,
@@ -1732,7 +1950,7 @@ def test_video_recording_lifecycle(tmp_path, monkeypatch, renderer, show_viewer)
         ),
     )
     cam = scene.add_camera(
-        res=(64, 64),
+        resolution=(64, 64),
         pos=(2.5, 0.0, 1.5),
         lookat=(0.0, 0.0, 0.5),
     )
@@ -1858,7 +2076,7 @@ def test_transparent_surfaces_show_what_lies_behind_them(renderer, show_viewer):
         ),
     )
     cam = scene.add_camera(
-        res=(RES, RES),
+        resolution=(RES, RES),
         pos=(2.5, 0.0, 0.5),
         lookat=(0.0, 0.0, 0.5),
     )

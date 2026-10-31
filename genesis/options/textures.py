@@ -1,15 +1,24 @@
 import os
 from functools import cached_property
-from typing import Annotated, Sequence, Literal, Iterable, cast
+from typing import Annotated, Iterable, Literal, Sequence, cast
 
 import numpy as np
+
 from PIL import Image
-from pydantic import model_validator, computed_field, BeforeValidator, Field
+from pydantic import BeforeValidator, Field, PrivateAttr, StrictBool, computed_field, model_validator
+from typing_extensions import Self
 
 import genesis as gs
 import genesis.utils.mesh as mu
-from genesis.typing import LaxUnitIntervalArrayType, LaxFArrayType, UnitIntervalArrayType, NDArrayType
-
+from genesis.constants import TEXTURE_SLOT
+from genesis.typing import (
+    LaxFArrayType,
+    LaxUnitIntervalArrayType,
+    NDArrayType,
+    PositiveVec2IType,
+    StrictInt,
+    UnitIntervalArrayType,
+)
 from genesis.utils.serialization import Exporting, Loading, SerializationMixin
 
 from .options import Options
@@ -138,6 +147,9 @@ class ImageTexture(Texture, SerializationMixin):
     @model_validator(mode="before")
     @classmethod
     def _validate_and_load(cls, data: dict) -> dict:
+        # A texture instance validated against this class, as a union of texture types does, is not raw input
+        if not isinstance(data, dict):
+            return data
         image_path, image_array = data.get("image_path"), data.get("image_array")
 
         if not ((image_path is not None) ^ (image_array is not None)):
@@ -280,6 +292,235 @@ class ImageTexture(Texture, SerializationMixin):
             image_color=loading.value(raw["image_color"], UnitIntervalArrayType),
             encoding=raw["encoding"],
         )
+
+
+class AssetTexture(Texture):
+    """
+    The texture the asset gives the slot of a surface holding a dynamic texture, as a variant of that dynamic texture.
+
+    It stands in the 'variants' of a ``DynamicTexture`` alone, and resolves when the entity is added: to the image or
+    the color the asset gives the slot, or to no texture where it gives none. The visual geoms drawing one dynamic
+    texture must get the same texture from their asset, so a multi-material asset takes one dynamic texture per
+    material, bound through ``gs.VGeomIndex.with_material``.
+    """
+
+    def check_dim(self, dim: int) -> Texture | None:
+        return None
+
+    def check_simplify(self) -> "AssetTexture":
+        return self
+
+    def apply_cutoff(self, cutoff: float) -> None:
+        pass
+
+    @computed_field
+    @cached_property
+    def is_black(self) -> bool:
+        return False
+
+    @computed_field
+    @cached_property
+    def requires_uv(self) -> bool:
+        return True
+
+
+def texture_to_rgba(
+    texture: "ColorTexture | ImageTexture | AssetTexture | None",
+    resolution: tuple[int, int],
+    slot: TEXTURE_SLOT = TEXTURE_SLOT.DIFFUSE,
+) -> np.ndarray:
+    """Return a texture as an RGBA array of shape (height, width, 4), in the format of a dynamic texture in 'slot'.
+
+    The diffuse slot holds sRGB uint8 values and the emissive slot linear float16 values (see ``DynamicTexture``). An
+    image is resized to 'resolution', given as (width, height), and converted from its own encoding. A color is sRGB in
+    the diffuse slot and linear in the emissive slot, as for a static texture. A gray or gray-alpha color spans the
+    three color channels, as an image of one or two channels does. No texture, an unresolved asset texture included,
+    gives a black and magenta checkerboard of 8 by 8 cells.
+    """
+    width, height = resolution
+    if not isinstance(texture, (ColorTexture, ImageTexture)):
+        is_magenta = ((np.arange(height)[:, None] * 8 // height) + (np.arange(width) * 8 // width)) % 2 == 1
+        rgba = np.where(is_magenta[..., None], [1.0, 0.0, 1.0, 1.0], [0.0, 0.0, 0.0, 1.0])
+    else:
+        if isinstance(texture, ImageTexture):
+            image_array = texture.image_array
+            if image_array is None:
+                gs.raise_exception(f"A dynamic texture takes no HDR image, got '{texture.image_path}'.")
+            if image_array.ndim == 3 and image_array.shape[-1] == 1:
+                image_array = image_array[..., 0]
+            image = Image.fromarray(image_array).convert("RGBA").resize((width, height), Image.Resampling.BILINEAR)
+            rgba, channels, is_srgb = np.asarray(image) / 255.0, texture.image_color, texture.encoding == "srgb"
+        else:
+            rgba, channels = np.ones((height, width, 4)), texture.color
+            is_srgb = slot == TEXTURE_SLOT.DIFFUSE
+        # sRGB transfer function of IEC 61966-2-1, between the encoded values and the linear ones
+        if slot == TEXTURE_SLOT.EMISSIVE and is_srgb:
+            color = rgba[..., :3]
+            rgba[..., :3] = np.where(color <= 0.04045, color / 12.92, ((color + 0.055) / 1.055) ** 2.4)
+        elif slot == TEXTURE_SLOT.DIFFUSE and not is_srgb:
+            color = rgba[..., :3]
+            rgba[..., :3] = np.where(color <= 0.0031308, color * 12.92, 1.055 * color ** (1.0 / 2.4) - 0.055)
+        factor = np.ones(4)
+        factor[:3] = channels[:3] if len(channels) >= 3 else channels[0]
+        if len(channels) in (2, 4):
+            factor[3] = channels[-1]
+        rgba = rgba * factor
+    if slot == TEXTURE_SLOT.EMISSIVE:
+        return rgba.astype(np.float16)
+    return (rgba * 255.0).round().astype(np.uint8)
+
+
+class DynamicTexture(Texture):
+    """
+    A texture whose image changes while the simulation runs, such as a screen or an indicator light.
+
+    It fills the diffuse or the emissive slot of a surface, and requires a mesh with texture coordinates. Each parallel
+    environment shows one of a fixed set of variants declared here, or pixels drawn at runtime on a canvas. Once the
+    scene is built, ``entity.set_texture`` shows a variant or draws pixels in each environment, and
+    ``entity.get_texture`` returns what each environment shows, as do the methods of the same name of a visual geom.
+    Each renderer holds the pixels it draws, and only the rasterizer draws a dynamic texture yet.
+
+    The variants and canvases are RGBA images, whose format the slot sets. The diffuse slot holds 8-bit sRGB values,
+    the alpha channel standing for the opacity in place of the opacity of the surface. The emissive slot holds 16-bit
+    linear values, which let an emission exceed 1 at twice the memory per pixel.
+
+    Parameters
+    ----------
+    resolution : tuple[int, int]
+        The resolution of every variant and canvas, as (width, height) in pixels. Rendering uploads a canvas each time
+        it is drawn, so a larger image costs more per drawing, while showing a variant costs nothing.
+    variants : tuple[ColorTexture | ImageTexture | AssetTexture | None, ...] | dict[str, ...], optional
+        The images an environment switches between, each a color or an image resized to 'resolution', an
+        ``AssetTexture`` for the texture the asset gives the slot, or None for no texture, which shows a black and
+        magenta checkerboard. A mapping names them, so that they are shown by name as well as by position. The variants
+        are fixed once the scene is built, and their memory is independent of the number of environments. Default is
+        one variant with no texture.
+    is_batched : bool, optional
+        Whether each parallel environment draws pixels on a canvas of its own. Its own canvases cost the memory of one
+        image per environment, while a texture that is not batched holds a single canvas, whose one drawing every
+        environment showing it displays. Showing a variant is per environment either way. Default is False.
+    initial_variant : int | str, optional
+        The variant every environment shows at build and after a reset, by position or by name. Default is 0.
+    texture_name : str | None, optional
+        The name of the texture, unique in the scene, by which the methods of an entity whose visual geoms draw several
+        dynamic textures pick it. Default is None.
+    """
+
+    resolution: PositiveVec2IType
+    variants: (
+        Annotated[tuple[ColorTexture | ImageTexture | AssetTexture | None, ...], Field(min_length=1, strict=False)]
+        | Annotated[dict[str, ColorTexture | ImageTexture | AssetTexture | None], Field(min_length=1)]
+    ) = (None,)
+    is_batched: StrictBool = False
+    initial_variant: StrictInt | str = 0
+    texture_name: str | None = None
+
+    # The dynamic texture this one is a copy of, and the texture an asset gives the slot it fills, which its asset
+    # texture variants show (see 'resolve_asset_texture')
+    _declaration: "DynamicTexture | None" = PrivateAttr(default=None)
+    _asset_texture: "ColorTexture | ImageTexture | None" = PrivateAttr(default=None)
+
+    @model_validator(mode="after")
+    def _check_variants(self) -> Self:
+        self.get_variants_idx(self.initial_variant)
+        return self
+
+    @property
+    def declaration(self) -> "DynamicTexture":
+        """The dynamic texture as declared, which every copy resolving its asset texture variants shares."""
+        return self if self._declaration is None else self._declaration
+
+    def resolve_asset_texture(self, asset_texture: Texture | None) -> "DynamicTexture":
+        """Return a copy whose asset texture variants show the texture an asset gives the slot.
+
+        A dynamic texture given as 'asset_texture' gives the texture its own asset texture variants show. The texture
+        itself is returned when it holds no asset texture variant, or when the asset gives no color and no image.
+        """
+        if isinstance(asset_texture, DynamicTexture):
+            asset_texture = asset_texture._asset_texture
+        if not isinstance(asset_texture, (ColorTexture, ImageTexture)) or not any(
+            isinstance(variant, AssetTexture) for variant in self.variants_texture
+        ):
+            return self
+        variants = tuple(
+            asset_texture if isinstance(variant, AssetTexture) else variant for variant in self.variants_texture
+        )
+        if self.variants_name:
+            variants = dict(zip(self.variants_name, variants))
+        texture = self.model_copy(update={"variants": variants})
+        texture._declaration = self.declaration
+        texture._asset_texture = asset_texture
+        return texture
+
+    @property
+    def variants_name(self) -> tuple[str, ...]:
+        """The name of each variant, empty when the variants are not named."""
+        return tuple(self.variants) if isinstance(self.variants, dict) else ()
+
+    @property
+    def variants_texture(self) -> tuple["ColorTexture | ImageTexture | AssetTexture | None", ...]:
+        """The texture of each variant, in the order of their positions."""
+        return tuple(self.variants.values()) if isinstance(self.variants, dict) else self.variants
+
+    def get_variants_idx(self, variants: "int | str | Sequence[int | str] | np.ndarray") -> np.ndarray:
+        """Return the positions of variants given by position or by name, raising on one the set does not hold."""
+        variants_name = self.variants_name
+        variants_idx = []
+        for variant in np.atleast_1d(np.asarray(variants, dtype=object)).tolist():
+            if isinstance(variant, str):
+                if variant not in variants_name:
+                    gs.raise_exception(f"No variant is named '{variant}'. Existing names: {list(variants_name)}.")
+                variant = variants_name.index(variant)
+            elif not isinstance(variant, (int, np.integer)) or isinstance(variant, bool):
+                gs.raise_exception(
+                    f"A variant is given by an integer position or a name, got {variant!r}. Give a color as a "
+                    "'gs.textures.ColorTexture'."
+                )
+            if not 0 <= variant < len(self.variants):
+                gs.raise_exception(f"Variant {variant} is out of range for {len(self.variants)} variants.")
+            variants_idx.append(variant)
+        return np.array(variants_idx, dtype=gs.np_int)
+
+    def get_variants_image(self, slot: TEXTURE_SLOT) -> np.ndarray:
+        """Return the variants as an RGBA array of shape (n_variants, height, width, 4), in the format of 'slot'."""
+        return np.stack([texture_to_rgba(texture, self.resolution, slot) for texture in self.variants_texture])
+
+    def get_initial_image(self) -> np.ndarray:
+        """Return the image every environment shows at build, as an RGBA uint8 array of shape (height, width, 4)."""
+        (i_variant,) = self.get_variants_idx(self.initial_variant)
+        return texture_to_rgba(self.variants_texture[i_variant], self.resolution)
+
+    def check_dim(self, dim: int) -> Texture | None:
+        return None
+
+    def check_simplify(self) -> "DynamicTexture":
+        return self
+
+    def apply_cutoff(self, cutoff: float) -> None:
+        pass
+
+    @computed_field
+    @cached_property
+    def is_black(self) -> bool:
+        return False
+
+    @computed_field
+    @cached_property
+    def requires_uv(self) -> bool:
+        return True
+
+
+def is_same_texture(texture: Texture | None, other: Texture | None) -> bool:
+    """Whether two textures hold the same color or the same image."""
+    if texture is other:
+        return True
+    if isinstance(texture, ColorTexture) and isinstance(other, ColorTexture):
+        return np.allclose(texture.color, other.color, atol=gs.EPS)
+    if isinstance(texture, ImageTexture) and isinstance(other, ImageTexture):
+        return np.array_equal(texture.image_array, other.image_array) and np.allclose(
+            texture.image_color, other.image_color, atol=gs.EPS
+        )
+    return False
 
 
 class BatchTexture(Texture):

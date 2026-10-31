@@ -102,15 +102,15 @@ class GridPattern(RaycastPattern):
 def _generate_uniform_angles(
     n_points: tuple[int, int],
     fov: tuple[float | tuple[float, float] | None, float | tuple[float, float] | None],
-    res: tuple[float | None, float | None],
+    angular_resolution: tuple[float | None, float | None],
     angles: tuple[Sequence[float] | None, Sequence[float] | None],
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Helper function to generate uniform angles given various formats (n and fov, res and fov, or angles).
+    Helper function to generate uniform angles given various formats (n and fov, angular resolution and fov, or angles).
     """
     return_angles = []
 
-    for n_points_i, fov_i, res_i, angles_i in zip(n_points, fov, res, angles):
+    for n_points_i, fov_i, resolution_i, angles_i in zip(n_points, fov, angular_resolution, angles):
         if angles_i is None:
             assert fov_i is not None, "FOV should be provided if angles not given."
 
@@ -126,8 +126,8 @@ def _generate_uniform_angles(
 
             # Avoid duplicate angle at 0/360 degrees
             is_full_rotation = fov_size >= 360.0 - gs.EPS
-            if res_i is not None:
-                n_points_i = math.ceil(fov_size / res_i) + (0 if is_full_rotation else 1)
+            if resolution_i is not None:
+                n_points_i = math.ceil(fov_size / resolution_i) + (0 if is_full_rotation else 1)
 
             assert n_points_i is not None
 
@@ -209,8 +209,8 @@ class DepthCameraPattern(RaycastPattern):
 
     Parameters
     ----------
-    res: tuple[int, int]
-        The resolution of the camera, specified as a tuple (width, height).
+    resolution: tuple[int, int] | None
+        The resolution of the camera, specified as a tuple (width, height). Default is (128, 96).
     fx : float | None
         Focal length in x direction in pixels. Computed from fov_horizontal if None.
     fy : float | None
@@ -227,18 +227,26 @@ class DepthCameraPattern(RaycastPattern):
 
     def __init__(
         self,
-        res: tuple[int, int] = (128, 96),
+        resolution: tuple[int, int] | None = None,
         fx: float | None = None,
         fy: float | None = None,
         cx: float | None = None,
         cy: float | None = None,
         fov_horizontal: float = 90.0,
         fov_vertical: float | None = None,
+        res: tuple[int, int] | None = None,
     ):
-        self.width, self.height = res
+        if res is not None:
+            if resolution is not None:
+                gs.raise_exception("'res' is deprecated and replaced by 'resolution'; set only one of them.")
+            gs.logger.warning("'res' is deprecated and will be removed; it now maps to 'resolution'.")
+            resolution = res
+        if resolution is None:
+            resolution = (128, 96)
+        self.width, self.height = resolution
 
         if self.width <= 0 or self.height <= 0:
-            gs.raise_exception(f"[{type(self).__name__}] Image dimensions must be positive. Got: {res}")
+            gs.raise_exception(f"[{type(self).__name__}] Image dimensions must be positive. Got: {resolution}")
 
         if fx is None or fy is None:
             # Calculate focal length

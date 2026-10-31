@@ -212,6 +212,8 @@ class Raytracer:
 
     def build(self, scene):
         # Note that surfaces and entities added after building may not be included in LuisaRender
+        if scene.dynamic_textures:
+            gs.raise_exception("The raytracer does not draw dynamic textures. Render them with the rasterizer.")
         self.scene = scene
         self.sim = scene.sim
         self.visualizer = scene.visualizer
@@ -238,7 +240,7 @@ class Raytracer:
 
         # state_limit = 0
         # for camera in self._cameras:
-        #     state_limit_cam = int(camera.res[0] * camera.res[1] * self.spp)
+        #     state_limit_cam = int(camera.resolution[0] * camera.resolution[1] * self.spp)
         #     state_limit = max(state_limit, state_limit_cam)
         # state_limit = min(state_limit, self.state_limit)
 
@@ -617,7 +619,7 @@ class Raytracer:
             self._cameras[camera_name] = LuisaRenderPy.PinholeCamera(
                 name=camera_name,
                 pose=self.get_transform(np.eye(4)),
-                film=LuisaRenderPy.Film(resolution=camera.res),
+                film=LuisaRenderPy.Film(resolution=camera.resolution),
                 filter=LuisaRenderPy.Filter(),
                 spp=camera.spp,
                 fov=camera.fov,
@@ -626,7 +628,7 @@ class Raytracer:
             self._cameras[camera_name] = LuisaRenderPy.ThinLensCamera(
                 name=camera_name,
                 pose=self.get_transform(np.eye(4)),
-                film=LuisaRenderPy.Film(resolution=camera.res),
+                film=LuisaRenderPy.Film(resolution=camera.resolution),
                 filter=LuisaRenderPy.Filter(),
                 spp=camera.spp,
                 aperture=camera.aperture,
@@ -810,7 +812,7 @@ class Raytracer:
 
     def render_camera(self, camera):
         b = self._scene.render_frame(camera=self._cameras[str(camera.uid)])
-        img = np.frombuffer(b, dtype=np.uint8).reshape(camera.res[1], camera.res[0], 4)[:, :, :3]
+        img = np.frombuffer(b, dtype=np.uint8).reshape(camera.resolution[1], camera.resolution[0], 4)[:, :, :3]
         return img
 
     def destroy(self):

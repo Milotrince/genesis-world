@@ -901,9 +901,14 @@ class FEMOptions(GravityMixin, TimeBasedMixin):
 class SFOptions(TimeBasedMixin):
     """
     Options configuring the SFSolver.
+
+    Parameters
+    ----------
+    resolution : int
+        The number of cells of the grid along each axis.
     """
 
-    res: PositiveInt = 128
+    resolution: PositiveInt = 128
     solver_iters: PositiveInt = 500
     decay: PositiveFloat = 0.99
 
@@ -914,3 +919,15 @@ class SFOptions(TimeBasedMixin):
     inlet_vel: Vec3FType = (0.0, 0.0, 1.0)
     inlet_quat: UnitVec4FType = (1.0, 0.0, 0.0, 0.0)
     inlet_s: PositiveFloat = 400.0
+
+    # Deprecated alias for resolution, resolved in model_post_init.
+    res: PositiveInt | None = None
+
+    def model_post_init(self, context: Any) -> None:
+        super().model_post_init(context)
+        if self.res is not None:
+            if "resolution" in self.model_fields_set:
+                gs.raise_exception("'res' is deprecated and replaced by 'resolution'; set only one of them.")
+            gs.logger.warning("'res' is deprecated and will be removed; it now maps to 'resolution'.")
+            self.resolution = self.res
+            self.res = None

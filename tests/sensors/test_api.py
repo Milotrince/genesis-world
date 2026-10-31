@@ -617,7 +617,7 @@ def test_shared_context(show_viewer):
     )
     depth_camera = scene.add_sensor(
         gs.sensors.DepthCamera(
-            pattern=gs.sensors.raycaster.DepthCameraPattern(res=(4, 4)),
+            pattern=gs.sensors.raycaster.DepthCameraPattern(resolution=(4, 4)),
             pos_offset=(0.0, 0.0, 2.0),
         )
     )
@@ -714,7 +714,7 @@ def test_read_sensors_bulk_api(show_viewer, n_envs):
     )
     static_cam = scene.add_sensor(
         gs.sensors.RasterizerCameraOptions(
-            res=(32, 32),
+            resolution=(32, 32),
         ),
     )
 

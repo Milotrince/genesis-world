@@ -21,6 +21,8 @@ import trimesh
 import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
+from genesis.constants import TEXTURE_SLOT
+from genesis.engine.dynamic_texture import DynamicTextureHandle
 from genesis.engine.entities.base_entity import Entity, EntityDescription
 from genesis.engine.entities.rigid_entity import KinematicEntity
 from genesis.engine.force_fields import ForceField
@@ -57,6 +59,7 @@ from genesis.options.morphs import Morph
 from genesis.options.recorders import RecorderOptions, TrajectoryFile
 from genesis.options.renderers import RendererOptions
 from genesis.options.surfaces import Surface
+from genesis.options.textures import DynamicTexture, is_same_texture
 from genesis.recorders import RecorderManager
 from genesis.recorders.trajectory import Trajectory, save_checkpoint
 from genesis.repr_base import RBC
@@ -71,6 +74,7 @@ from genesis.vis import Visualizer
 if TYPE_CHECKING:
     from genesis.engine.entities.base_entity import Entity
     from genesis.engine.entities.rigid_entity import RigidEntity
+    from genesis.engine.entities.rigid_entity.rigid_geom import RigidVisGeom
     from genesis.engine.sensors.base_sensor import Sensor
     from genesis.engine.simulator import Simulator
     from genesis.options.sensors.options import SensorOptions, SensorT
@@ -273,6 +277,7 @@ class Scene(RBC):
 
         # emitters
         self._emitters = gs.List()
+        self._dynamic_textures: list[DynamicTextureHandle] = []
 
         self._uid = gs.UID()
         self._is_built = False
@@ -744,7 +749,7 @@ class Scene(RBC):
     def add_camera(
         self,
         model="pinhole",
-        res=(320, 320),
+        resolution=None,
         pos=(0.5, 2.5, 3.5),
         lookat=(0.5, 0.5, 0.5),
         up=(0.0, 0.0, 1.0),
@@ -758,6 +763,7 @@ class Scene(RBC):
         far=20.0,
         env_idx=None,
         debug=False,
+        res=None,
     ):
         """
         Add a camera to the scene.
@@ -777,8 +783,8 @@ class Scene(RBC):
         ----------
         model : str
             Specifies the camera model. Options are 'pinhole' or 'thinlens'.
-        res : tuple of int, shape (2,)
-            The resolution of the camera, specified as a tuple (width, height).
+        resolution : tuple of int, shape (2,)
+            The resolution of the camera, specified as a tuple (width, height). Defaults to (320, 320).
         pos : tuple of float, shape (3,)
             The position of the camera in the scene, specified as (x, y, z).
         lookat : tuple of float, shape (3,)
@@ -823,10 +829,17 @@ class Scene(RBC):
         camera : genesis.Camera
             The created camera object.
         """
+        if res is not None:
+            if resolution is not None:
+                gs.raise_exception("'res' is deprecated and replaced by 'resolution'; set only one of them.")
+            gs.logger.warning("'res' is deprecated and will be removed; it now maps to 'resolution'.")
+            resolution = res
+        if resolution is None:
+            resolution = (320, 320)
         if denoise is None:
             denoise = sys.platform != "darwin"
         return self._visualizer.add_camera(
-            res, pos, lookat, up, model, fov, aperture, focus_dist, GUI, spp, denoise, near, far, env_idx, debug
+            resolution, pos, lookat, up, model, fov, aperture, focus_dist, GUI, spp, denoise, near, far, env_idx, debug
         )
 
     @gs.assert_unbuilt
@@ -940,6 +953,64 @@ class Scene(RBC):
         with gs.logger.timer(f"Building scene ~~~<{self._uid}>~~~..."):
             self._parallelize(n_envs, env_spacing, n_envs_per_row, center_envs_at_origin)
 
+            # The dynamic textures, each with the visual geoms drawing it, which every renderer binds to as it builds,
+            # the camera sensors building with the simulator. Each visual geom holds its own copy of a declared texture,
+            # whose asset texture variants show what its asset gives (see 'DynamicTexture.resolve_asset_texture').
+            # The copies of one declaration must agree, and its visual geoms draw a single one of them from then on.
+            # The slot sets the format of the images, so that a declaration fills a single slot.
+            bindings_by_texture: dict[
+                DynamicTexture, list[tuple["RigidVisGeom", TEXTURE_SLOT, str, DynamicTexture]]
+            ] = {}
+            for entity in self.entities:
+                if isinstance(entity, KinematicEntity):
+                    for vgeom in entity.vgeoms:
+                        surface_textures = dict(vgeom.surface)
+                        for slot, field_name in (
+                            (TEXTURE_SLOT.DIFFUSE, "diffuse_texture"),
+                            (TEXTURE_SLOT.EMISSIVE, "emissive_texture"),
+                        ):
+                            texture = surface_textures.get(field_name)
+                            if isinstance(texture, DynamicTexture):
+                                if entity.morph.enable_custom_vverts:
+                                    gs.raise_exception(
+                                        "A dynamic texture cannot be drawn on an entity with custom visual vertices, "
+                                        f"got '{entity.name}'."
+                                    )
+                                bindings_by_texture.setdefault(texture.declaration, []).append(
+                                    (vgeom, slot, field_name, texture)
+                                )
+                elif any(isinstance(texture, DynamicTexture) for _, texture in entity.surface):
+                    gs.raise_exception(
+                        f"Only rigid and kinematic entities draw a dynamic texture, got '{entity.name}'."
+                    )
+            textures_name = [
+                texture.texture_name for texture in bindings_by_texture if texture.texture_name is not None
+            ]
+            if len(set(textures_name)) != len(textures_name):
+                gs.raise_exception(f"The dynamic textures of a scene take distinct names, got {textures_name}.")
+            for texture_bindings in bindings_by_texture.values():
+                _, slot, _, texture = texture_bindings[0]
+                for vgeom, vgeom_slot, field_name, texture_copy in texture_bindings:
+                    if vgeom_slot != slot:
+                        gs.raise_exception(
+                            "A dynamic texture fills either the diffuse or the emissive slot, which sets the format of "
+                            "its images. Declare one dynamic texture per slot."
+                        )
+                    if not all(map(is_same_texture, texture_copy.variants_texture, texture.variants_texture)):
+                        gs.raise_exception(
+                            "The visual geoms drawing one dynamic texture get different textures from their asset, "
+                            "so its asset texture variants resolve to no single one. Bind one dynamic texture per "
+                            "material with 'gs.VGeomIndex.with_material', or give those variants explicitly."
+                        )
+                    setattr(vgeom.surface, field_name, texture)
+                vgeoms = [vgeom for vgeom, _, _, _ in texture_bindings]
+                handle = DynamicTextureHandle(self, texture, slot, vgeoms)
+                self._dynamic_textures.append(handle)
+                for vgeom in vgeoms:
+                    vgeom._dynamic_textures.append(handle)
+                for entity in dict.fromkeys(vgeom.entity for vgeom in vgeoms):
+                    entity._dynamic_textures.append(handle)
+
             # simulator
             self._sim.build()
 
@@ -1040,6 +1111,8 @@ class Scene(RBC):
             self._recorder_manager.record(self._sim.cur_step_global)
         self._recorder_manager.reset(envs_idx)
         self._reset(state, envs_idx=envs_idx)
+        for handle in self._dynamic_textures:
+            handle.reset(envs_idx)
 
     def _reset(self, state: SimState | None = None, *, envs_idx=None, keep_init: bool = False):
         if self._is_built:
@@ -2108,6 +2181,11 @@ class Scene(RBC):
     def emitters(self):
         """All the emitters in the scene."""
         return self._emitters
+
+    @property
+    def dynamic_textures(self) -> list[DynamicTextureHandle]:
+        """The handles setting the dynamic textures of the scene, one per declaration, once it is built."""
+        return self._dynamic_textures
 
     @property
     def rigid_solver(self):

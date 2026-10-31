@@ -94,7 +94,7 @@ def main():
     camera = None
     if args.record:
         camera = scene.add_camera(
-            res=(1280, 720),
+            resolution=(1280, 720),
             pos=camera_pos,
             lookat=camera_lookat,
             fov=45,

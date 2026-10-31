@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -6,10 +7,14 @@ import numpy as np
 import torch
 import trimesh
 
+from OpenGL.GL import GL_HALF_FLOAT, GL_TEXTURE_2D_ARRAY, GL_UNSIGNED_BYTE
+
 import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
 import genesis.utils.particle as pu
+from genesis.constants import DRAWN_IMAGE, TEXTURE_SLOT
+from genesis.engine.dynamic_texture import DynamicTextureHandle
 from genesis.engine.state_change import StateChange, Subscriber
 from genesis.ext import pyrender
 from genesis.ext.pyrender.jit_render import JITRenderer
@@ -34,6 +39,28 @@ class RigidNodeBatch(NamedTuple):
     geoms_idx: list[int]
     geoms_uid: list[int]
     is_plane: list[bool]
+
+
+@dataclass
+class DynamicTextureTargets:
+    """The nodes drawing one dynamic texture, and the texture arrays holding its images that they sample.
+
+    An array holds the variants, then the canvases of the rendered environments. A node samples the array of the
+    material texture it binds, the base color or the emissive ('textures', keyed by whether it is the base color), at
+    the layer each rendered environment selects. 'canvases_layer' holds the layer of the canvas of each environment of
+    the scene, -1 for one not rendered. 'nodes' holds the node each visual geom was last bound through, so that a node
+    drawn anew is bound again. 'selection_version' holds the version of the selection the nodes show, and 'callback'
+    is the callback subscribed to the handle.
+    """
+
+    handle: "DynamicTextureHandle"
+    textures: dict[bool, "pyrender.Texture"]
+    canvases_layer: np.ndarray
+    nodes_key: list["gs.UID"]
+    is_base_color: list[bool]
+    nodes: list["pyrender.Node | None"]
+    selection_version: int
+    callback: Callable[[np.ndarray, torch.Tensor], None]
 
 
 class TrackedNodeList:
@@ -199,6 +226,8 @@ class RasterizerContext:
         self.link_frame_nodes = dict()
         self.frustum_nodes = dict()  # nodes camera frustums
         self.rigid_nodes = dict()
+        # The rigid nodes that the dynamic textures of the scene are drawn by, synced at update time
+        self._dynamic_texture_targets: dict["DynamicTextureHandle", DynamicTextureTargets] = {}
         # The geoms behind the rigid nodes, grouped by solver and visual mode for placement at update time
         self._rigid_batches: dict[tuple["RigidSolver | KinematicSolver", bool], RigidNodeBatch] = {}
         # (env_idx, geom.uid) -> per-env pyrender node for kinematic entities currently driven by set_vverts
@@ -300,6 +329,9 @@ class RasterizerContext:
                 self.remove_node(external_node)
             node_registry.clear()
         self._per_env_vverts_entity_uids.clear()
+        for targets in self._dynamic_texture_targets.values():
+            targets.handle.unsubscribe(targets.callback)
+        self._dynamic_texture_targets.clear()
 
     def reset(self):
         self._t = -1
@@ -595,6 +627,40 @@ class RasterizerContext:
                     mesh_node = self.add_geom_node(geom, geoms_T, material=vis_materials.get(surface_key))
                     if mesh_node is not None:
                         vis_materials.setdefault(surface_key, mesh_node.primitives[0].material)
+
+        # A dynamic texture is the base color of the material when the surface draws it as its color, and its emissive
+        # texture otherwise (see 'surface_uvs_to_trimesh_visual'). Its arrays hold its images in the format of its slot,
+        # which the shaders read from the type of the array.
+        for handle in self.scene.dynamic_textures:
+            texture = handle.texture
+            images = texture.get_variants_image(handle.slot)
+            canvases_layer = np.full(self.sim._B, -1, dtype=gs.np_int)
+            n_canvases = len(self.rendered_envs_idx) if texture.is_batched else 1
+            canvases_layer[self.rendered_envs_idx] = len(images) + np.arange(len(self.rendered_envs_idx)) % n_canvases
+            images = np.concatenate((images, np.zeros((n_canvases, *images.shape[1:]), dtype=images.dtype)))
+            data_format = GL_HALF_FLOAT if handle.slot == TEXTURE_SLOT.EMISSIVE else GL_UNSIGNED_BYTE
+            is_base_color = [vgeom.surface.get_rgba() is texture for vgeom in handle.vgeoms]
+            textures = {
+                is_base: pyrender.Texture(
+                    source=images,
+                    source_channels="RGBA" if is_base else "RGB",
+                    tex_type=GL_TEXTURE_2D_ARRAY,
+                    data_format=data_format,
+                )
+                for is_base in set(is_base_color)
+            }
+            targets = DynamicTextureTargets(
+                handle,
+                textures,
+                canvases_layer,
+                [vgeom.uid for vgeom in handle.vgeoms],
+                is_base_color,
+                [None] * len(handle.vgeoms),
+                -1,
+                partial(self._on_dynamic_texture_draw, handle),
+            )
+            handle.subscribe(targets.callback)
+            self._dynamic_texture_targets[handle] = targets
 
         if self.sim.rigid_solver.is_active and any(link.visualize_contact for link in self.sim.rigid_solver.links):
             # Scale contact arrows by the parent link's overall size rather than the individual contacting geom, so
@@ -1302,6 +1368,23 @@ class RasterizerContext:
     def clear_debug_objects(self):
         self.clear_external_nodes()
 
+    def _on_dynamic_texture_draw(
+        self, handle: "DynamicTextureHandle", envs_idx: np.ndarray, image: torch.Tensor
+    ) -> None:
+        """Queue the upload of the pixels drawn on the canvases of the rendered environments."""
+        targets = self._dynamic_texture_targets[handle]
+        if handle.texture.is_batched:
+            layers_idx = targets.canvases_layer[envs_idx]
+        else:
+            layers_idx = np.array([len(handle.texture.variants)])
+        (images_idx,) = np.nonzero(layers_idx >= 0)
+        if len(images_idx) > 0:
+            images = tensor_to_array(image[torch.as_tensor(images_idx, device=image.device)])
+            with self.scene._visualizer.viewer_lock:
+                for texture in targets.textures.values():
+                    texture.set_layers(layers_idx[images_idx], images)
+                    self._scene.updated_textures.add(texture)
+
     def update(self, force_render: bool = False, solvers=None):
         """
         Sync the nodes with the state of the scene.
@@ -1309,6 +1392,36 @@ class RasterizerContext:
         `solvers` restricts the sync to the nodes of those solvers, whose state changed since the last sync, the others
         being current. A sync after a step updates the nodes of every solver, whatever `solvers`.
         """
+        # The dynamic textures are drawn and switched at any time, stepping or not. The lock is taken only for them, so
+        # that a scene without any renders without waiting for the viewer.
+        if self._dynamic_texture_targets:
+            with self.scene._visualizer.viewer_lock:
+                for targets in self._dynamic_texture_targets.values():
+                    selection = targets.handle.selection[self.rendered_envs_idx]
+                    canvases_layer = targets.canvases_layer[self.rendered_envs_idx]
+                    layers = np.where(selection == DRAWN_IMAGE, canvases_layer, selection)
+                    for i_n, (node_key, is_base_color) in enumerate(zip(targets.nodes_key, targets.is_base_color)):
+                        node = self.rigid_nodes.get(node_key)
+                        if node is None:
+                            continue
+                        primitive = node.mesh.primitives[0]
+                        # A node drawn anew samples the texture its trimesh visual seeds, which the array replaces
+                        if node is not targets.nodes[i_n]:
+                            if is_base_color:
+                                primitive.material.baseColorTexture = targets.textures[True]
+                            else:
+                                primitive.material.emissiveTexture = targets.textures[False]
+                            if primitive.texture_layers is None:
+                                primitive.texture_layers = np.zeros((len(self.rendered_envs_idx), 2), np.float32)
+                            self._scene._meshes_updated = True
+                            targets.nodes[i_n] = node
+                        elif targets.selection_version == targets.handle.selection_version:
+                            continue
+                        texture_layers = primitive.texture_layers.copy()
+                        texture_layers[:, 0 if is_base_color else 1] = layers
+                        self.jit.update_texture_layers(node, texture_layers)
+                    targets.selection_version = targets.handle.selection_version
+
         # Early return if already updated previously
         if not force_render and self._t >= self.scene.sim.cur_step_global:
             return

@@ -26,7 +26,8 @@ class Texture(object):
         The sampler used by this texture.
     source : (h,w,c) uint8 or (h,w,c) float or :class:`PIL.Image.Image`
         The image used by this texture. If None, the texture is created
-        empty and width and height must be specified.
+        empty and width and height must be specified. A texture array takes
+        (n_layers,h,w,c) uint8 or float16 images.
     source_channels : str
         Either `D`, `R`, `RG`, `GB`, `RGB`, or `RGBA`. Indicates the
         channels to extract from `source`. Any missing channels will be filled
@@ -36,9 +37,9 @@ class Texture(object):
     height : int, optional
         For empty textures, the height of the texture buffer.
     tex_type : int
-        Either GL_TEXTURE_2D or GL_TEXTURE_CUBE.
+        Either GL_TEXTURE_2D, GL_TEXTURE_2D_ARRAY or GL_TEXTURE_CUBE.
     data_format : int
-        For now, just GL_FLOAT.
+        GL_UNSIGNED_BYTE, GL_HALF_FLOAT or GL_FLOAT.
     """
 
     def __init__(
@@ -63,6 +64,8 @@ class Texture(object):
 
         self._texid = None
         self._is_transparent = False
+        # The layers of a texture array written since its last upload (see 'set_layers')
+        self._pending_layers: set[int] = set()
 
     @property
     def name(self):
@@ -97,6 +100,8 @@ class Texture(object):
     def source(self, value):
         if value is None:
             self._source = None
+        elif isinstance(value, np.ndarray) and value.ndim == 4:
+            self._source = np.ascontiguousarray(value[..., : len(self.source_channels)])
         else:
             self._source = format_texture_source(value, self.source_channels)
         self._is_transparent = False
@@ -151,7 +156,7 @@ class Texture(object):
         if self._is_transparent is None:
             self._is_transparent = False
             if self.source_channels == "RGBA" and self.source is not None:
-                if np.any(self.source[:, :, 3] < cutoff):
+                if np.any(self.source[..., 3] < cutoff):
                     self._is_transparent = True
         return self._is_transparent
 
@@ -164,20 +169,55 @@ class Texture(object):
     # OpenGL code
     ##################
 
+    @property
+    def _gl_format(self):
+        """The OpenGL format of the channels of the texture."""
+        if self.source_channels == "R":
+            return GL_RED
+        if self.source_channels in ("RG", "GB"):
+            return GL_RG
+        if self.source_channels == "RGB":
+            return GL_RGB
+        if self.source_channels == "RGBA":
+            return GL_RGBA
+        return GL_DEPTH_COMPONENT
+
+    def set_layers(self, layers_idx, images):
+        """Write (len(layers_idx),h,w,c) images into layers of a texture array, uploaded by 'upload_source'."""
+        self._source[layers_idx] = images[..., : len(self.source_channels)]
+        self._pending_layers.update(layers_idx.tolist())
+
+    def upload_source(self):
+        """Upload the current source of the texture, which keeps its size and channels, the written layers alone for a
+        texture array.
+
+        A texture not yet in the OpenGL context uploads its current source once it is added, so this does nothing then.
+        """
+        if self._texid is None:
+            self._pending_layers.clear()
+            return
+        glBindTexture(self.tex_type, self._texid)
+        if self.tex_type == GL_TEXTURE_2D_ARRAY:
+            height, width = self.source.shape[1:3]
+            for layer in sorted(self._pending_layers):
+                data = np.ascontiguousarray(self.source[layer, ::-1])
+                glTexSubImage3D(
+                    self.tex_type, 0, 0, 0, layer, width, height, 1, self._gl_format, self.data_format, data
+                )
+            self._pending_layers.clear()
+        else:
+            data = np.ascontiguousarray(np.flip(self.source, axis=0))
+            height, width = self.source.shape[:2]
+            glTexSubImage2D(self.tex_type, 0, 0, 0, width, height, self._gl_format, self.data_format, data)
+            glGenerateMipmap(self.tex_type)
+        glBindTexture(self.tex_type, 0)
+
     def _add_to_context(self):
         if self._texid is not None:
             return
             # raise ValueError('Texture already loaded into OpenGL context')
 
-        fmt = GL_DEPTH_COMPONENT
-        if self.source_channels == "R":
-            fmt = GL_RED
-        elif self.source_channels == "RG" or self.source_channels == "GB":
-            fmt = GL_RG
-        elif self.source_channels == "RGB":
-            fmt = GL_RGB
-        elif self.source_channels == "RGBA":
-            fmt = GL_RGBA
+        fmt = self._gl_format
 
         # Generate the OpenGL texture
         self._texid = glGenTextures(1)
@@ -187,20 +227,30 @@ class Texture(object):
         data = None
         width = self.width
         height = self.height
+        is_array = self.tex_type == GL_TEXTURE_2D_ARRAY
         if self.source is not None:
-            data = np.flip(self.source, axis=0).reshape((-1,))
-            width = self.source.shape[1]
-            height = self.source.shape[0]
+            data = np.flip(self.source, axis=1 if is_array else 0).reshape((-1,))
+            height, width = self.source.shape[1:3] if is_array else self.source.shape[:2]
 
         # A 16-bit depth texture halves what sampling a shadow map reads, which is what bounds the cost of the shadow
         # comparisons at the default map size, and its quantization stays below the depth bias of those comparisons.
         internal_fmt = fmt
         if fmt == GL_DEPTH_COMPONENT and self.data_format == GL_UNSIGNED_SHORT:
             internal_fmt = GL_DEPTH_COMPONENT16
+        # An unsized format would let the driver store half floats at 8 bits per channel
+        if self.data_format == GL_HALF_FLOAT:
+            internal_fmt = GL_RGBA16F if fmt == GL_RGBA else GL_RGB16F
 
         # Bind texture and generate mipmaps
-        glTexImage2D(self.tex_type, 0, internal_fmt, width, height, 0, fmt, self.data_format, data)
-        if self.source is not None:
+        if is_array:
+            n_layers = len(self.source)
+            glTexImage3D(self.tex_type, 0, internal_fmt, width, height, n_layers, 0, fmt, self.data_format, data)
+            self._pending_layers.clear()
+        else:
+            glTexImage2D(self.tex_type, 0, internal_fmt, width, height, 0, fmt, self.data_format, data)
+        # A texture array has no mipmaps, since generating them covers every layer, which would make the upload of a
+        # single layer cost as much as the whole array
+        if self.source is not None and not is_array:
             glGenerateMipmap(self.tex_type)
 
         if self.sampler.magFilter is not None:
@@ -213,7 +263,9 @@ class Texture(object):
         if self.sampler.minFilter is not None:
             glTexParameteri(self.tex_type, GL_TEXTURE_MIN_FILTER, self.sampler.minFilter)
         else:
-            if self.source is not None:
+            if is_array:
+                glTexParameteri(self.tex_type, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+            elif self.source is not None:
                 glTexParameteri(self.tex_type, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
             else:
                 glTexParameteri(self.tex_type, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
@@ -221,7 +273,7 @@ class Texture(object):
         glTexParameteri(self.tex_type, GL_TEXTURE_WRAP_S, self.sampler.wrapS)
         glTexParameteri(self.tex_type, GL_TEXTURE_WRAP_T, self.sampler.wrapT)
         border_color = np.full((4,), fill_value=255, dtype=np.uint8)
-        if fmt == GL_DEPTH_COMPONENT or self.data_format == GL_FLOAT:
+        if fmt == GL_DEPTH_COMPONENT or self.data_format in (GL_FLOAT, GL_HALF_FLOAT):
             border_color = np.ones((4,), dtype=np.float32)
         glTexParameterfv(self.tex_type, GL_TEXTURE_BORDER_COLOR, border_color)
 

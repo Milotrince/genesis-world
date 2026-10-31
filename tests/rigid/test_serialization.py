@@ -153,7 +153,8 @@ def test_export_and_load_rigid(
             pos=(0.0, 0.5, 0.5),
         ),
     )
-    # A link whose frame is anchored on the geometry it holds, given a pose offset as well
+    # A link whose frame is anchored on the geometry it holds, given a pose offset as well. Its surface holds a dynamic
+    # texture, whose declaration travels.
     anchored = scene.add_entity(
         morph=gs.morphs.Mesh(
             file="meshes/duck.obj",
@@ -165,6 +166,15 @@ def test_export_and_load_rigid(
         surface=gs.surfaces.Default(
             diffuse_texture=gs.textures.ImageTexture(
                 image_path="textures/checker.png",
+            ),
+            emissive_texture=gs.textures.DynamicTexture(
+                resolution=(4, 2),
+                variants=(
+                    gs.textures.ColorTexture(
+                        color=(0.0, 0.5, 0.0),
+                    ),
+                ),
+                is_batched=True,
             ),
         ),
     )
@@ -351,6 +361,12 @@ def test_export_and_load_rigid(
     restored_visual = restored.entities[6].vgeoms[0].trimesh.visual
     assert restored_visual.kind == "texture"
     assert_equal(restored_visual.uv, anchored.vgeoms[0].trimesh.visual.uv)
+    restored_texture = restored.entities[6].vgeoms[0].vmesh.surface.emissive_texture
+    assert_equal(
+        restored_texture.get_variants_image(gs.TEXTURE_SLOT.EMISSIVE),
+        anchored.vgeoms[0].vmesh.surface.emissive_texture.get_variants_image(gs.TEXTURE_SLOT.EMISSIVE),
+    )
+    assert restored_texture.is_batched
     # A morph names the asset it was created from, since the description stands for what was parsed out of it
     assert restored.entities[15].morph.file == "two_link.urdf.xacro"
     # A mesh states the asset it was read from by name, wherever that asset stood
@@ -478,7 +494,7 @@ def test_export_before_build(n_envs, checkpoint_scene, tmp_path, caplog):
     assert_equal(restored.options.viewer.camera_fov, 60)
     assert_equal(restored.options.viewer.camera_pos, scene.options.viewer.camera_pos)
     # The viewer options are recorded as authored, whatever display and platform the scene was viewed with
-    assert restored.options.viewer.res is None
+    assert restored.options.viewer.resolution is None
     assert restored.options.viewer.run_in_thread is None
     assert restored.options.sim.dt == scene.options.sim.dt
     assert [entity.name for entity in restored.entities] == [entity.name for entity in scene.entities]

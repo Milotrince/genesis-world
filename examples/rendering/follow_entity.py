@@ -30,7 +30,7 @@ def main():
     )
 
     cam = scene.add_camera(
-        res=(640, 480),
+        resolution=(640, 480),
         pos=(2.0, 0.0, 1.5),
         lookat=(0, 0, 0.7),
         fov=40,

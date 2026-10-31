@@ -13,7 +13,7 @@ from genesis.utils.cache import SizeCappedCache
 
 from .misc import FoamOptions
 from .options import Options
-from .textures import Texture, ColorTexture, ImageTexture, BatchTexture
+from .textures import BatchTexture, ColorTexture, DynamicTexture, ImageTexture, Texture
 
 MetalType = Literal["aluminium", "gold", "copper", "brass", "iron", "titanium", "vanadium", "lithium"]
 
@@ -129,6 +129,15 @@ class Surface(Options):
 
         return data
 
+    @model_validator(mode="after")
+    def _check_dynamic_textures(self) -> Self:
+        for name, value in self:
+            if isinstance(value, DynamicTexture) and name not in ("diffuse_texture", "emissive_texture"):
+                gs.raise_exception(
+                    f"A dynamic texture fills 'diffuse_texture' or 'emissive_texture' alone, got '{name}'."
+                )
+        return self
+
     @property
     def texture(self) -> Texture | None:
         raise NotImplementedError
@@ -169,6 +178,8 @@ class Surface(Options):
                 self.texture = color_texture
             elif not force:
                 self.texture = ColorTexture()
+        elif isinstance(self.texture, DynamicTexture):
+            self.texture = self.texture.resolve_asset_texture(color_texture)
 
         # update ior
         if self.ior is None or force:
@@ -191,6 +202,8 @@ class Surface(Options):
                 return new
             elif not force and default is not None:
                 return default
+        elif isinstance(current, DynamicTexture):
+            return current.resolve_asset_texture(new)
         return current
 
     @staticmethod
@@ -243,6 +256,10 @@ def _resolve_albedo(base_texture: Texture | None, emissive_texture: Texture | No
 
 
 def _make_rgba(color_texture: Texture | None, opacity_texture: Texture | None, batch: bool) -> "BatchTexture | Texture":
+    # The image of a dynamic texture is written at runtime and holds its own opacity
+    if isinstance(color_texture, DynamicTexture):
+        return BatchTexture(textures=[color_texture]) if batch else color_texture
+
     # Resolve a surface's color and opacity textures into a single RGBA texture. The result is memoized on the input
     # texture instances: surfaces sharing the same textures (e.g. all textured submeshes of a GLB) then reuse a single
     # merged array instead of allocating one full-resolution copy each. A texture update swaps in a new instance, which

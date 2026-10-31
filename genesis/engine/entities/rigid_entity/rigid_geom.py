@@ -9,6 +9,7 @@ import trimesh
 
 import genesis as gs
 import genesis.utils.geom as gu
+from genesis.engine.dynamic_texture import DynamicTextureHandle, get_dynamic_texture
 from genesis.engine.mesh import Mesh
 from genesis.repr_base import RBC
 from genesis.utils.misc import DeprecationError, qd_to_torch, tensor_to_array
@@ -615,6 +616,9 @@ class RigidVisGeom(RBC):
         self.active_envs_mask: torch.Tensor | None = None
         self.active_envs_idx: np.ndarray | None = None
 
+        # The dynamic textures this visual geom draws, which the scene lists as it builds
+        self._dynamic_textures: list[DynamicTextureHandle] = []
+
     def _build(self):
         pass
 
@@ -722,6 +726,23 @@ class RigidVisGeom(RBC):
         quat = vgeoms_quat[..., self.idx, :].unsqueeze(-2)
         tensor = gu.transform_by_trans_quat(init, pos, quat)
         return tensor[0] if self._solver.n_envs == 0 else tensor
+
+    @gs.assert_built
+    def get_texture(self, texture_name: str | None = None, envs_idx=None) -> torch.Tensor:
+        """Return the variant each environment shows on a dynamic texture of this visual geom.
+
+        'texture_name' picks the texture of that name, and may be None when the visual geom draws a single one. See
+        ``DynamicTextureHandle.get_texture`` for 'envs_idx' and the returned value.
+        """
+        return get_dynamic_texture(self._dynamic_textures, texture_name, "this visual geom").get_texture(envs_idx)
+
+    @gs.assert_built
+    def set_texture(self, texture, texture_name: str | None = None, envs_idx=None):
+        """Show a variant, or draw pixels, on a dynamic texture of this visual geom.
+
+        See ``get_texture`` for 'texture_name', and ``DynamicTextureHandle.set_texture`` for 'texture' and 'envs_idx'.
+        """
+        get_dynamic_texture(self._dynamic_textures, texture_name, "this visual geom").set_texture(texture, envs_idx)
 
     # ------------------------------------------------------------------------------------
     # ----------------------------------- properties -------------------------------------

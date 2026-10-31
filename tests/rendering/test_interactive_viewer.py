@@ -76,7 +76,7 @@ def test_default_plugin(n_envs, tmp_path):
             dt=DT,
         ),
         viewer_options=gs.options.ViewerOptions(
-            res=CAM_RES,
+            resolution=CAM_RES,
             run_in_thread=(sys.platform == "linux"),
             camera_pos=(2.0, 0.0, 1.0),
             camera_lookat=(0.0, 0.0, 0.0),
@@ -105,7 +105,7 @@ def test_default_plugin(n_envs, tmp_path):
         )
     )
     cam = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=(2.0, 0.0, 1.0),
         lookat=(0.0, 0.0, 0.0),
         fov=30,
@@ -328,7 +328,7 @@ def test_key_press(renderer_type, tmp_path, monkeypatch, renderer, png_snapshot)
         viewer_options=gs.options.ViewerOptions(
             # Force screen-independent low-quality resolution when running unit tests for consistency.
             # Still, it must be large enough since rendering text involved alpha blending, which is platform-dependent.
-            res=(640, 480),
+            resolution=(640, 480),
             # Enable running in background thread if supported by the platform.
             # Note that windows is not supported because it would trigger the following exception if some previous tests
             # was only using rasterizer without interactive viewer:
@@ -435,7 +435,7 @@ def test_mouse_interaction_plugin(n_envs, env_spacing, n_envs_per_row, target_en
         ),
         viewer_options=gs.options.ViewerOptions(
             # Forces odd resolution so that mouse clicks are centered on pixels
-            res=(2 * (CAM_RES[0] // 2) + 1, 2 * (CAM_RES[0] // 2) + 1),
+            resolution=(2 * (CAM_RES[0] // 2) + 1, 2 * (CAM_RES[0] // 2) + 1),
             run_in_thread=(sys.platform == "linux"),
             camera_pos=CAM_POS,
             # looking to the top of the box at the target env
@@ -754,7 +754,7 @@ def test_add_camera_consistency(add_box, renderer, show_viewer):
             ],
         ),
         viewer_options=gs.options.ViewerOptions(
-            res=CAM_RES,
+            resolution=CAM_RES,
             camera_pos=CAM_POS,
             camera_lookat=CAM_LOOKAT,
             camera_fov=CAM_FOV,
@@ -774,7 +774,7 @@ def test_add_camera_consistency(add_box, renderer, show_viewer):
             ),
         )
     camera = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=CAM_POS,
         lookat=CAM_LOOKAT,
         fov=CAM_FOV,
@@ -819,7 +819,7 @@ def test_rasterizer_camera_sensor(renderer):
 
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
-            res=CAM_RES,
+            resolution=CAM_RES,
             run_in_thread=False,
         ),
         renderer=renderer,
@@ -832,7 +832,7 @@ def test_rasterizer_camera_sensor(renderer):
     )
     camera_sensor = scene.add_sensor(
         RasterizerCameraOptions(
-            res=CAM_RES,
+            resolution=CAM_RES,
         )
     )
     scene.build()
@@ -859,7 +859,7 @@ def test_camera_render_honors_resolution(renderer):
     camera_dist = 3.0
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
-            res=viewer_res,
+            resolution=viewer_res,
         ),
         renderer=renderer,
         show_viewer=True,
@@ -873,7 +873,7 @@ def test_camera_render_honors_resolution(renderer):
         ),
     )
     camera = scene.add_camera(
-        res=camera_res,
+        resolution=camera_res,
         pos=(0.0, 0.0, camera_dist),
         lookat=(0.0, 0.0, 0.0),
         near=1.0,

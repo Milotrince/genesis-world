@@ -6,6 +6,7 @@ import torch
 
 import genesis as gs
 from genesis.constants import link_ref_frame
+from genesis.engine.dynamic_texture import DynamicTextureHandle, get_dynamic_texture
 from genesis.engine.states.entities import RigidEntityState
 from genesis.options.indices import get_links_path
 from genesis.typing import UnitVec4FType, Vec3FType
@@ -72,6 +73,8 @@ class KinematicEntity(Entity):
         self._is_built: bool = False
         self._is_attached: bool = False
         self._is_vverts_overridden: bool = False
+        # The dynamic textures its visual geoms draw, which the scene lists as it builds
+        self._dynamic_textures: list[DynamicTextureHandle] = []
 
         # The names from the root of the kinematic tree down to each link, by local link index, which the link options
         # select on (see 'gs.LinkIndex')
@@ -1090,6 +1093,25 @@ class KinematicEntity(Entity):
         if self.is_built:
             return self._vgeoms
         return gs.List(vgeom for link in self._links for vgeom in link.vgeoms)
+
+    @gs.assert_built
+    def get_texture(self, texture_name: str | None = None, envs_idx=None) -> torch.Tensor:
+        """Return the variant each environment shows on a dynamic texture drawn by the visual geoms of the entity.
+
+        'texture_name' picks the texture of that name, and may be None when they draw a single one. See
+        ``DynamicTextureHandle.get_texture`` for 'envs_idx' and the returned value.
+        """
+        return get_dynamic_texture(self._dynamic_textures, texture_name, f"entity '{self.name}'").get_texture(envs_idx)
+
+    @gs.assert_built
+    def set_texture(self, texture, texture_name: str | None = None, envs_idx=None):
+        """Show a variant, or draw pixels, on a dynamic texture drawn by the visual geoms of the entity.
+
+        See ``get_texture`` for 'texture_name', and ``DynamicTextureHandle.set_texture`` for 'texture' and 'envs_idx'.
+        """
+        get_dynamic_texture(self._dynamic_textures, texture_name, f"entity '{self.name}'").set_texture(
+            texture, envs_idx
+        )
 
     @gs.assert_built
     def set_vverts(self, vverts, envs_idx=None):
