@@ -25,20 +25,10 @@ struct Material {
     sampler2D occlusion_texture;
 #endif
 #ifdef HAS_EMISSIVE_TEX
-#ifdef EMISSIVE_TEX_ARRAY
-    sampler2DArray emissive_texture;
-    float emissive_layer;
-#else
     sampler2D emissive_texture;
 #endif
-#endif
 #ifdef HAS_BASE_COLOR_TEX
-#ifdef BASE_COLOR_TEX_ARRAY
-    sampler2DArray base_color_texture;
-    float base_color_layer;
-#else
     sampler2D base_color_texture;
-#endif
 #endif
 #ifdef HAS_METALLIC_ROUGHNESS_TEX
     sampler2D metallic_roughness_texture;
@@ -116,19 +106,6 @@ vec4 srgb_to_linear(vec4 srgb)
 #endif
 }
 
-#ifdef BASE_COLOR_TEX_LINEAR
-vec4 linear_to_srgb(vec4 linear)
-{
-#ifndef SRGB_CORRECTED
-    vec3 b_less = step(vec3(0.0031308), linear.xyz);
-    vec3 srgb_out = mix(linear.xyz * vec3(12.92), vec3(1.055) * pow(linear.xyz, vec3(1.0 / 2.4)) - vec3(0.055), b_less);
-    return vec4(srgb_out, linear.w);
-#else
-    return linear;
-#endif
-}
-#endif
-
 ///////////////////////////////////////////////////////////////////////////////
 // MAIN
 ///////////////////////////////////////////////////////////////////////////////
@@ -138,16 +115,7 @@ void main()
     // Compute albedo
     vec4 base_color = material.base_color_factor;
 #ifdef HAS_BASE_COLOR_TEX
-#ifdef BASE_COLOR_TEX_ARRAY
-    vec4 base_color_texel = texture(material.base_color_texture, vec3(uv_0, material.base_color_layer));
-#ifdef BASE_COLOR_TEX_LINEAR
-    // A texture array holding linear values is encoded to sRGB, the encoding of every other base color
-    base_color_texel = linear_to_srgb(base_color_texel);
-#endif
-    base_color = base_color * base_color_texel;
-#else
     base_color = base_color * texture(material.base_color_texture, uv_0);
-#endif
 #endif
 
 #ifdef COLOR_0_LOC
