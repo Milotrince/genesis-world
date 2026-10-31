@@ -1,0 +1,19 @@
+genesis/__init__.py
+  s_23cfbd8d2556b9::t_1b56cc21b2cb45 11,35-38,60-61,64,67,70-79,283-284
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "89c5ab978f886175b29a1c89b36f1c8c158d8970",
+  "prompts": {},
+  "sessions": {
+    "s_23cfbd8d2556b9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a50fa271-b600-44c6-b3f7-17e0d254ed3d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
