@@ -203,7 +203,7 @@ def test_emissive_composites(base_plus_emissive_glb, show_viewer, renderer):
 
 
 @pytest.mark.required
-def test_dynamic_texture(show_viewer, png_snapshot):
+def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     # Three horizontal planes seen from above under flat ambient light, each showing one dynamic texture:
     #  - screen: an emissive texture switching between two named colors per environment, drawn as the color of an
     #    Emission surface.
@@ -359,7 +359,8 @@ def test_dynamic_texture(show_viewer, png_snapshot):
     assert_allclose(colors_variant[:, 2], colors_drawn[:, 2], atol=2.0)
     # Refused inputs: a variant the texture does not declare, a value that is neither a variant nor pixels, one
     # drawing per environment on a texture that is not batched, a number of variants matching neither one nor the
-    # environments, a name no texture of the entity holds, two textures of one name, and one texture in both slots
+    # environments, an HDR image, a name no texture of the entity holds, two textures of one name, and one texture in
+    # both slots
     with pytest.raises(gs.GenesisException, match="No variant is named"):
         screen.set_texture("green")
     with pytest.raises(gs.GenesisException, match="integer position"):
@@ -370,6 +371,10 @@ def test_dynamic_texture(show_viewer, png_snapshot):
         lamp.set_texture(np.zeros((2, 16, 16, 3)))
     with pytest.raises(gs.GenesisException, match="one per selected environment"):
         screen.set_texture(["red", "blue", "red"])
+    hdr_path = tmp_path / "sky.hdr"
+    hdr_path.touch()
+    with pytest.raises(gs.GenesisException, match="no HDR image"):
+        screen.set_texture(gs.textures.ImageTexture(image_path=str(hdr_path), encoding="linear"))
     with pytest.raises(gs.GenesisException, match="named 'lamp'"):
         screen.set_texture("red", texture_name="lamp")
     with pytest.raises(gs.GenesisException, match="distinct names"):

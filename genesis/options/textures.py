@@ -344,6 +344,8 @@ def texture_to_rgba(
     else:
         if isinstance(texture, ImageTexture):
             image_array = texture.image_array
+            if image_array is None:
+                gs.raise_exception(f"A dynamic texture takes no HDR image, got '{texture.image_path}'.")
             if image_array.ndim == 3 and image_array.shape[-1] == 1:
                 image_array = image_array[..., 0]
             image = Image.fromarray(image_array).convert("RGBA").resize((width, height), Image.Resampling.BILINEAR)
