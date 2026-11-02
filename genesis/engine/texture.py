@@ -16,14 +16,14 @@ if TYPE_CHECKING:
     from genesis.engine.scene import Scene
 
 
-class DynamicTextureHandle:
+class Texture:
     """The variant each environment shows for one dynamic texture, and the renderers drawing it.
 
     Genesis holds the selection alone: the position of the variant each environment shows, or 'DRAWN_IMAGE' for the
     pixels drawn on its canvas. The renderers hold the pixels, and each one implements the same contract:
 
-    - at build, it allocates the variants ('texture.get_variants_image(slot)'), then the canvases, one per
-      environment it renders when 'texture.is_batched' and a single shared one otherwise, binds them to the 'slot' of
+    - at build, it allocates the variants ('options.get_variants_image(slot)'), then the canvases, one per
+      environment it renders when 'options.is_batched' and a single shared one otherwise, binds them to the 'slot' of
       the visual geoms in 'vgeoms', and subscribes a callback with 'subscribe';
     - on every drawing, the callback receives the environments drawn and their pixels, as an RGBA tensor on the device
       of shape (len(envs_idx), height, width, 4), or (1, height, width, 4) when the texture is not batched;
@@ -32,12 +32,12 @@ class DynamicTextureHandle:
     The images are uint8 sRGB values in the diffuse slot, and float16 linear values in the emissive slot.
     """
 
-    def __init__(self, scene: "Scene", texture: DynamicTexture, slot: TEXTURE_SLOT, vgeoms: "list[RigidVisGeom]"):
+    def __init__(self, scene: "Scene", options: DynamicTexture, slot: TEXTURE_SLOT, vgeoms: "list[RigidVisGeom]"):
         self._scene = scene
-        self._texture = texture
+        self._options = options
         self._slot = slot
         self._vgeoms = vgeoms
-        (self._initial_variant,) = texture.get_variants_idx(texture.initial_variant)
+        (self._initial_variant,) = options.get_variants_idx(options.initial_variant)
         self._selection = np.full(scene._B, self._initial_variant, dtype=gs.np_int)
         self._selection_version = 0
         self._callbacks: list[Callable[[np.ndarray, torch.Tensor], None]] = []
@@ -45,12 +45,12 @@ class DynamicTextureHandle:
     @property
     def texture_name(self) -> str | None:
         """The name of the texture, by which the setters of an entity holding several dynamic textures pick it."""
-        return self._texture.texture_name
+        return self._options.texture_name
 
     @property
-    def texture(self) -> DynamicTexture:
+    def options(self) -> DynamicTexture:
         """The declaration of the texture, as the surface of its visual geoms holds it."""
-        return self._texture
+        return self._options
 
     @property
     def slot(self) -> TEXTURE_SLOT:
@@ -64,7 +64,7 @@ class DynamicTextureHandle:
 
     @property
     def selection(self) -> np.ndarray:
-        """The variant each environment shows, as a read-only array (see 'DynamicTextureHandle')."""
+        """The variant each environment shows, as a read-only array (see 'Texture')."""
         selection = self._selection.view()
         selection.flags.writeable = False
         return selection
@@ -75,7 +75,7 @@ class DynamicTextureHandle:
         return self._selection_version
 
     def subscribe(self, callback: Callable[[np.ndarray, torch.Tensor], None]) -> None:
-        """Call 'callback' on every drawing (see 'DynamicTextureHandle').
+        """Call 'callback' on every drawing (see 'Texture').
 
         Genesis keeps no pixels, so a renderer subscribes before any environment shows a drawing.
         """
@@ -109,12 +109,12 @@ class DynamicTextureHandle:
         is_envs_selected = envs_idx is not None
         envs_idx = tensor_to_array(self._scene._sanitize_envs_idx(envs_idx))
         if isinstance(texture, (ColorTexture, ImageTexture)):
-            texture = texture_to_rgba(texture, self._texture.resolution, self._slot)
+            texture = texture_to_rgba(texture, self._options.resolution, self._slot)
         texture_ndim = texture.ndim if torch.is_tensor(texture) else np.ndim(texture)
         if texture_ndim <= 1:
             if torch.is_tensor(texture):
                 texture = tensor_to_array(texture)
-            variants_idx = self._texture.get_variants_idx(texture)
+            variants_idx = self._options.get_variants_idx(texture)
             if len(variants_idx) not in (1, len(envs_idx)):
                 gs.raise_exception(
                     f"A dynamic texture shows one variant, or one per selected environment, got {len(variants_idx)} "
@@ -133,7 +133,7 @@ class DynamicTextureHandle:
         if isinstance(texture, np.ndarray) and not texture.flags.writeable:
             texture = texture.copy()
         image = torch.as_tensor(texture, device=gs.device)
-        if not self._texture.is_batched:
+        if not self._options.is_batched:
             if image.ndim == 4:
                 gs.raise_exception("A dynamic texture that is not batched takes a single image.")
             if is_envs_selected:
@@ -156,8 +156,8 @@ class DynamicTextureHandle:
                 image = image.mul(255.0).clamp_(0.0, 255.0).round_()
             else:
                 image = image.clamp(0, 255)
-        width, height = self._texture.resolution
-        n_images = len(envs_idx) if self._texture.is_batched else 1
+        width, height = self._options.resolution
+        n_images = len(envs_idx) if self._options.is_batched else 1
         image = broadcast_tensor(image, dtype, (n_images, height, width, n_channels))
         if n_channels == 3:
             image = torch.cat((image, image.new_full((n_images, height, width, 1), alpha)), dim=-1)
@@ -171,21 +171,19 @@ class DynamicTextureHandle:
         self.set_texture(self._initial_variant, envs_idx)
 
 
-def get_dynamic_texture(
-    handles: list[DynamicTextureHandle], texture_name: str | None, owner: str
-) -> DynamicTextureHandle:
+def get_dynamic_texture(textures: list[Texture], texture_name: str | None, owner: str) -> Texture:
     """Return the dynamic texture of 'owner' named 'texture_name', or its only one if 'texture_name' is None.
 
-    'handles' are the dynamic textures that the visual geoms of 'owner' draw, and 'owner' describes it in the errors.
+    'textures' are the dynamic textures that the visual geoms of 'owner' draw, and 'owner' describes it in the errors.
     """
     if texture_name is not None:
-        handles = [handle for handle in handles if handle.texture_name == texture_name]
-    if len(handles) == 1:
-        return handles[0]
-    if not handles:
+        textures = [texture for texture in textures if texture.texture_name == texture_name]
+    if len(textures) == 1:
+        return textures[0]
+    if not textures:
         target = "any dynamic texture" if texture_name is None else f"a dynamic texture named '{texture_name}'"
         gs.raise_exception(f"No visual geom of {owner} draws {target}.")
-    textures_name = [handle.texture_name for handle in handles]
+    textures_name = [texture.texture_name for texture in textures]
     gs.raise_exception(
-        f"The visual geoms of {owner} draw {len(handles)} dynamic textures {textures_name}. Pick one by 'texture_name'."
+        f"The visual geoms of {owner} draw {len(textures)} dynamic textures {textures_name}. Pick one by 'texture_name'."
     )
