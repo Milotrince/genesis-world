@@ -22,11 +22,11 @@ import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
 from genesis.constants import TEXTURE_SLOT
-from genesis.engine.dynamic_texture import DynamicTextureHandle
 from genesis.engine.entities.base_entity import Entity, EntityDescription
 from genesis.engine.entities.rigid_entity import KinematicEntity
 from genesis.engine.force_fields import ForceField
 from genesis.engine.states.solvers import SimState, SimulatorCheckpoint
+from genesis.engine.texture import Texture
 from genesis.options import (
     BaseCouplerOptions,
     FEMOptions,
@@ -268,7 +268,7 @@ class Scene(RBC):
 
         # emitters
         self._emitters = gs.List()
-        self._dynamic_textures: list[DynamicTextureHandle] = []
+        self._dynamic_textures: list[Texture] = []
 
         self._uid = gs.UID()
         self._is_built = False
@@ -979,27 +979,27 @@ class Scene(RBC):
             if len(set(textures_name)) != len(textures_name):
                 gs.raise_exception(f"The dynamic textures of a scene take distinct names, got {textures_name}.")
             for texture_bindings in bindings_by_texture.values():
-                _, slot, _, texture = texture_bindings[0]
-                for vgeom, vgeom_slot, field_name, texture_copy in texture_bindings:
+                _, slot, _, options = texture_bindings[0]
+                for vgeom, vgeom_slot, field_name, options_copy in texture_bindings:
                     if vgeom_slot != slot:
                         gs.raise_exception(
                             "A dynamic texture fills either the diffuse or the emissive slot, which sets the format of "
                             "its images. Declare one dynamic texture per slot."
                         )
-                    if not all(map(is_same_texture, texture_copy.variants_texture, texture.variants_texture)):
+                    if not all(map(is_same_texture, options_copy.variants_texture, options.variants_texture)):
                         gs.raise_exception(
                             "The visual geoms drawing one dynamic texture get different textures from their asset, "
                             "so its asset texture variants resolve to no single one. Bind one dynamic texture per "
                             "material with 'gs.VGeomIndex.with_material', or give those variants explicitly."
                         )
-                    setattr(vgeom.surface, field_name, texture)
+                    setattr(vgeom.surface, field_name, options)
                 vgeoms = [vgeom for vgeom, _, _, _ in texture_bindings]
-                handle = DynamicTextureHandle(self, texture, slot, vgeoms)
-                self._dynamic_textures.append(handle)
+                texture = Texture(self, options, slot, vgeoms)
+                self._dynamic_textures.append(texture)
                 for vgeom in vgeoms:
-                    vgeom._dynamic_textures.append(handle)
+                    vgeom._dynamic_textures.append(texture)
                 for entity in dict.fromkeys(vgeom.entity for vgeom in vgeoms):
-                    entity._dynamic_textures.append(handle)
+                    entity._dynamic_textures.append(texture)
 
             with namespace(self._namespace):
                 self._sim.build()
@@ -1101,8 +1101,8 @@ class Scene(RBC):
             self._recorder_manager.record(self._sim.cur_step_global)
         self._recorder_manager.reset(envs_idx)
         self._reset(state, envs_idx=envs_idx)
-        for handle in self._dynamic_textures:
-            handle.reset(envs_idx)
+        for texture in self._dynamic_textures:
+            texture.reset(envs_idx)
 
     def _reset(self, state: SimState | None = None, *, envs_idx=None, keep_init: bool = False):
         if self._is_built:
@@ -2173,8 +2173,8 @@ class Scene(RBC):
         return self._emitters
 
     @property
-    def dynamic_textures(self) -> list[DynamicTextureHandle]:
-        """The handles setting the dynamic textures of the scene, one per declaration, once it is built."""
+    def dynamic_textures(self) -> list[Texture]:
+        """The runtime state of the dynamic textures of the scene, one per declaration, once it is built."""
         return self._dynamic_textures
 
     @property
