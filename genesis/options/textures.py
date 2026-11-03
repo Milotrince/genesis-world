@@ -294,19 +294,13 @@ class ImageTexture(Texture, SerializationMixin):
         )
 
 
-class AssetTexture(Texture):
-    """
-    The texture the asset gives the map of a surface holding a dynamic texture, as a variant of that dynamic texture.
-
-    It stands in the 'variants' of a ``DynamicTexture`` alone, and resolves when the entity is added: to the image or
-    the color the asset gives the map, or to no texture where it gives none. Each visual geom drawing the dynamic
-    texture resolves it to the texture its own asset material gives, so one declaration serves several materials.
-    """
+class _ImagelessTexture(Texture):
+    """A texture holding no image at declaration, which the checks and simplifications of a static texture keep as is."""
 
     def check_dim(self, dim: int) -> Texture | None:
         return None
 
-    def check_simplify(self) -> "AssetTexture":
+    def check_simplify(self) -> Self:
         return self
 
     def apply_cutoff(self, cutoff: float) -> None:
@@ -321,6 +315,16 @@ class AssetTexture(Texture):
     @cached_property
     def requires_uv(self) -> bool:
         return True
+
+
+class AssetTexture(_ImagelessTexture):
+    """
+    The texture the asset gives the map of a surface holding a dynamic texture, as a variant of that dynamic texture.
+
+    It stands in the 'variants' of a ``DynamicTexture`` alone, and resolves when the entity is added: to the image or
+    the color the asset gives the map, or to no texture where it gives none. Each visual geom drawing the dynamic
+    texture resolves it to the texture its own asset material gives, so one declaration serves several materials.
+    """
 
 
 def texture_to_rgba(
@@ -369,7 +373,7 @@ def texture_to_rgba(
     return (rgba * 255.0).round().astype(np.uint8)
 
 
-class DynamicTexture(Texture):
+class DynamicTexture(_ImagelessTexture):
     """
     A texture whose image changes while the simulation runs, such as a screen or an indicator light.
 
@@ -478,25 +482,6 @@ class DynamicTexture(Texture):
         """Return the image every environment shows at build, as an RGBA uint8 array of shape (height, width, 4)."""
         (i_variant,) = self.get_variants_idx(self.initial_variant)
         return texture_to_rgba(self.variants_texture[i_variant], self.resolution)
-
-    def check_dim(self, dim: int) -> Texture | None:
-        return None
-
-    def check_simplify(self) -> "DynamicTexture":
-        return self
-
-    def apply_cutoff(self, cutoff: float) -> None:
-        pass
-
-    @computed_field
-    @cached_property
-    def is_black(self) -> bool:
-        return False
-
-    @computed_field
-    @cached_property
-    def requires_uv(self) -> bool:
-        return True
 
 
 class BatchTexture(Texture):

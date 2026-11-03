@@ -324,10 +324,9 @@ class _ArticulatedEntity(BaseEntity[EntityT]):
 
     @model_validator(mode="after")
     def _check_vgeoms(self) -> "_ArticulatedEntity":
-        if any(
-            not vgeom_index.is_all and vgeom_index.names is None and vgeom_index.material_names is None
-            for vgeom_index in self.vgeoms
-        ) and not all(isinstance(morph, (Mesh, Primitive)) for morph in self.morphs):
+        if any(vgeom_index.is_by_ordinal for vgeom_index in self.vgeoms) and not all(
+            isinstance(morph, (Mesh, Primitive)) for morph in self.morphs
+        ):
             gs.raise_exception(
                 "Visual geom options of an entity select visual geoms by ordinal only if its morph is a mesh or a "
                 "primitive. Select them with 'gs.VGeomIndex.all()', 'named' or 'with_material', or through the options "
