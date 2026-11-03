@@ -508,7 +508,7 @@ from .constants import (
     mpm_model,
     yield_criterion,
     coup_type,
-    TEXTURE_MAP,
+    TEXTURE_MAP_TYPE,
     DRAWN_IMAGE,
 )
 
