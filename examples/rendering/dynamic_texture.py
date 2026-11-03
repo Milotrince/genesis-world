@@ -101,7 +101,7 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
                 with self._lock:
                     images[envs_idx] = tensor_to_array(image)
 
-            texture.subscribe(copy_drawing)
+            texture.subscribe_drawing(copy_drawing)
             mesh = trimesh.Trimesh(vgeom.init_vverts, vgeom.init_vfaces, process=False)
             self._canvases[vgeom.uid] = Canvas(texture, mesh, variants, images, pixels_pos, copy_drawing)
 
@@ -196,7 +196,7 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
         super().on_close()
 
         for canvas in self._canvases.values():
-            canvas.texture.unsubscribe(canvas.callback)
+            canvas.texture.unsubscribe_drawing(canvas.callback)
         self._canvases.clear()
 
 
