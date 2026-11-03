@@ -220,7 +220,7 @@ def main():
         gs.morphs.Plane(),
     )
     # The variants to switch between, named and each the size of the dynamic texture: the texture of the asset, a
-    # checkerboard, vertical stripes and the texture of the asset wearing glasses and hair
+    # checkerboard, vertical stripes and the texture of the asset wearing glasses, dark hair and a navy shirt
     width, height = TEXTURE_RESOLUTION
     cols, rows = np.arange(width) // 32, np.arange(height)[:, None] // 32
     is_checker_dark = (rows + cols) % 2 == 0
