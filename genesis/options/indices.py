@@ -245,6 +245,11 @@ class VGeomIndex(_NamedOrdinalIndex):
         """Whether the selection holds every element."""
         return super().is_all and self.material_names is None
 
+    @property
+    def is_by_ordinal(self) -> bool:
+        """Whether the selection holds visual geoms by ordinal, by mask or by span, which count within a link."""
+        return not self.is_all and self.names is None and self.material_names is None
+
     def matches_material(self, material_name: str) -> bool:
         """Whether a selection by material name holds the visual geom of a given asset material name."""
         return any(fnmatchcase(material_name, name) for name in self.material_names)

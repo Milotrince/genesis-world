@@ -537,10 +537,13 @@ class JITRenderer:
         self.pose = np.zeros((n, 4, 4), np.float32)
         # 0: flags, bit i set for texture slot i, and bit i + 8 for one that is a texture array, 1-7: texture id
         self.textures = np.zeros((n, 8), np.int32)
-        # The layer of the base color (0) and of the emissive (1) texture array each rendered environment samples (see
-        # 'Primitive.texture_layers')
-        self.texture_layers = np.zeros((n, max(len(self.envs_offset), 1), 2), np.float32)
-        self.is_layered = np.zeros(n, np.bool_)
+        # The layer of the base color (0) and of the emissive (1) texture array each rendered environment samples, for
+        # the primitives sampling a texture array alone (see 'Primitive.texture_layers'), and the row of each primitive
+        # in it, -1 for one sampling none
+        is_layered = np.array([primitive.texture_layers is not None for primitive in primitive_list], np.bool_)
+        self.texture_layers_idx = np.full(n, -1, np.int32)
+        self.texture_layers_idx[is_layered] = np.arange(np.count_nonzero(is_layered))
+        self.texture_layers = np.zeros((np.count_nonzero(is_layered), max(len(self.envs_offset), 1), 2), np.float32)
         self.pbr_mat = np.zeros((n, 9), np.float32)  # base_color <- 4, metallic <- 1, roughness <- 1, emissive <- 3
         self.spec_mat = np.zeros((n, 11), np.float32)  # diffuse <- 4, specular <- 3, glossiness <- 1, emissive <- 3
         self.render_flags = np.zeros(
@@ -638,9 +641,9 @@ class JITRenderer:
                 self.textures[i, 0] |= 4 << 8
             if tf & 8 and material.baseColorTexture.tex_type == GL_TEXTURE_2D_ARRAY:
                 self.textures[i, 0] |= 8 << 8
-            if primitive.texture_layers is not None:
-                self.is_layered[i] = True
-                self.texture_layers[i, : len(primitive.texture_layers)] = primitive.texture_layers
+            i_layers = self.texture_layers_idx[i]
+            if i_layers >= 0:
+                self.texture_layers[i_layers, : len(primitive.texture_layers)] = primitive.texture_layers
 
             if isinstance(material, MetallicRoughnessMaterial):
                 self.pbr_mat[i, :4] = material.baseColorFactor
@@ -762,7 +765,7 @@ class JITRenderer:
                 nb.boolean[:],
                 nb.int32,
                 nb.float32[:, :, :],
-                nb.boolean[:],
+                nb.int32[:],
                 self.gl.wrapper_type,
             ),
             cache=True,
@@ -799,7 +802,7 @@ class JITRenderer:
             is_env_instanced,
             env_offset_buffer,
             texture_layers,
-            is_layered,
+            texture_layers_idx,
             gl,
         ):
             is_rgba = not (flags & RenderFlags_DEPTH_ONLY or flags & RenderFlags_SEG)
@@ -926,9 +929,10 @@ class JITRenderer:
 
                 # A texture array is sampled at the layer of the environment drawn, which a pass drawing every
                 # environment sets per instance below
-                is_layer_set = is_layered[id] and is_rgba and not flags & RenderFlags_FLAT
+                i_layers = texture_layers_idx[id]
+                is_layer_set = i_layers >= 0 and is_rgba and not flags & RenderFlags_FLAT
                 if is_layer_set and env_idx >= 0:
-                    set_texture_layers(pid, textures[id, 0], texture_layers[id, env_idx], gl)
+                    set_texture_layers(pid, textures[id, 0], texture_layers[i_layers, env_idx], gl)
 
                 if render_flags[id, 7] or env_idx == -1:
                     if (render_flags[id, 8] or is_layer_set) and env_idx == -1:
@@ -939,9 +943,7 @@ class JITRenderer:
                             if not env_active[id, k]:
                                 continue
                             if is_layer_set:
-                                set_texture_layers(
-                                    pid, textures[id, 0], texture_layers[id, min(k, texture_layers.shape[1] - 1)], gl
-                                )
+                                set_texture_layers(pid, textures[id, 0], texture_layers[i_layers, k], gl)
                             if IS_OPENGL_42_AVAILABLE:
                                 if n_indices[id] > 0:
                                     gl.glDrawElementsInstancedBaseInstance(
@@ -1427,7 +1429,7 @@ class JITRenderer:
                 self.is_env_instanced,
                 self.env_offset_buffer if self.env_offset_buffer is not None else 0,
                 self.texture_layers,
-                self.is_layered,
+                self.texture_layers_idx,
                 self.gl.wrapper_instance,
             )
         if flags & RenderFlags.SKIP_MARKERS:
@@ -1504,8 +1506,8 @@ class JITRenderer:
         primitive = node.mesh.primitives[0]
         primitive.texture_layers[:] = layers
         i = self._primitive_index.get(primitive)
-        if i is not None:
-            self.texture_layers[i, : len(layers)] = layers
+        if i is not None and self.texture_layers_idx[i] >= 0:
+            self.texture_layers[self.texture_layers_idx[i], : len(layers)] = layers
 
     def update_buffer(self, node, buffer_name, data):
         """Queue a single buffer update to be flushed during the next render pass.

@@ -1249,8 +1249,17 @@ class KinematicEntity(Entity):
         """Return the visual geoms of the entity that a selection holds, link after link.
 
         'vgeom_index' selects within every link, as the visual geom options of the entity do, so that the selection
-        giving a visual geom its surface finds it again (see ``gs.VGeomIndex``).
+        giving a visual geom its surface finds it again (see ``gs.VGeomIndex``). A selection by ordinal counts within each
+        link, so that it requires a mesh or a primitive morph, whose single link holds every visual geom.
         """
+        if vgeom_index.is_by_ordinal and not all(
+            isinstance(morph, (gs.morphs.Mesh, gs.morphs.Primitive))
+            for morph in (self.morph, *self._morph_heterogeneous)
+        ):
+            gs.raise_exception(
+                f"Entity '{self.name}' selects visual geoms by ordinal only if its morph is a mesh or a primitive. "
+                "Select them with 'gs.VGeomIndex.named' or 'with_material', or index 'entity.vgeoms' by position."
+            )
         vgeoms = gs.List()
         for link in self._links:
             vgeoms_name = [vgeom.name for vgeom in link.vgeoms]

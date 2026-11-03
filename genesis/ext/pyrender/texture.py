@@ -27,7 +27,8 @@ class Texture(object):
     source : (h,w,c) uint8 or (h,w,c) float or :class:`PIL.Image.Image`
         The image used by this texture. If None, the texture is created
         empty and width and height must be specified. A texture array takes
-        (n_layers,h,w,c) uint8 or float16 images.
+        its first (n,h,w,c) uint8 or float16 layers, the others being written
+        by 'set_layers'.
     source_channels : str
         Either `D`, `R`, `RG`, `GB`, `RGB`, or `RGBA`. Indicates the
         channels to extract from `source`. Any missing channels will be filled
@@ -40,6 +41,8 @@ class Texture(object):
         Either GL_TEXTURE_2D, GL_TEXTURE_2D_ARRAY or GL_TEXTURE_CUBE.
     data_format : int
         GL_UNSIGNED_BYTE, GL_HALF_FLOAT or GL_FLOAT.
+    n_layers : int, optional
+        For a texture array, the number of its layers, at least that of 'source'.
     """
 
     def __init__(
@@ -52,6 +55,7 @@ class Texture(object):
         height=None,
         tex_type=GL_TEXTURE_2D,
         data_format=GL_UNSIGNED_BYTE,
+        n_layers=None,
     ):
         self.source_channels = source_channels
         self.name = name
@@ -61,11 +65,13 @@ class Texture(object):
         self.height = height
         self.tex_type = tex_type
         self.data_format = data_format
+        self.n_layers = n_layers
 
         self._texid = None
         self._is_transparent = False
-        # The layers of a texture array written since its last upload (see 'set_layers')
-        self._pending_layers: set[int] = set()
+        # The images of the layers of a texture array written since its last upload, which the host keeps until then
+        # alone (see 'set_layers')
+        self._pending_layers: dict[int, np.ndarray] = {}
 
     @property
     def name(self):
@@ -184,32 +190,21 @@ class Texture(object):
 
     def set_layers(self, layers_idx: np.ndarray, images: np.ndarray) -> None:
         """Write (len(layers_idx),h,w,c) images into layers of a texture array, uploaded by 'upload_source'."""
-        self._source[layers_idx] = images[..., : len(self.source_channels)]
-        self._pending_layers.update(layers_idx.tolist())
+        for layer, image in zip(layers_idx.tolist(), images[..., : len(self.source_channels)]):
+            self._pending_layers[layer] = np.ascontiguousarray(image[::-1])
 
     def upload_source(self) -> None:
-        """Upload the current source of the texture, which keeps its size and channels, the written layers alone for a
-        texture array.
+        """Upload the layers of a texture array written since its last upload, then drop them from the host.
 
-        A texture not yet in the OpenGL context uploads its current source once it is added, so this does nothing then.
+        A texture not yet in the OpenGL context uploads them once it is added, so this does nothing then.
         """
         if self._texid is None:
-            self._pending_layers.clear()
             return
         glBindTexture(self.tex_type, self._texid)
-        if self.tex_type == GL_TEXTURE_2D_ARRAY:
-            height, width = self.source.shape[1:3]
-            for layer in sorted(self._pending_layers):
-                data = np.ascontiguousarray(self.source[layer, ::-1])
-                glTexSubImage3D(
-                    self.tex_type, 0, 0, 0, layer, width, height, 1, self._gl_format, self.data_format, data
-                )
-            self._pending_layers.clear()
-        else:
-            data = np.ascontiguousarray(np.flip(self.source, axis=0))
-            height, width = self.source.shape[:2]
-            glTexSubImage2D(self.tex_type, 0, 0, 0, width, height, self._gl_format, self.data_format, data)
-            glGenerateMipmap(self.tex_type)
+        height, width = self.source.shape[1:3]
+        for layer, data in self._pending_layers.items():
+            glTexSubImage3D(self.tex_type, 0, 0, 0, layer, width, height, 1, self._gl_format, self.data_format, data)
+        self._pending_layers.clear()
         glBindTexture(self.tex_type, 0)
 
     def _add_to_context(self):
@@ -243,8 +238,15 @@ class Texture(object):
 
         # Bind texture and generate mipmaps
         if is_array:
-            n_layers = len(self.source)
-            glTexImage3D(self.tex_type, 0, internal_fmt, width, height, n_layers, 0, fmt, self.data_format, data)
+            # The layers past those of the source start black, then take the images written to them
+            glTexImage3D(self.tex_type, 0, internal_fmt, width, height, self.n_layers, 0, fmt, self.data_format, None)
+            glTexSubImage3D(self.tex_type, 0, 0, 0, 0, width, height, len(self.source), fmt, self.data_format, data)
+            if self.n_layers > len(self.source):
+                black = np.zeros_like(self.source[:1])
+                for layer in range(len(self.source), self.n_layers):
+                    glTexSubImage3D(self.tex_type, 0, 0, 0, layer, width, height, 1, fmt, self.data_format, black)
+            for layer, layer_data in self._pending_layers.items():
+                glTexSubImage3D(self.tex_type, 0, 0, 0, layer, width, height, 1, fmt, self.data_format, layer_data)
             self._pending_layers.clear()
         else:
             glTexImage2D(self.tex_type, 0, internal_fmt, width, height, 0, fmt, self.data_format, data)
