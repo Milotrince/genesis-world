@@ -330,9 +330,9 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     assert (lamp_initial[:, [0, 2]] > 40.0).all() and (lamp_initial[:, 1] < 30.0).all()
 
     # A variant shown by name in one environment, one drawing per environment, and a drawing shared by every one
-    screen_vgeom.set_texture("red", envs_idx=[1])
-    label_vgeom.set_texture(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None])
-    lamp_vgeom.set_texture(gs.textures.ColorTexture(color=(0.0, 1.0, 0.0)))
+    screen.set_texture("red", envs_idx=[1])
+    label.set_texture(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None], vgeom_idx=gs.VGeomIndex.all())
+    lamp.set_texture(gs.textures.ColorTexture(color=(0.0, 1.0, 0.0)), vgeom_idx=0)
     assert_equal(screen_vgeom.get_texture(), [0, 1])
     assert_equal(label_vgeom.get_texture(envs_idx=[1]), [gs.DRAWN_IMAGE])
     # The camera shows the variants as soon as they change, while the sensor renders them at the next step
@@ -361,8 +361,8 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     colors_drawn = get_colors(camera.render(rgb=True)[0])
     assert_allclose(colors_variant[:, 2], colors_drawn[:, 2], atol=2.0)
     # Refused inputs: a variant the texture does not declare, a value that is neither a variant nor pixels, pixels on a
-    # texture without drawing, a number of variants matching neither one nor the environments, an HDR image, a slot or
-    # a visual geom without dynamic texture, and a selection matching no visual geom
+    # texture without drawing, a number of variants matching neither one nor the environments, an HDR image, a slot, a
+    # visual geom or an entity without dynamic texture, and a selection matching no visual geom
     with pytest.raises(gs.GenesisException, match="No variant is named"):
         screen_vgeom.set_texture("green")
     with pytest.raises(gs.GenesisException, match="integer position"):
@@ -381,6 +381,8 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
         lamp_vgeom.set_texture(0, slot=gs.TEXTURE_SLOT.DIFFUSE)
     with pytest.raises(gs.GenesisException, match="no dynamic texture"):
         reference.vgeoms[0].get_texture()
+    with pytest.raises(gs.GenesisException, match="draws a dynamic texture"):
+        reference.set_texture(0)
     with pytest.raises(gs.GenesisException, match="No visual geom"):
         label.get_vgeoms(gs.VGeomIndex.with_material("lcd"))
     with pytest.raises(gs.GenesisException, match="diffuse_texture"):
