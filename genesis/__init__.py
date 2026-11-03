@@ -502,7 +502,7 @@ from .constants import (
     contact_resolution,
     broadphase_traversal,
     link_ref_frame,
-    TEXTURE_MAP,
+    TEXTURE_MAP_TYPE,
     DRAWN_IMAGE,
 )
 

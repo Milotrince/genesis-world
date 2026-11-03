@@ -10,7 +10,7 @@ from typing_extensions import Self
 
 import genesis as gs
 import genesis.utils.mesh as mu
-from genesis.constants import TEXTURE_MAP
+from genesis.constants import TEXTURE_MAP_TYPE
 from genesis.typing import (
     LaxFArrayType,
     LaxUnitIntervalArrayType,
@@ -295,7 +295,7 @@ class ImageTexture(Texture, SerializationMixin):
 
 
 class _ImagelessTexture(Texture):
-    """A texture holding no image at declaration, which the checks and simplifications of a static texture keep as is."""
+    """A texture holding no image at declaration, which the checks and simplifications of static textures keep as is."""
 
     def check_dim(self, dim: int) -> Texture | None:
         return None
@@ -330,7 +330,7 @@ class AssetTexture(_ImagelessTexture):
 def texture_to_rgba(
     texture: "ColorTexture | ImageTexture | AssetTexture | None",
     resolution: tuple[int, int],
-    texture_map: TEXTURE_MAP = TEXTURE_MAP.DIFFUSE,
+    texture_map_type: TEXTURE_MAP_TYPE = TEXTURE_MAP_TYPE.DIFFUSE,
 ) -> np.ndarray:
     """Return a texture as an RGBA array of shape (height, width, 4), in the format of a dynamic texture in a map.
 
@@ -355,12 +355,12 @@ def texture_to_rgba(
             rgba, channels, is_srgb = np.asarray(image) / 255.0, texture.image_color, texture.encoding == "srgb"
         else:
             rgba, channels = np.ones((height, width, 4)), texture.color
-            is_srgb = texture_map == TEXTURE_MAP.DIFFUSE
+            is_srgb = texture_map_type == TEXTURE_MAP_TYPE.DIFFUSE
         # sRGB transfer function of IEC 61966-2-1, between the encoded values and the linear ones
-        if texture_map == TEXTURE_MAP.EMISSIVE and is_srgb:
+        if texture_map_type == TEXTURE_MAP_TYPE.EMISSIVE and is_srgb:
             color = rgba[..., :3]
             rgba[..., :3] = np.where(color <= 0.04045, color / 12.92, ((color + 0.055) / 1.055) ** 2.4)
-        elif texture_map == TEXTURE_MAP.DIFFUSE and not is_srgb:
+        elif texture_map_type == TEXTURE_MAP_TYPE.DIFFUSE and not is_srgb:
             color = rgba[..., :3]
             rgba[..., :3] = np.where(color <= 0.0031308, color * 12.92, 1.055 * color ** (1.0 / 2.4) - 0.055)
         factor = np.ones(4)
@@ -368,7 +368,7 @@ def texture_to_rgba(
         if len(channels) in (2, 4):
             factor[3] = channels[-1]
         rgba = rgba * factor
-    if texture_map == TEXTURE_MAP.EMISSIVE:
+    if texture_map_type == TEXTURE_MAP_TYPE.EMISSIVE:
         return rgba.astype(np.float16)
     return (rgba * 255.0).round().astype(np.uint8)
 
@@ -474,9 +474,11 @@ class DynamicTexture(_ImagelessTexture):
             variants_idx.append(variant)
         return np.array(variants_idx, dtype=gs.np_int)
 
-    def get_variants_image(self, texture_map: TEXTURE_MAP) -> np.ndarray:
+    def get_variants_image(self, texture_map_type: TEXTURE_MAP_TYPE) -> np.ndarray:
         """Return the variants as an RGBA array of shape (n_variants, height, width, 4), in the format of a map."""
-        return np.stack([texture_to_rgba(texture, self.resolution, texture_map) for texture in self.variants_texture])
+        return np.stack(
+            [texture_to_rgba(texture, self.resolution, texture_map_type) for texture in self.variants_texture]
+        )
 
     def get_initial_image(self) -> np.ndarray:
         """Return the image every environment shows at build, as an RGBA uint8 array of shape (height, width, 4)."""
