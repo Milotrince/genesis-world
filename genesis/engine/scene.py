@@ -753,7 +753,7 @@ class Scene(RBC):
     def add_camera(
         self,
         model="pinhole",
-        resolution=None,
+        resolution=(320, 320),
         pos=(0.5, 2.5, 3.5),
         lookat=(0.5, 0.5, 0.5),
         up=(0.0, 0.0, 1.0),
@@ -788,7 +788,7 @@ class Scene(RBC):
         model : str
             Specifies the camera model. Options are 'pinhole' or 'thinlens'.
         resolution : tuple of int, shape (2,)
-            The resolution of the camera, specified as a tuple (width, height). Defaults to (320, 320).
+            The resolution of the camera, specified as a tuple (width, height).
         pos : tuple of float, shape (3,)
             The position of the camera in the scene, specified as (x, y, z).
         lookat : tuple of float, shape (3,)
@@ -834,12 +834,8 @@ class Scene(RBC):
             The created camera object.
         """
         if res is not None:
-            if resolution is not None:
-                gs.raise_exception("'res' is deprecated and replaced by 'resolution'; set only one of them.")
-            gs.logger.warning("'res' is deprecated and will be removed; it now maps to 'resolution'.")
+            gs.logger.warning("'res' is deprecated and will be removed; it overrides 'resolution'.")
             resolution = res
-        if resolution is None:
-            resolution = (320, 320)
         if denoise is None:
             denoise = sys.platform != "darwin"
         return self._visualizer.add_camera(
