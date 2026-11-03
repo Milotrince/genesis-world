@@ -1418,14 +1418,14 @@ class RasterizerContext:
                         targets.node = node
                     elif StateChange.VISUAL not in targets.subscriber.pending:
                         continue
-                    # The switches are cleared before the selection is read, so that a variant switched by another
-                    # thread in between is applied again on the next update
+                    # The switches are cleared before the active variants are read, so that a variant switched by
+                    # another thread in between is applied again on the next update
                     targets.subscriber.clear()
-                    selection = targets.texture.selection[self.rendered_envs_idx]
+                    active_variants_idx = targets.texture.active_variants_idx[self.rendered_envs_idx]
                     drawn_layer = targets.drawn_layer[self.rendered_envs_idx]
                     texture_layers = primitive.texture_layers
                     texture_layers[:, 0 if targets.is_base_color else 1] = np.where(
-                        selection == DRAWN_IMAGE, drawn_layer, selection
+                        active_variants_idx == DRAWN_IMAGE, drawn_layer, active_variants_idx
                     )
                     self.jit.update_texture_layers(node, texture_layers)
 
