@@ -1,9 +1,9 @@
 import contextlib
 import os
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
-import numpy as np
 import numba as nb
+import numpy as np
 
 import OpenGL.GL as GL
 import OpenGL.constant as GL_constant
@@ -13,6 +13,9 @@ from .light import DirectionalLight, PointLight, SpotLight
 from .material import MetallicRoughnessMaterial, SpecularGlossinessMaterial
 from .numba_gl_wrapper import GLWrapper
 from .scene import CORNER_INDICES
+
+if TYPE_CHECKING:
+    from .node import Node
 
 
 _DISABLE_OFFSCREEN_MARKERS = "GS_DISABLE_OFFSCREEN_MARKERS" in os.environ
@@ -1496,7 +1499,7 @@ class JITRenderer:
                 self.gen_func_ptr()
             return self._update_normal_flat(vertices.reshape((-1, 3, 3)))
 
-    def update_texture_layers(self, node, layers):
+    def update_texture_layers(self, node: "Node", layers: np.ndarray) -> None:
         """Set the texture array layers each rendered environment of a node samples (see 'Primitive.texture_layers')."""
         primitive = node.mesh.primitives[0]
         primitive.texture_layers[:] = layers
