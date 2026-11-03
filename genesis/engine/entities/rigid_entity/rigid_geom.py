@@ -11,8 +11,9 @@ import genesis as gs
 import genesis.utils.geom as gu
 from genesis.constants import TEXTURE_SLOT
 from genesis.engine.mesh import Mesh
-from genesis.engine.texture import Texture, get_dynamic_texture
+from genesis.engine.texture import Texture, TextureValueType, get_dynamic_texture
 from genesis.repr_base import RBC
+from genesis.typing import IndexType
 from genesis.utils.misc import DeprecationError, qd_to_torch, tensor_to_array
 
 from .description import RigidGeomDescription, RigidVisGeomDescription
@@ -729,7 +730,7 @@ class RigidVisGeom(RBC):
         return tensor[0] if self._solver.n_envs == 0 else tensor
 
     @gs.assert_built
-    def get_texture(self, envs_idx=None, *, slot: TEXTURE_SLOT | None = None) -> torch.Tensor:
+    def get_texture(self, envs_idx: IndexType | None = None, *, slot: TEXTURE_SLOT | None = None) -> torch.Tensor:
         """Return the variant each environment shows on a dynamic texture of this visual geom.
 
         'slot' picks the texture filling that slot, and may be None when the visual geom draws a single one. See
@@ -738,7 +739,9 @@ class RigidVisGeom(RBC):
         return get_dynamic_texture(self._dynamic_textures, slot).get_texture(envs_idx)
 
     @gs.assert_built
-    def set_texture(self, texture, envs_idx=None, *, slot: TEXTURE_SLOT | None = None):
+    def set_texture(
+        self, texture: TextureValueType, envs_idx: IndexType | None = None, *, slot: TEXTURE_SLOT | None = None
+    ) -> None:
         """Show a variant, or draw pixels, on a dynamic texture of this visual geom.
 
         See ``get_texture`` for 'slot', and ``Texture.set_texture`` for 'texture' and 'envs_idx'.
