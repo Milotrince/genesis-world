@@ -13,7 +13,6 @@ Esc         - Quit
 import argparse
 import math
 import os
-from collections.abc import Callable
 from typing import TYPE_CHECKING, NamedTuple, override
 
 import numpy as np
@@ -22,6 +21,7 @@ import trimesh
 
 import genesis as gs
 import genesis.utils.geom as gu
+from genesis.engine.state_change import Subscriber
 from genesis.utils.misc import tensor_to_array, with_lock
 from genesis.vis.keybindings import Key, KeyAction, Keybind, MouseButton
 from genesis.vis.viewer_plugins import EVENT_HANDLE_STATE, EVENT_HANDLED, RaycasterViewerPlugin
@@ -45,7 +45,8 @@ class Canvas(NamedTuple):
     images: np.ndarray
     # The center of each pixel, as (column, row) of shape (height, width, 2)
     pixels_pos: np.ndarray
-    callback: Callable[[np.ndarray, torch.Tensor], None]
+    # The subscriber passing the painter the pixels drawn by others, watching no change of state
+    subscriber: Subscriber
 
 
 class TexturePainterPlugin(RaycasterViewerPlugin):
@@ -101,9 +102,10 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
                 with self._lock:
                     images[envs_idx] = tensor_to_array(image)
 
-            texture.subscribe_drawing(copy_drawing)
+            subscriber = Subscriber(to=frozenset())
+            texture.subscribe(subscriber, copy_drawing)
             mesh = trimesh.Trimesh(vgeom.init_vverts, vgeom.init_vfaces, process=False)
-            self._canvases[vgeom.uid] = Canvas(texture, mesh, variants, images, pixels_pos, copy_drawing)
+            self._canvases[vgeom.uid] = Canvas(texture, mesh, variants, images, pixels_pos, subscriber)
 
     @with_lock
     @override
@@ -196,7 +198,7 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
         super().on_close()
 
         for canvas in self._canvases.values():
-            canvas.texture.unsubscribe_drawing(canvas.callback)
+            canvas.texture.unsubscribe(canvas.subscriber)
         self._canvases.clear()
 
 

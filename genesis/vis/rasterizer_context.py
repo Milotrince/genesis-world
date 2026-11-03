@@ -50,7 +50,7 @@ class DynamicTextureTargets:
     layer each rendered environment selects. 'drawn_layer' holds the layer of the drawn image of each environment of the
     scene, -1 for one not rendered or a texture without drawing. 'node' holds the node the visual geom was last bound
     through, so that a node drawn anew is bound again. 'subscriber' holds the switches of variant the node has yet to
-    show, and 'callback' is the callback receiving the drawings of the texture.
+    show.
     """
 
     texture: "Texture"
@@ -59,7 +59,6 @@ class DynamicTextureTargets:
     is_base_color: bool
     node: "pyrender.Node | None"
     subscriber: Subscriber
-    callback: Callable[[np.ndarray, torch.Tensor], None]
 
 
 class TrackedNodeList:
@@ -330,7 +329,6 @@ class RasterizerContext:
         self._per_env_vverts_entity_uids.clear()
         for targets in self._dynamic_texture_targets.values():
             targets.texture.unsubscribe(targets.subscriber)
-            targets.texture.unsubscribe_drawing(targets.callback)
         self._dynamic_texture_targets.clear()
 
     def reset(self):
@@ -656,10 +654,8 @@ class RasterizerContext:
                 is_base_color,
                 None,
                 Subscriber(to=frozenset((StateChange.VISUAL,))),
-                partial(self._on_dynamic_texture_draw, texture),
             )
-            texture.subscribe(targets.subscriber)
-            texture.subscribe_drawing(targets.callback)
+            texture.subscribe(targets.subscriber, partial(self._on_dynamic_texture_draw, texture))
             self._dynamic_texture_targets[texture] = targets
 
         if self.sim.rigid_solver.is_active and any(link.visualize_contact for link in self.sim.rigid_solver.links):
