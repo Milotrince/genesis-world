@@ -378,8 +378,9 @@ class DynamicTexture(Texture):
     environment shows one of a fixed set of variants declared here, or pixels drawn at runtime when drawing is enabled.
     Once the scene is built, ``vgeom.set_texture`` shows a variant or draws pixels in each environment, and
     ``vgeom.get_texture`` returns what each environment shows. Each visual geom drawing the texture switches and draws
-    on its own, and ``entity.get_vgeoms`` finds them by the selection that declared it. Each renderer holds the pixels
-    it draws, and only the rasterizer draws a dynamic texture yet.
+    on its own, while ``entity.set_texture`` sets the visual geoms it selects at once and ``entity.get_vgeoms`` finds
+    them by the selection that declared the texture. Each renderer holds the pixels it draws, and only the rasterizer
+    draws a dynamic texture yet.
 
     The variants and drawn pixels are RGBA images, whose format the slot sets. The diffuse slot holds 8-bit sRGB values,
     the alpha channel standing for the opacity in place of the opacity of the surface. The emissive slot holds 16-bit

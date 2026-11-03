@@ -114,13 +114,10 @@ def main():
         if not args.vis and step % 100 == 99:
             swap(1)
         if i_variant != i_variant_shown:
-            for vgeom in duck.vgeoms:
-                vgeom.set_texture((i_variant + envs_offset) % len(variants_name))
+            duck.set_texture((i_variant + envs_offset) % len(variants_name))
             i_variant_shown = i_variant
         if is_drawing:
-            colors = np.random.rand(len(envs_offset), 1, 1, 3)
-            for vgeom in duck.vgeoms:
-                vgeom.set_texture(colors)
+            duck.set_texture(np.random.rand(len(envs_offset), 1, 1, 3))
             is_drawing = False
         scene.step()
         step += 1
