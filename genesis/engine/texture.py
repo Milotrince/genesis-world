@@ -30,9 +30,8 @@ class Texture:
 
     - at build, it allocates the variants ('options.get_variants_image(texture_map_type)'), then one drawn image per
       environment it renders when 'options.enable_drawing', binds them to the map of type 'texture_map_type' of
-      'vgeom', subscribes a ``Subscriber`` to ``StateChange.VISUAL`` with 'subscribe', and a callback with
-      'subscribe_drawing';
-    - on every drawing, the callback receives the environments drawn and their pixels, as an RGBA tensor on the device
+      'vgeom', and subscribes a ``Subscriber`` of ``StateChange.VISUAL`` with a drawing callback;
+    - on every drawing, the drawing callback receives the environments drawn and their pixels, as an RGBA tensor on the device
       of shape (len(envs_idx), height, width, 4);
     - at sync, when its subscriber holds ``StateChange.VISUAL`` pending, it clears it, then reads 'active_variants_idx'.
 
@@ -48,8 +47,8 @@ class Texture:
         self._vgeom = vgeom
         (self._initial_variant,) = options.get_variants_idx(options.initial_variant)
         self._active_variants_idx = np.full(scene._B, self._initial_variant, dtype=gs.np_int)
-        self._subscribers: set[Subscriber] = set()
-        self._drawing_callbacks: list[Callable[[np.ndarray, torch.Tensor], None]] = []
+        # The subscribers, each with the callback receiving the pixels of every drawing, if any
+        self._subscribers: dict[Subscriber, Callable[[np.ndarray, torch.Tensor], None] | None] = {}
 
     @property
     def options(self) -> DynamicTexture:
@@ -73,26 +72,24 @@ class Texture:
         active_variants_idx.flags.writeable = False
         return active_variants_idx
 
-    def subscribe(self, subscriber: Subscriber) -> None:
-        """Notify 'subscriber' of every change of 'active_variants_idx', as ``StateChange.VISUAL`` (see 'Texture')."""
-        self._subscribers.add(subscriber)
+    def subscribe(
+        self,
+        subscriber: Subscriber,
+        drawing_callback: Callable[[np.ndarray, torch.Tensor], None] | None = None,
+    ) -> None:
+        """Notify a subscriber of every change of the active variants, and pass it the pixels of every drawing.
+
+        'subscriber' is notified as ``StateChange.VISUAL`` (see 'Texture'). 'drawing_callback', if given, is called with
+        the environments drawn and their pixels. Genesis keeps no pixels, so a renderer giving one subscribes before any
+        environment shows a drawing.
+        """
+        if drawing_callback is not None and (self._active_variants_idx == DRAWN_IMAGE).any():
+            gs.raise_exception("A renderer cannot be added once pixels have been drawn on a dynamic texture.")
+        self._subscribers[subscriber] = drawing_callback
 
     def unsubscribe(self, subscriber: Subscriber) -> None:
-        """Stop notifying a subscriber given to 'subscribe'."""
-        self._subscribers.discard(subscriber)
-
-    def subscribe_drawing(self, callback: Callable[[np.ndarray, torch.Tensor], None]) -> None:
-        """Call 'callback' with the pixels of every drawing (see 'Texture').
-
-        Genesis keeps no pixels, so a renderer subscribes before any environment shows a drawing.
-        """
-        if (self._active_variants_idx == DRAWN_IMAGE).any():
-            gs.raise_exception("A renderer cannot be added once pixels have been drawn on a dynamic texture.")
-        self._drawing_callbacks.append(callback)
-
-    def unsubscribe_drawing(self, callback: Callable[[np.ndarray, torch.Tensor], None]) -> None:
-        """Stop calling a callback given to 'subscribe_drawing'."""
-        self._drawing_callbacks.remove(callback)
+        """Stop notifying a subscriber given to 'subscribe', and calling its drawing callback."""
+        self._subscribers.pop(subscriber, None)
 
     def get_texture(self, envs_idx: IndexType | None = None) -> torch.Tensor:
         """Return the position of the variant each selected environment shows, 'DRAWN_IMAGE' for drawn pixels."""
@@ -161,8 +158,9 @@ class Texture:
             if n_channels == 3:
                 image = torch.cat((image, image.new_full((n_images, height, width, 1), alpha)), dim=-1)
             self._active_variants_idx[envs_idx] = DRAWN_IMAGE
-            for callback in self._drawing_callbacks:
-                callback(envs_idx, image)
+            for drawing_callback in self._subscribers.values():
+                if drawing_callback is not None:
+                    drawing_callback(envs_idx, image)
         for subscriber in self._subscribers:
             if StateChange.VISUAL in subscriber.to:
                 subscriber.notify(StateChange.VISUAL, envs_idx)
