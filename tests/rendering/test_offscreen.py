@@ -352,14 +352,14 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     lamp_vgeom.set_texture(np.array([[[0, 300, -5]]]))
     colors = get_colors(camera.render(rgb=True)[0])
     assert (colors[:, 2, 1] > 100.0).all() and (colors[:, 2, 2] < 30.0).all()
-    # The emissive slot holds linear values: an sRGB image variant shows as its decoded value drawn as pixels
-    lamp_vgeom.set_texture(1, slot=gs.TEXTURE_SLOT.EMISSIVE)
+    # The emissive map holds linear values: an sRGB image variant shows as its decoded value drawn as pixels
+    lamp_vgeom.set_texture(1, texture_map=gs.TEXTURE_MAP.EMISSIVE)
     colors_variant = get_colors(camera.render(rgb=True)[0])
     lamp_vgeom.set_texture(np.array([[[0.0, ((128 / 255 + 0.055) / 1.055) ** 2.4, 0.0]]]))
     colors_drawn = get_colors(camera.render(rgb=True)[0])
     assert_allclose(colors_variant[:, 2], colors_drawn[:, 2], atol=2.0)
     # Refused inputs: a variant the texture does not declare, a value that is neither a variant nor pixels, pixels on a
-    # texture without drawing, a number of variants matching neither one nor the environments, an HDR image, a slot, a
+    # texture without drawing, a number of variants matching neither one nor the environments, an HDR image, a map, a
     # visual geom or an entity without dynamic texture, and a selection matching no visual geom
     with pytest.raises(gs.GenesisException, match="No variant is named"):
         screen_vgeom.set_texture("green")
@@ -375,8 +375,8 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     hdr_path.touch()
     with pytest.raises(gs.GenesisException, match="no HDR image"):
         screen_vgeom.set_texture(gs.textures.ImageTexture(image_path=str(hdr_path), encoding="linear"))
-    with pytest.raises(gs.GenesisException, match="diffuse slot"):
-        lamp_vgeom.set_texture(0, slot=gs.TEXTURE_SLOT.DIFFUSE)
+    with pytest.raises(gs.GenesisException, match="diffuse map"):
+        lamp_vgeom.set_texture(0, texture_map=gs.TEXTURE_MAP.DIFFUSE)
     with pytest.raises(gs.GenesisException, match="no dynamic texture"):
         reference.vgeoms[0].get_texture()
     with pytest.raises(gs.GenesisException, match="draws a dynamic texture"):
