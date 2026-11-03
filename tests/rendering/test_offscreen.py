@@ -353,7 +353,7 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     colors = get_colors(camera.render(rgb=True)[0])
     assert (colors[:, 2, 1] > 100.0).all() and (colors[:, 2, 2] < 30.0).all()
     # The emissive map holds linear values: an sRGB image variant shows as its decoded value drawn as pixels
-    lamp_vgeom.set_texture(1, texture_map=gs.TEXTURE_MAP.EMISSIVE)
+    lamp_vgeom.set_texture(1, texture_map_type=gs.TEXTURE_MAP_TYPE.EMISSIVE)
     colors_variant = get_colors(camera.render(rgb=True)[0])
     lamp_vgeom.set_texture(np.array([[[0.0, ((128 / 255 + 0.055) / 1.055) ** 2.4, 0.0]]]))
     colors_drawn = get_colors(camera.render(rgb=True)[0])
@@ -377,7 +377,7 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     with pytest.raises(gs.GenesisException, match="no HDR image"):
         screen_vgeom.set_texture(gs.textures.ImageTexture(image_path=str(hdr_path), encoding="linear"))
     with pytest.raises(gs.GenesisException, match="diffuse map"):
-        lamp_vgeom.set_texture(0, texture_map=gs.TEXTURE_MAP.DIFFUSE)
+        lamp_vgeom.set_texture(0, texture_map_type=gs.TEXTURE_MAP_TYPE.DIFFUSE)
     with pytest.raises(gs.GenesisException, match="no dynamic texture"):
         reference.vgeoms[0].get_texture()
     with pytest.raises(gs.GenesisException, match="draws a dynamic texture"):
