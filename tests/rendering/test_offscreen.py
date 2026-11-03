@@ -331,8 +331,8 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
 
     # A variant shown by name in one environment, one drawing per environment, and a drawing shared by every one
     screen.set_texture("red", envs_idx=[1])
-    label.set_texture(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None], vgeom_idx=gs.VGeomIndex.all())
-    lamp.set_texture(gs.textures.ColorTexture(color=(0.0, 1.0, 0.0)), vgeom_idx=0)
+    label.set_texture(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None], vgeoms_idx=gs.VGeomIndex.all())
+    lamp.set_texture(gs.textures.ColorTexture(color=(0.0, 1.0, 0.0)), vgeoms_idx=0)
     assert_equal(screen_vgeom.get_texture(), [0, 1])
     assert_equal(label_vgeom.get_texture(envs_idx=[1]), [gs.DRAWN_IMAGE])
     # The camera shows the variants as soon as they change, while the sensor renders them at the next step
