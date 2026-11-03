@@ -91,7 +91,7 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
                 continue
             vgeom = texture.vgeom
             variants = texture.options.get_variants_image(texture.texture_map_type)
-            images = variants[texture.selection]
+            images = variants[texture.active_variants_idx]
             width, height = texture.options.resolution
             pixels_pos = np.stack(np.meshgrid(np.arange(width) + 0.5, np.arange(height) + 0.5), axis=-1)
 
@@ -168,7 +168,7 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
             envs_idx = canvases_envs_idx.setdefault(vgeom.uid, set())
             if i_env not in envs_idx:
                 envs_idx.add(i_env)
-                i_variant = canvas.texture.selection[i_env]
+                i_variant = canvas.texture.active_variants_idx[i_env]
                 if i_variant != gs.DRAWN_IMAGE:
                     canvas.images[i_env] = canvas.variants[i_variant]
 
