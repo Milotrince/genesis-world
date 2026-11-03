@@ -299,9 +299,8 @@ class AssetTexture(Texture):
     The texture the asset gives the slot of a surface holding a dynamic texture, as a variant of that dynamic texture.
 
     It stands in the 'variants' of a ``DynamicTexture`` alone, and resolves when the entity is added: to the image or
-    the color the asset gives the slot, or to no texture where it gives none. The visual geoms drawing one dynamic
-    texture must get the same texture from their asset, so a multi-material asset takes one dynamic texture per
-    material, bound through ``gs.VGeomIndex.with_material``.
+    the color the asset gives the slot, or to no texture where it gives none. Each visual geom drawing the dynamic
+    texture resolves it to the texture its own asset material gives, so one declaration serves several materials.
     """
 
     def check_dim(self, dim: int) -> Texture | None:
@@ -375,35 +374,33 @@ class DynamicTexture(Texture):
     A texture whose image changes while the simulation runs, such as a screen or an indicator light.
 
     It fills the diffuse or the emissive slot of a surface, and requires a mesh with texture coordinates. Each parallel
-    environment shows one of a fixed set of variants declared here, or pixels drawn at runtime on a canvas. Once the
-    scene is built, ``entity.set_texture`` shows a variant or draws pixels in each environment, and
-    ``entity.get_texture`` returns what each environment shows, as do the methods of the same name of a visual geom.
-    Each renderer holds the pixels it draws, and only the rasterizer draws a dynamic texture yet.
+    environment shows one of a fixed set of variants declared here, or pixels drawn at runtime when drawing is enabled.
+    Once the scene is built, ``vgeom.set_texture`` shows a variant or draws pixels in each environment, and
+    ``vgeom.get_texture`` returns what each environment shows. Each visual geom drawing the texture switches and draws
+    on its own, and ``entity.get_vgeoms`` finds them by the selection that declared it. Each renderer holds the pixels
+    it draws, and only the rasterizer draws a dynamic texture yet.
 
-    The variants and canvases are RGBA images, whose format the slot sets. The diffuse slot holds 8-bit sRGB values,
+    The variants and drawn pixels are RGBA images, whose format the slot sets. The diffuse slot holds 8-bit sRGB values,
     the alpha channel standing for the opacity in place of the opacity of the surface. The emissive slot holds 16-bit
     linear values, which let an emission exceed 1 at twice the memory per pixel.
 
     Parameters
     ----------
     resolution : tuple[int, int]
-        The resolution of every variant and canvas, as (width, height) in pixels. Rendering uploads a canvas each time
-        it is drawn, so a larger image costs more per drawing, while showing a variant costs nothing.
+        The resolution of every variant and drawn image, as (width, height) in pixels. Rendering uploads the pixels each
+        time they are drawn, so a larger image costs more per drawing, while showing a variant costs nothing.
     variants : tuple[ColorTexture | ImageTexture | AssetTexture | None, ...] | dict[str, ...], optional
         The images an environment switches between, each a color or an image resized to 'resolution', an
         ``AssetTexture`` for the texture the asset gives the slot, or None for no texture, which shows a black and
         magenta checkerboard. A mapping names them, so that they are shown by name as well as by position. The variants
-        are fixed once the scene is built, and their memory is independent of the number of environments. Default is
-        one variant with no texture.
-    is_batched : bool, optional
-        Whether each parallel environment draws pixels on a canvas of its own. Its own canvases cost the memory of one
-        image per environment, while a texture that is not batched holds a single canvas, whose one drawing every
-        environment showing it displays. Showing a variant is per environment either way. Default is False.
+        are fixed once the scene is built, and their memory is independent of the number of environments, while each
+        visual geom drawing the texture and each renderer holds its own copy. Default is one variant with no texture.
+    enable_drawing : bool, optional
+        Whether pixels can be drawn on the texture at runtime, each environment showing its own drawing. Drawing costs
+        the memory of one image per environment, visual geom and renderer, while a texture without drawing only
+        switches between its variants. Default is False.
     initial_variant : int | str, optional
         The variant every environment shows at build and after a reset, by position or by name. Default is 0.
-    texture_name : str | None, optional
-        The name of the texture, unique in the scene, by which the methods of an entity whose visual geoms draw several
-        dynamic textures pick it. Default is None.
     """
 
     resolution: PositiveVec2IType
@@ -411,24 +408,16 @@ class DynamicTexture(Texture):
         Annotated[tuple[ColorTexture | ImageTexture | AssetTexture | None, ...], Field(min_length=1, strict=False)]
         | Annotated[dict[str, ColorTexture | ImageTexture | AssetTexture | None], Field(min_length=1)]
     ) = (None,)
-    is_batched: StrictBool = False
+    enable_drawing: StrictBool = False
     initial_variant: StrictInt | str = 0
-    texture_name: str | None = None
 
-    # The dynamic texture this one is a copy of, and the texture an asset gives the slot it fills, which its asset
-    # texture variants show (see 'resolve_asset_texture')
-    _declaration: "DynamicTexture | None" = PrivateAttr(default=None)
+    # The texture an asset gives the slot it fills, which its asset texture variants show (see 'resolve_asset_texture')
     _asset_texture: "ColorTexture | ImageTexture | None" = PrivateAttr(default=None)
 
     @model_validator(mode="after")
     def _check_variants(self) -> Self:
         self.get_variants_idx(self.initial_variant)
         return self
-
-    @property
-    def declaration(self) -> "DynamicTexture":
-        """The dynamic texture as declared, which every copy resolving its asset texture variants shares."""
-        return self if self._declaration is None else self._declaration
 
     def resolve_asset_texture(self, asset_texture: Texture | None) -> "DynamicTexture":
         """Return a copy whose asset texture variants show the texture an asset gives the slot.
@@ -448,7 +437,6 @@ class DynamicTexture(Texture):
         if self.variants_name:
             variants = dict(zip(self.variants_name, variants))
         texture = self.model_copy(update={"variants": variants})
-        texture._declaration = self.declaration
         texture._asset_texture = asset_texture
         return texture
 
@@ -508,19 +496,6 @@ class DynamicTexture(Texture):
     @cached_property
     def requires_uv(self) -> bool:
         return True
-
-
-def is_same_texture(texture: Texture | None, other: Texture | None) -> bool:
-    """Whether two textures hold the same color or the same image."""
-    if texture is other:
-        return True
-    if isinstance(texture, ColorTexture) and isinstance(other, ColorTexture):
-        return np.allclose(texture.color, other.color, atol=gs.EPS)
-    if isinstance(texture, ImageTexture) and isinstance(other, ImageTexture):
-        return np.array_equal(texture.image_array, other.image_array) and np.allclose(
-            texture.image_color, other.image_color, atol=gs.EPS
-        )
-    return False
 
 
 class BatchTexture(Texture):
