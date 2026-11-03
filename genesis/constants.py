@@ -219,8 +219,8 @@ class IMAGE_TYPE(IntEnum):
 DRAWN_IMAGE = -1
 
 
-# surface slots a dynamic texture binds to
-class TEXTURE_SLOT(IntEnum):
+# surface maps a dynamic texture binds to
+class TEXTURE_MAP(IntEnum):
     DIFFUSE = 0
     EMISSIVE = 1
 

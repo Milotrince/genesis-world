@@ -687,7 +687,7 @@ class Mesh(RBC, serialization.SerializationMixin):
             and name not in surface.model_fields_set
             and value is not None
         }
-        # A dynamic texture of the given surface shows the texture of the asset that its slot held
+        # A dynamic texture of the given surface shows the texture of the asset that its map held
         slots_texture = dict(self._surface)
         surface = surface.model_copy(update=fields)
         for name, texture in dict(surface).items():
