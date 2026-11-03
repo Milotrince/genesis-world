@@ -13,7 +13,7 @@ import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
 import genesis.utils.particle as pu
-from genesis.constants import DRAWN_IMAGE, TEXTURE_SLOT
+from genesis.constants import DRAWN_IMAGE, TEXTURE_MAP
 from genesis.engine.state_change import StateChange, Subscriber
 from genesis.engine.texture import Texture
 from genesis.ext import pyrender
@@ -641,10 +641,10 @@ class RasterizerContext:
                             vis_materials.setdefault(key, mesh_node.primitives[0].material)
 
         # A dynamic texture is the base color of the material when the surface draws it as its color, and its emissive
-        # texture otherwise (see 'surface_uvs_to_trimesh_visual'). Its arrays hold its images in the format of its slot,
+        # texture otherwise (see 'surface_uvs_to_trimesh_visual'). Its arrays hold its images in the format of its map,
         # which the shaders read from the type of the array.
         for texture in self.scene.dynamic_textures:
-            images = texture.options.get_variants_image(texture.slot)
+            images = texture.options.get_variants_image(texture.texture_map)
             drawn_layer = np.full(self.sim._B, -1, dtype=gs.np_int)
             n_drawn = len(self.rendered_envs_idx) if texture.options.enable_drawing else 0
             if n_drawn > 0:
@@ -655,7 +655,7 @@ class RasterizerContext:
                 source=images,
                 source_channels="RGBA" if is_base_color else "RGB",
                 tex_type=GL_TEXTURE_2D_ARRAY,
-                data_format=GL_HALF_FLOAT if texture.slot == TEXTURE_SLOT.EMISSIVE else GL_UNSIGNED_BYTE,
+                data_format=GL_HALF_FLOAT if texture.texture_map == TEXTURE_MAP.EMISSIVE else GL_UNSIGNED_BYTE,
             )
             targets = DynamicTextureTargets(
                 texture,
