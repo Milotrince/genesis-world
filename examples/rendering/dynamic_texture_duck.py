@@ -69,7 +69,7 @@ def main():
             diffuse_texture=gs.textures.DynamicTexture(
                 resolution=TEXTURE_RESOLUTION,
                 variants=variants,
-                is_batched=True,
+                enable_drawing=True,
             ),
         ),
     )
@@ -114,10 +114,13 @@ def main():
         if not args.vis and step % 100 == 99:
             swap(1)
         if i_variant != i_variant_shown:
-            duck.set_texture((i_variant + envs_offset) % len(variants_name))
+            for vgeom in duck.vgeoms:
+                vgeom.set_texture((i_variant + envs_offset) % len(variants_name))
             i_variant_shown = i_variant
         if is_drawing:
-            duck.set_texture(np.random.rand(len(envs_offset), 1, 1, 3))
+            colors = np.random.rand(len(envs_offset), 1, 1, 3)
+            for vgeom in duck.vgeoms:
+                vgeom.set_texture(colors)
             is_drawing = False
         scene.step()
         step += 1

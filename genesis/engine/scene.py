@@ -50,7 +50,7 @@ from genesis.options.morphs import Morph
 from genesis.options.recorders import RecorderOptions, TrajectoryFile
 from genesis.options.renderers import RendererOptions
 from genesis.options.surfaces import Surface
-from genesis.options.textures import DynamicTexture, is_same_texture
+from genesis.options.textures import DynamicTexture
 from genesis.recorders import RecorderManager
 from genesis.recorders.trajectory import Trajectory, save_checkpoint
 from genesis.repr_base import RBC
@@ -65,7 +65,6 @@ from genesis.vis import Visualizer
 if TYPE_CHECKING:
     from genesis.engine.entities.base_entity import Entity
     from genesis.engine.entities.rigid_entity import RigidEntity
-    from genesis.engine.entities.rigid_entity.rigid_geom import RigidVisGeom
     from genesis.engine.sensors.base_sensor import Sensor
     from genesis.engine.simulator import Simulator
     from genesis.options.sensors.options import SensorOptions
@@ -962,14 +961,8 @@ class Scene(RBC):
         with gs.logger.timer(f"Building scene ~~~<{self._uid}>~~~..."):
             self._parallelize(n_envs, env_spacing, n_envs_per_row, center_envs_at_origin)
 
-            # The dynamic textures, each with the visual geoms drawing it, which every renderer binds to as it builds,
-            # the camera sensors building with the simulator. Each visual geom holds its own copy of a declared texture,
-            # whose asset texture variants show what its asset gives (see 'DynamicTexture.resolve_asset_texture').
-            # The copies of one declaration must agree, and its visual geoms draw a single one of them from then on.
-            # The slot sets the format of the images, so that a declaration fills a single slot.
-            bindings_by_texture: dict[
-                DynamicTexture, list[tuple["RigidVisGeom", TEXTURE_SLOT, str, DynamicTexture]]
-            ] = {}
+            # The dynamic textures, one for each slot of a visual geom that a surface fills with one, which every
+            # renderer binds to as it builds, the camera sensors building with the simulator
             for entity in self.entities:
                 if isinstance(entity, KinematicEntity):
                     for vgeom in entity.vgeoms:
@@ -978,47 +971,20 @@ class Scene(RBC):
                             (TEXTURE_SLOT.DIFFUSE, "diffuse_texture"),
                             (TEXTURE_SLOT.EMISSIVE, "emissive_texture"),
                         ):
-                            texture = surface_textures.get(field_name)
-                            if isinstance(texture, DynamicTexture):
+                            options = surface_textures.get(field_name)
+                            if isinstance(options, DynamicTexture):
                                 if entity.morph.enable_custom_vverts:
                                     gs.raise_exception(
                                         "A dynamic texture cannot be drawn on an entity with custom visual vertices, "
                                         f"got '{entity.name}'."
                                     )
-                                bindings_by_texture.setdefault(texture.declaration, []).append(
-                                    (vgeom, slot, field_name, texture)
-                                )
+                                texture = Texture(self, options, slot, vgeom)
+                                self._dynamic_textures.append(texture)
+                                vgeom._dynamic_textures.append(texture)
                 elif any(isinstance(texture, DynamicTexture) for _, texture in entity.surface):
                     gs.raise_exception(
                         f"Only rigid and kinematic entities draw a dynamic texture, got '{entity.name}'."
                     )
-            textures_name = [
-                texture.texture_name for texture in bindings_by_texture if texture.texture_name is not None
-            ]
-            if len(set(textures_name)) != len(textures_name):
-                gs.raise_exception(f"The dynamic textures of a scene take distinct names, got {textures_name}.")
-            for texture_bindings in bindings_by_texture.values():
-                _, slot, _, options = texture_bindings[0]
-                for vgeom, vgeom_slot, field_name, options_copy in texture_bindings:
-                    if vgeom_slot != slot:
-                        gs.raise_exception(
-                            "A dynamic texture fills either the diffuse or the emissive slot, which sets the format of "
-                            "its images. Declare one dynamic texture per slot."
-                        )
-                    if not all(map(is_same_texture, options_copy.variants_texture, options.variants_texture)):
-                        gs.raise_exception(
-                            "The visual geoms drawing one dynamic texture get different textures from their asset, "
-                            "so its asset texture variants resolve to no single one. Bind one dynamic texture per "
-                            "material with 'gs.VGeomIndex.with_material', or give those variants explicitly."
-                        )
-                    setattr(vgeom.surface, field_name, options)
-                vgeoms = [vgeom for vgeom, _, _, _ in texture_bindings]
-                texture = Texture(self, options, slot, vgeoms)
-                self._dynamic_textures.append(texture)
-                for vgeom in vgeoms:
-                    vgeom._dynamic_textures.append(texture)
-                for entity in dict.fromkeys(vgeom.entity for vgeom in vgeoms):
-                    entity._dynamic_textures.append(texture)
 
             with namespace(self._namespace):
                 self._sim.build()
@@ -2185,7 +2151,7 @@ class Scene(RBC):
 
     @property
     def dynamic_textures(self) -> list[Texture]:
-        """The runtime state of the dynamic textures of the scene, one per declaration, once it is built."""
+        """The runtime state of the dynamic textures of the scene, one per slot of a visual geom, once it is built."""
         return self._dynamic_textures
 
     @property
