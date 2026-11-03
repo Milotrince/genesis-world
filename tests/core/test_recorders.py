@@ -417,7 +417,7 @@ def test_video_writer(tmp_path):
         ),
     )
     camera = scene.add_camera(
-        resolution=(300, 200),  # Using weird resolution to trigger padding
+        res=(300, 200),  # Using weird resolution to trigger padding
         pos=(2.0, 2.0, 2.0),
         lookat=(0.0, 0.0, 0.2),
         GUI=False,

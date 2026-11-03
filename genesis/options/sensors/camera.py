@@ -30,7 +30,7 @@ class BaseCameraOptions[SensorT: "Sensor"](KinematicSensorOptionsMixin[SensorT])
 
     Parameters
     ----------
-    resolution : tuple[int, int]
+    res : tuple[int, int]
         Resolution as (width, height). Default is (512, 512).
     pos : array-like[float, float, float]
         Camera position offset. If attached to a link, this is relative to the link frame.
@@ -53,21 +53,15 @@ class BaseCameraOptions[SensorT: "Sensor"](KinematicSensorOptionsMixin[SensorT])
         The local index of the RigidLink of the RigidEntity to which this sensor is attached.
     """
 
-    resolution: PositiveVec2IType = (512, 512)
+    res: PositiveVec2IType = (512, 512)
     pos: Vec3FType = (3.5, 0.0, 1.5)
     lookat: Vec3FType = (0.0, 0.0, 0.0)
     up: Vec3FType = (0.0, 0.0, 1.0)
     fov: ValidFloat = Field(default=60.0, gt=0, lt=180)
     lights: list[dict[str, Any]] = []
     offset_T: Matrix4x4Type | None = None
-    # Deprecated alias for resolution, resolved in model_post_init.
-    res: PositiveVec2IType | None = None
 
     def model_post_init(self, context: Any) -> None:
-        if self.res is not None:
-            gs.logger.warning("'res' is deprecated and will be removed; it overrides 'resolution'.")
-            self.resolution = self.res
-            self.res = None
         if self.history_length > 0:
             gs.raise_exception(
                 "Camera sensors do not support `history_length`. The camera read path renders lazily on read() "

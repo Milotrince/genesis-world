@@ -148,10 +148,11 @@ for backend_name, options_class, enabled in backends:
     configs = []
     for camera_config in CAMERA_SENSORS_KWARGS:
         name = f"{backend_name}_{camera_config['name']}"
+        res = (500, 600)
 
         # Create options with common and backend-specific parameters
         options_kwargs = {
-            "resolution": (500, 600),
+            "res": res,
             "pos": camera_config["pos"],
             "lookat": camera_config["lookat"],
             "up": CAMERA_COMMON_KWARGS["up"],
