@@ -7,8 +7,9 @@ import torch
 import genesis as gs
 from genesis.constants import TEXTURE_SLOT, link_ref_frame
 from genesis.engine.states.entities import RigidEntityState
+from genesis.engine.texture import TextureValueType
 from genesis.options.indices import VGeomIndex, get_links_path
-from genesis.typing import UnitVec4FType, Vec3FType
+from genesis.typing import IndexType, UnitVec4FType, Vec3FType
 from genesis.utils import geom as gu
 from genesis.utils.misc import DeprecationError, broadcast_tensor, qd_to_torch
 
@@ -1260,7 +1261,14 @@ class KinematicEntity(Entity):
         return vgeoms
 
     @gs.assert_built
-    def set_texture(self, texture, vgeoms_idx=None, envs_idx=None, *, slot: TEXTURE_SLOT | None = None):
+    def set_texture(
+        self,
+        texture: TextureValueType,
+        vgeoms_idx: VGeomIndex | IndexType | None = None,
+        envs_idx: IndexType | None = None,
+        *,
+        slot: TEXTURE_SLOT | None = None,
+    ) -> None:
         """Show a variant, or draw pixels, on the dynamic texture of every selected visual geom of the entity.
 
         'vgeoms_idx' selects visual geoms by their position among ``vgeoms``, or by a ``gs.VGeomIndex`` as the visual
