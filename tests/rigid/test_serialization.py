@@ -174,7 +174,7 @@ def test_export_and_load_rigid(
                         color=(0.0, 0.5, 0.0),
                     ),
                 ),
-                is_batched=True,
+                enable_drawing=True,
             ),
         ),
     )
@@ -366,7 +366,7 @@ def test_export_and_load_rigid(
         restored_texture.get_variants_image(gs.TEXTURE_SLOT.EMISSIVE),
         anchored.vgeoms[0].vmesh.surface.emissive_texture.get_variants_image(gs.TEXTURE_SLOT.EMISSIVE),
     )
-    assert restored_texture.is_batched
+    assert restored_texture.enable_drawing
     # A morph names the asset it was created from, since the description stands for what was parsed out of it
     assert restored.entities[15].morph.file == "two_link.urdf.xacro"
     # A mesh states the asset it was read from by name, wherever that asset stood
