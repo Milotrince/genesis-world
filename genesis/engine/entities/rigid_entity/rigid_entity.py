@@ -1260,16 +1260,16 @@ class KinematicEntity(Entity):
         return vgeoms
 
     @gs.assert_built
-    def set_texture(self, texture, vgeom_idx=None, envs_idx=None, *, slot: TEXTURE_SLOT | None = None):
+    def set_texture(self, texture, vgeoms_idx=None, envs_idx=None, *, slot: TEXTURE_SLOT | None = None):
         """Show a variant, or draw pixels, on the dynamic texture of every selected visual geom of the entity.
 
-        'vgeom_idx' selects visual geoms by their position among ``vgeoms``, or by a ``gs.VGeomIndex`` as the visual geom
-        options do, whose ordinals count within each link. None selects every visual geom drawing a dynamic texture,
-        in 'slot' when given. See ``RigidVisGeom.set_texture`` for 'texture', 'envs_idx' and 'slot'.
+        'vgeoms_idx' selects visual geoms by their position among ``vgeoms``, or by a ``gs.VGeomIndex`` as the visual
+        geom options do, whose ordinals count within each link. None selects every visual geom drawing a dynamic
+        texture, in 'slot' when given. See ``RigidVisGeom.set_texture`` for 'texture', 'envs_idx' and 'slot'.
         """
-        if isinstance(vgeom_idx, VGeomIndex):
-            vgeoms = self.get_vgeoms(vgeom_idx)
-        elif vgeom_idx is None:
+        if isinstance(vgeoms_idx, VGeomIndex):
+            vgeoms = self.get_vgeoms(vgeoms_idx)
+        elif vgeoms_idx is None:
             vgeoms = dict.fromkeys(
                 dynamic_texture.vgeom
                 for dynamic_texture in self._scene.dynamic_textures
@@ -1278,7 +1278,7 @@ class KinematicEntity(Entity):
             if not vgeoms:
                 gs.raise_exception(f"No visual geom of entity '{self.name}' draws a dynamic texture.")
         else:
-            vgeoms = [self.vgeoms[i_vg] for i_vg in self._get_global_idx(vgeom_idx, self.n_vgeoms)]
+            vgeoms = [self.vgeoms[i_vg] for i_vg in self._get_global_idx(vgeoms_idx, self.n_vgeoms)]
         for vgeom in vgeoms:
             vgeom.set_texture(texture, envs_idx, slot=slot)
 
