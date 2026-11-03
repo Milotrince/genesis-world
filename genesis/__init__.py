@@ -509,7 +509,7 @@ from .constants import (
     yield_criterion,
     coup_type,
     TEXTURE_MAP_TYPE,
-    DRAWN_IMAGE,
+    DRAWN_VARIANT_IDX,
 )
 
 from .utils.uid import UID

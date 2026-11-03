@@ -216,7 +216,7 @@ class IMAGE_TYPE(IntEnum):
 
 
 # The active variant index of an environment showing the pixels drawn for it on a dynamic texture, in place of a variant
-DRAWN_IMAGE = -1
+DRAWN_VARIANT_IDX = -1
 
 
 # surface maps a dynamic texture binds to
