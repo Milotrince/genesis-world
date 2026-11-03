@@ -7,7 +7,7 @@ import numpy as np
 import torch
 
 import genesis as gs
-from genesis.constants import DRAWN_IMAGE, TEXTURE_MAP_TYPE
+from genesis.constants import DRAWN_VARIANT_IDX, TEXTURE_MAP_TYPE
 from genesis.engine.state_change import StateChange, Subscriber
 from genesis.options.textures import ColorTexture, DynamicTexture, ImageTexture, texture_to_rgba
 from genesis.typing import IndexType
@@ -26,13 +26,13 @@ class Texture:
     """The variant each environment shows for the dynamic texture of one map of a visual geom, and its renderers.
 
     Genesis holds the active variant indices alone: the position of the variant each environment shows, or
-    'DRAWN_IMAGE' for the pixels drawn for it. The renderers hold the pixels, and each one implements the same contract:
+    'DRAWN_VARIANT_IDX' for the pixels drawn for it. The renderers hold the pixels, each under the same contract:
 
     - at build, it allocates the variants ('options.get_variants_image(texture_map_type)'), then one drawn image per
       environment it renders when 'options.enable_drawing', binds them to the map of type 'texture_map_type' of
       'vgeom', and subscribes a ``Subscriber`` of ``StateChange.VISUAL`` with a drawing callback;
-    - on every drawing, the drawing callback receives the environments drawn and their pixels, as an RGBA tensor on the device
-      of shape (len(envs_idx), height, width, 4);
+    - on every drawing, the drawing callback receives the environments drawn and their pixels, as an RGBA tensor on
+      the device of shape (len(envs_idx), height, width, 4);
     - at sync, when its subscriber holds ``StateChange.VISUAL`` pending, it clears it, then reads 'active_variants_idx'.
 
     The images are uint8 sRGB values in the diffuse map, and float16 linear values in the emissive map.
@@ -83,7 +83,7 @@ class Texture:
         the environments drawn and their pixels. Genesis keeps no pixels, so a renderer giving one subscribes before any
         environment shows a drawing.
         """
-        if drawing_callback is not None and (self._active_variants_idx == DRAWN_IMAGE).any():
+        if drawing_callback is not None and (self._active_variants_idx == DRAWN_VARIANT_IDX).any():
             gs.raise_exception("A renderer cannot be added once pixels have been drawn on a dynamic texture.")
         self._subscribers[subscriber] = drawing_callback
 
@@ -92,7 +92,7 @@ class Texture:
         self._subscribers.pop(subscriber, None)
 
     def get_texture(self, envs_idx: IndexType | None = None) -> torch.Tensor:
-        """Return the position of the variant each selected environment shows, 'DRAWN_IMAGE' for drawn pixels."""
+        """Return the position of the variant each selected environment shows, 'DRAWN_VARIANT_IDX' for drawn pixels."""
         active_variants_idx = self._active_variants_idx[tensor_to_array(self._scene._sanitize_envs_idx(envs_idx))]
         active_variants_idx = torch.as_tensor(active_variants_idx, dtype=gs.tc_int, device=gs.device)
         return active_variants_idx[0] if self._scene.n_envs == 0 else active_variants_idx
@@ -157,7 +157,7 @@ class Texture:
             image = broadcast_tensor(image, dtype, (n_images, height, width, n_channels))
             if n_channels == 3:
                 image = torch.cat((image, image.new_full((n_images, height, width, 1), alpha)), dim=-1)
-            self._active_variants_idx[envs_idx] = DRAWN_IMAGE
+            self._active_variants_idx[envs_idx] = DRAWN_VARIANT_IDX
             for drawing_callback in self._subscribers.values():
                 if drawing_callback is not None:
                     drawing_callback(envs_idx, image)

@@ -503,7 +503,7 @@ from .constants import (
     broadphase_traversal,
     link_ref_frame,
     TEXTURE_MAP_TYPE,
-    DRAWN_IMAGE,
+    DRAWN_VARIANT_IDX,
 )
 
 from .utils.uid import UID
