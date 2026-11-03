@@ -14,7 +14,7 @@ scene = gs.Scene(
         ambient_light=(0.1, 0.1, 0.1),
     ),
     viewer_options=gs.options.ViewerOptions(
-        res=(1280, 960) if "PYTEST_VERSION" not in os.environ else (64, 64),
+        resolution=(1280, 960) if "PYTEST_VERSION" not in os.environ else (64, 64),
         camera_pos=(3.5, 0.0, 2.5),
         camera_lookat=(0.0, 0.0, 0.5),
         camera_fov=40,
@@ -31,7 +31,7 @@ franka = scene.add_entity(
 )
 
 cam = scene.add_camera(
-    res=(640, 480),
+    resolution=(640, 480),
     pos=(3.5, 0.0, 2.5),
     lookat=(0, 0, 0.5),
     fov=30,

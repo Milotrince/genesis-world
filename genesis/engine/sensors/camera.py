@@ -80,7 +80,7 @@ class BaseCameraWrapper:
     def __init__(self, sensor):
         self.sensor = sensor
         self.uid = sensor._idx
-        self.res = sensor._options.res
+        self.resolution = sensor._options.resolution
         self.fov = sensor._options.fov
         self.near = sensor._options.near
         self.far = sensor._options.far
@@ -91,7 +91,7 @@ class RasterizerCameraWrapper(BaseCameraWrapper):
 
     def __init__(self, sensor: "RasterizerCameraSensor"):
         super().__init__(sensor)
-        self.aspect_ratio = self.res[0] / self.res[1]
+        self.aspect_ratio = self.resolution[0] / self.resolution[1]
 
 
 class BatchRendererCameraWrapper(BaseCameraWrapper):
@@ -243,7 +243,7 @@ class BaseCameraSensor(KinematicSensorMixin, Sensor[OptionsT, None, SharedSensor
     # ========================== Cache Integration (shared) ==========================
 
     def _get_return_format(self) -> tuple[tuple[int, ...], ...]:
-        w, h = self._options.res
+        w, h = self._options.resolution
         return ((h, w, 3),)
 
     @classmethod
@@ -450,7 +450,7 @@ class RasterizerCameraSensor(
             self._ensure_camera_registered()
 
         _B = max(self._manager._sim.n_envs, 1)
-        w, h = self._options.res
+        w, h = self._options.resolution
         self._shared_metadata.image_cache[self._idx] = torch.zeros((_B, h, w, 3), dtype=torch.uint8, device=gs.device)
 
     @classmethod
@@ -637,7 +637,7 @@ class RaytracerCameraSensor(
             pass
 
         self._camera_obj = visualizer.add_camera(
-            res=self._options.res,
+            resolution=self._options.resolution,
             pos=pos,
             lookat=lookat,
             up=up,
@@ -666,7 +666,7 @@ class RaytracerCameraSensor(
             self._camera_obj.attach(self._link, offset_T)
 
         _B = max(n_envs, 1)
-        w, h = self._options.res
+        w, h = self._options.resolution
         self._shared_metadata.image_cache[self._idx] = torch.zeros((_B, h, w, 3), dtype=torch.uint8, device=gs.device)
 
     @gs.assert_built
@@ -755,7 +755,7 @@ class BatchRendererCameraSensor(
             self._shared_metadata.last_render_timestep = -1
 
             all_sensors = self._manager._sensors_by_type[type(self)]
-            resolutions = [s._options.res for s in all_sensors]
+            resolutions = [s._options.resolution for s in all_sensors]
             if len(set(resolutions)) > 1:
                 gs.raise_exception(
                     f"All BatchRendererCameraSensor instances must have the same resolution. Found: {set(resolutions)}"
@@ -789,7 +789,7 @@ class BatchRendererCameraSensor(
             self._shared_metadata.renderer.build()
 
         _B = max(self._manager._sim.n_envs, 1)
-        w, h = self._options.res
+        w, h = self._options.resolution
         self._shared_metadata.image_cache[self._idx] = torch.zeros((_B, h, w, 3), dtype=torch.uint8, device=gs.device)
 
     def _render_current_state(self):
