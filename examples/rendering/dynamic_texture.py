@@ -14,7 +14,6 @@ import argparse
 import math
 import os
 from collections.abc import Callable
-from threading import Lock
 from typing import TYPE_CHECKING, NamedTuple, override
 
 import numpy as np
@@ -77,7 +76,12 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
         self._is_painting = False
         # The canvas, environment and pixel painted last, None at the start of a stroke
         self._stroke_end: tuple[Canvas, int, np.ndarray] | None = None
-        self._lock = Lock()
+
+    @property
+    def _lock(self):
+        # Painting draws on the textures, which takes the render lock to upload the pixels, so the plugin shares that
+        # lock rather than holding one of its own while waiting for it
+        return self.viewer.render_lock
 
     def build(self, viewer, camera: "Node", scene: "Scene"):
         super().build(viewer, camera, scene)
@@ -91,9 +95,11 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
             width, height = texture.options.resolution
             pixels_pos = np.stack(np.meshgrid(np.arange(width) + 0.5, np.arange(height) + 0.5), axis=-1)
 
-            # Genesis keeps no pixels, so the painter follows the pixels drawn by others to paint over them
+            # Genesis keeps no pixels, so the painter follows the pixels drawn by others, from any thread, to paint
+            # over them
             def copy_drawing(envs_idx: np.ndarray, image: torch.Tensor, images: np.ndarray = images) -> None:
-                images[envs_idx] = tensor_to_array(image)
+                with self._lock:
+                    images[envs_idx] = tensor_to_array(image)
 
             texture.subscribe(copy_drawing)
             mesh = trimesh.Trimesh(vgeom.init_vverts, vgeom.init_vfaces, process=False)
@@ -126,13 +132,12 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
             self._strokes_pos.append(None)
             return EVENT_HANDLED
 
+    @with_lock
     @override
     def update_on_sim_step(self) -> None:
         super().update_on_sim_step()
 
-        with self._lock:
-            strokes_pos, self._strokes_pos = self._strokes_pos, []
-
+        strokes_pos, self._strokes_pos = self._strokes_pos, []
         canvases_envs_idx: dict[int, set[int]] = {}
         for stroke_pos in strokes_pos:
             ray_hit = None
@@ -280,24 +285,19 @@ def main():
     # The variant each environment shows is offset by the index of the environment
     envs_offset = np.arange(max(args.n_envs, 1))
     i_variant = 0
-    i_variant_shown = None
-    is_drawing = False
-    is_clearing = False
     is_running = True
 
-    # Keybind callbacks run on the viewer thread, so they only pick what the main loop sets between steps
-    def swap(offset):
-        nonlocal i_variant, i_variant_shown
+    def show_variant(offset=0):
+        nonlocal i_variant
         i_variant = (i_variant + offset) % len(variants_name)
-        i_variant_shown = None
+        duck.set_texture((i_variant + envs_offset) % len(variants_name))
 
     def draw():
-        nonlocal is_drawing
-        is_drawing = True
+        duck.set_texture(np.random.rand(len(envs_offset), 1, 1, 3))
 
     def clear():
-        nonlocal is_clearing
-        is_clearing = True
+        board.set_texture("white")
+        show_variant()
 
     def stop():
         nonlocal is_running
@@ -305,8 +305,8 @@ def main():
 
     if args.vis:
         scene.viewer.register_keybinds(
-            Keybind("next_texture", Key.RIGHT, KeyAction.PRESS, callback=swap, args=(1,)),
-            Keybind("previous_texture", Key.LEFT, KeyAction.PRESS, callback=swap, args=(-1,)),
+            Keybind("next_texture", Key.RIGHT, KeyAction.PRESS, callback=show_variant, args=(1,)),
+            Keybind("previous_texture", Key.LEFT, KeyAction.PRESS, callback=show_variant, args=(-1,)),
             Keybind("draw_texture", Key.SPACE, KeyAction.PRESS, callback=draw),
             Keybind("clear_texture", Key.C, KeyAction.PRESS, callback=clear),
             Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
@@ -315,20 +315,11 @@ def main():
     else:
         horizon = 400 if "PYTEST_VERSION" not in os.environ else 5
 
+    show_variant()
     step = 0
     while is_running and step < horizon:
         if not args.vis and step % 100 == 99:
-            swap(1)
-        if is_clearing:
-            board.set_texture("white")
-            i_variant_shown = None
-            is_clearing = False
-        if i_variant != i_variant_shown:
-            duck.set_texture((i_variant + envs_offset) % len(variants_name))
-            i_variant_shown = i_variant
-        if is_drawing:
-            duck.set_texture(np.random.rand(len(envs_offset), 1, 1, 3))
-            is_drawing = False
+            show_variant(1)
         scene.step()
         step += 1
 

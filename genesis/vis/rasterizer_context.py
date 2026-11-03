@@ -1402,6 +1402,9 @@ class RasterizerContext:
                     if node is None:
                         continue
                     primitive = node.mesh.primitives[0]
+                    # The version is read before the selection, so that a selection switched by another thread in
+                    # between is applied again on the next update
+                    selection_version = targets.texture.selection_version
                     # A node drawn anew samples the texture its trimesh visual seeds, which the array replaces
                     if node is not targets.node:
                         if targets.is_base_color:
@@ -1412,7 +1415,7 @@ class RasterizerContext:
                             primitive.texture_layers = np.zeros((len(self.rendered_envs_idx), 2), np.float32)
                         self._scene._meshes_updated = True
                         targets.node = node
-                    elif targets.selection_version == targets.texture.selection_version:
+                    elif targets.selection_version == selection_version:
                         continue
                     selection = targets.texture.selection[self.rendered_envs_idx]
                     drawn_layer = targets.drawn_layer[self.rendered_envs_idx]
@@ -1421,7 +1424,7 @@ class RasterizerContext:
                         selection == DRAWN_IMAGE, drawn_layer, selection
                     )
                     self.jit.update_texture_layers(node, texture_layers)
-                    targets.selection_version = targets.texture.selection_version
+                    targets.selection_version = selection_version
 
         # Early return if already updated previously
         if not force_render and self._t >= self.scene.sim.cur_step_global:
