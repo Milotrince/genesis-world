@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 import torch
-import trimesh
 
+import trimesh
 from OpenGL.GL import GL_HALF_FLOAT, GL_TEXTURE_2D_ARRAY, GL_UNSIGNED_BYTE
 
 import genesis as gs
@@ -638,13 +638,13 @@ class RasterizerContext:
             n_drawn = len(self.rendered_envs_idx) if texture.options.enable_drawing else 0
             if n_drawn > 0:
                 drawn_layer[self.rendered_envs_idx] = len(images) + np.arange(n_drawn)
-            images = np.concatenate((images, np.zeros((n_drawn, *images.shape[1:]), dtype=images.dtype)))
             is_base_color = texture.vgeom.surface.get_rgba() is texture.options
             texture_array = pyrender.Texture(
                 source=images,
                 source_channels="RGBA" if is_base_color else "RGB",
                 tex_type=GL_TEXTURE_2D_ARRAY,
                 data_format=GL_HALF_FLOAT if texture.texture_map == TEXTURE_MAP.EMISSIVE else GL_UNSIGNED_BYTE,
+                n_layers=len(images) + n_drawn,
             )
             targets = DynamicTextureTargets(
                 texture,
