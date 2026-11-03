@@ -10,7 +10,7 @@ from typing_extensions import Self
 
 import genesis as gs
 import genesis.utils.mesh as mu
-from genesis.constants import TEXTURE_SLOT
+from genesis.constants import TEXTURE_MAP
 from genesis.typing import (
     LaxFArrayType,
     LaxUnitIntervalArrayType,
@@ -296,10 +296,10 @@ class ImageTexture(Texture, SerializationMixin):
 
 class AssetTexture(Texture):
     """
-    The texture the asset gives the slot of a surface holding a dynamic texture, as a variant of that dynamic texture.
+    The texture the asset gives the map of a surface holding a dynamic texture, as a variant of that dynamic texture.
 
     It stands in the 'variants' of a ``DynamicTexture`` alone, and resolves when the entity is added: to the image or
-    the color the asset gives the slot, or to no texture where it gives none. Each visual geom drawing the dynamic
+    the color the asset gives the map, or to no texture where it gives none. Each visual geom drawing the dynamic
     texture resolves it to the texture its own asset material gives, so one declaration serves several materials.
     """
 
@@ -326,13 +326,13 @@ class AssetTexture(Texture):
 def texture_to_rgba(
     texture: "ColorTexture | ImageTexture | AssetTexture | None",
     resolution: tuple[int, int],
-    slot: TEXTURE_SLOT = TEXTURE_SLOT.DIFFUSE,
+    texture_map: TEXTURE_MAP = TEXTURE_MAP.DIFFUSE,
 ) -> np.ndarray:
-    """Return a texture as an RGBA array of shape (height, width, 4), in the format of a dynamic texture in 'slot'.
+    """Return a texture as an RGBA array of shape (height, width, 4), in the format of a dynamic texture in a map.
 
-    The diffuse slot holds sRGB uint8 values and the emissive slot linear float16 values (see ``DynamicTexture``). An
+    The diffuse map holds sRGB uint8 values and the emissive map linear float16 values (see ``DynamicTexture``). An
     image is resized to 'resolution', given as (width, height), and converted from its own encoding. A color is sRGB in
-    the diffuse slot and linear in the emissive slot, as for a static texture. A gray or gray-alpha color spans the
+    the diffuse map and linear in the emissive map, as for a static texture. A gray or gray-alpha color spans the
     three color channels, as an image of one or two channels does. No texture, an unresolved asset texture included,
     gives a black and magenta checkerboard of 8 by 8 cells.
     """
@@ -351,12 +351,12 @@ def texture_to_rgba(
             rgba, channels, is_srgb = np.asarray(image) / 255.0, texture.image_color, texture.encoding == "srgb"
         else:
             rgba, channels = np.ones((height, width, 4)), texture.color
-            is_srgb = slot == TEXTURE_SLOT.DIFFUSE
+            is_srgb = texture_map == TEXTURE_MAP.DIFFUSE
         # sRGB transfer function of IEC 61966-2-1, between the encoded values and the linear ones
-        if slot == TEXTURE_SLOT.EMISSIVE and is_srgb:
+        if texture_map == TEXTURE_MAP.EMISSIVE and is_srgb:
             color = rgba[..., :3]
             rgba[..., :3] = np.where(color <= 0.04045, color / 12.92, ((color + 0.055) / 1.055) ** 2.4)
-        elif slot == TEXTURE_SLOT.DIFFUSE and not is_srgb:
+        elif texture_map == TEXTURE_MAP.DIFFUSE and not is_srgb:
             color = rgba[..., :3]
             rgba[..., :3] = np.where(color <= 0.0031308, color * 12.92, 1.055 * color ** (1.0 / 2.4) - 0.055)
         factor = np.ones(4)
@@ -364,7 +364,7 @@ def texture_to_rgba(
         if len(channels) in (2, 4):
             factor[3] = channels[-1]
         rgba = rgba * factor
-    if slot == TEXTURE_SLOT.EMISSIVE:
+    if texture_map == TEXTURE_MAP.EMISSIVE:
         return rgba.astype(np.float16)
     return (rgba * 255.0).round().astype(np.uint8)
 
@@ -373,7 +373,7 @@ class DynamicTexture(Texture):
     """
     A texture whose image changes while the simulation runs, such as a screen or an indicator light.
 
-    It fills the diffuse or the emissive slot of a surface, and requires a mesh with texture coordinates. Each parallel
+    It fills the diffuse or the emissive map of a surface, and requires a mesh with texture coordinates. Each parallel
     environment shows one of a fixed set of variants declared here, or pixels drawn at runtime when drawing is enabled.
     Once the scene is built, ``vgeom.set_texture`` shows a variant or draws pixels in each environment, and
     ``vgeom.get_texture`` returns what each environment shows. Each visual geom drawing the texture switches and draws
@@ -381,8 +381,8 @@ class DynamicTexture(Texture):
     them by the selection that declared the texture. Each renderer holds the pixels it draws, and only the rasterizer
     draws a dynamic texture yet.
 
-    The variants and drawn pixels are RGBA images, whose format the slot sets. The diffuse slot holds 8-bit sRGB values,
-    the alpha channel standing for the opacity in place of the opacity of the surface. The emissive slot holds 16-bit
+    The variants and drawn pixels are RGBA images, whose format the map sets. The diffuse map holds 8-bit sRGB values,
+    the alpha channel standing for the opacity in place of the opacity of the surface. The emissive map holds 16-bit
     linear values, which let an emission exceed 1 at twice the memory per pixel.
 
     Parameters
@@ -392,7 +392,7 @@ class DynamicTexture(Texture):
         time they are drawn, so a larger image costs more per drawing, while showing a variant costs nothing.
     variants : tuple[ColorTexture | ImageTexture | AssetTexture | None, ...] | dict[str, ...], optional
         The images an environment switches between, each a color or an image resized to 'resolution', an
-        ``AssetTexture`` for the texture the asset gives the slot, or None for no texture, which shows a black and
+        ``AssetTexture`` for the texture the asset gives the map, or None for no texture, which shows a black and
         magenta checkerboard. A mapping names them, so that they are shown by name as well as by position. The variants
         are fixed once the scene is built, and their memory is independent of the number of environments, while each
         visual geom drawing the texture and each renderer holds its own copy. Default is one variant with no texture.
@@ -412,7 +412,7 @@ class DynamicTexture(Texture):
     enable_drawing: StrictBool = False
     initial_variant: StrictInt | str = 0
 
-    # The texture an asset gives the slot it fills, which its asset texture variants show (see 'resolve_asset_texture')
+    # The texture an asset gives the map it fills, which its asset texture variants show (see 'resolve_asset_texture')
     _asset_texture: "ColorTexture | ImageTexture | None" = PrivateAttr(default=None)
 
     @model_validator(mode="after")
@@ -421,7 +421,7 @@ class DynamicTexture(Texture):
         return self
 
     def resolve_asset_texture(self, asset_texture: Texture | None) -> "DynamicTexture":
-        """Return a copy whose asset texture variants show the texture an asset gives the slot.
+        """Return a copy whose asset texture variants show the texture an asset gives the map.
 
         A dynamic texture given as 'asset_texture' gives the texture its own asset texture variants show. The texture
         itself is returned when it holds no asset texture variant, or when the asset gives no color and no image.
@@ -470,9 +470,9 @@ class DynamicTexture(Texture):
             variants_idx.append(variant)
         return np.array(variants_idx, dtype=gs.np_int)
 
-    def get_variants_image(self, slot: TEXTURE_SLOT) -> np.ndarray:
-        """Return the variants as an RGBA array of shape (n_variants, height, width, 4), in the format of 'slot'."""
-        return np.stack([texture_to_rgba(texture, self.resolution, slot) for texture in self.variants_texture])
+    def get_variants_image(self, texture_map: TEXTURE_MAP) -> np.ndarray:
+        """Return the variants as an RGBA array of shape (n_variants, height, width, 4), in the format of a map."""
+        return np.stack([texture_to_rgba(texture, self.resolution, texture_map) for texture in self.variants_texture])
 
     def get_initial_image(self) -> np.ndarray:
         """Return the image every environment shows at build, as an RGBA uint8 array of shape (height, width, 4)."""

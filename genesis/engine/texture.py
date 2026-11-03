@@ -7,7 +7,7 @@ import numpy as np
 import torch
 
 import genesis as gs
-from genesis.constants import DRAWN_IMAGE, TEXTURE_SLOT
+from genesis.constants import DRAWN_IMAGE, TEXTURE_MAP
 from genesis.options.textures import ColorTexture, DynamicTexture, ImageTexture, texture_to_rgba
 from genesis.typing import IndexType
 from genesis.utils.misc import broadcast_tensor, tensor_to_array
@@ -22,25 +22,25 @@ TextureValueType = int | str | Sequence[int | str] | np.ndarray | torch.Tensor |
 
 
 class Texture:
-    """The variant each environment shows for the dynamic texture of one slot of a visual geom, and its renderers.
+    """The variant each environment shows for the dynamic texture of one map of a visual geom, and its renderers.
 
     Genesis holds the selection alone: the position of the variant each environment shows, or 'DRAWN_IMAGE' for the
     pixels drawn for it. The renderers hold the pixels, and each one implements the same contract:
 
-    - at build, it allocates the variants ('options.get_variants_image(slot)'), then one drawn image per environment
-      it renders when 'options.enable_drawing', binds them to the 'slot' of 'vgeom', and subscribes a callback with
-      'subscribe';
+    - at build, it allocates the variants ('options.get_variants_image(texture_map)'), then one drawn image per
+      environment it renders when 'options.enable_drawing', binds them to the 'texture_map' of 'vgeom', and subscribes
+      a callback with 'subscribe';
     - on every drawing, the callback receives the environments drawn and their pixels, as an RGBA tensor on the device
       of shape (len(envs_idx), height, width, 4);
     - at sync, it reads 'selection' when 'selection_version' moved since it last read it.
 
-    The images are uint8 sRGB values in the diffuse slot, and float16 linear values in the emissive slot.
+    The images are uint8 sRGB values in the diffuse map, and float16 linear values in the emissive map.
     """
 
-    def __init__(self, scene: "Scene", options: DynamicTexture, slot: TEXTURE_SLOT, vgeom: "RigidVisGeom"):
+    def __init__(self, scene: "Scene", options: DynamicTexture, texture_map: TEXTURE_MAP, vgeom: "RigidVisGeom"):
         self._scene = scene
         self._options = options
-        self._slot = slot
+        self._texture_map = texture_map
         self._vgeom = vgeom
         (self._initial_variant,) = options.get_variants_idx(options.initial_variant)
         self._selection = np.full(scene._B, self._initial_variant, dtype=gs.np_int)
@@ -53,9 +53,9 @@ class Texture:
         return self._options
 
     @property
-    def slot(self) -> TEXTURE_SLOT:
-        """The slot of the surface that the texture fills, which sets the format of its images."""
-        return self._slot
+    def texture_map(self) -> TEXTURE_MAP:
+        """The map of the surface that the texture fills, which sets the format of its images."""
+        return self._texture_map
 
     @property
     def vgeom(self) -> "RigidVisGeom":
@@ -101,13 +101,13 @@ class Texture:
         ``ImageTexture``, or an RGB or RGBA array of shape (height, width, channels) for all the selected environments
         or (len(envs_idx), height, width, channels) for one each, and require 'enable_drawing' in the declaration.
 
-        An array holds uint8 values, or floats on the scale where 1 stands for 255. In the diffuse slot, they are sRGB
-        values clamped between 0 and 1. In the emissive slot, they are linear values clamped at 0 alone, so that an
+        An array holds uint8 values, or floats on the scale where 1 stands for 255. In the diffuse map, they are sRGB
+        values clamped between 0 and 1. In the emissive map, they are linear values clamped at 0 alone, so that an
         emission may exceed 1.
         """
         envs_idx = tensor_to_array(self._scene._sanitize_envs_idx(envs_idx))
         if isinstance(texture, (ColorTexture, ImageTexture)):
-            texture = texture_to_rgba(texture, self._options.resolution, self._slot)
+            texture = texture_to_rgba(texture, self._options.resolution, self._texture_map)
         texture_ndim = texture.ndim if torch.is_tensor(texture) else np.ndim(texture)
         if texture_ndim <= 1:
             if torch.is_tensor(texture):
@@ -136,7 +136,7 @@ class Texture:
             gs.raise_exception(f"Pixels are drawn as RGB or RGBA, got {n_channels} channels.")
         if not self._options.enable_drawing:
             gs.raise_exception("Pixels are drawn on a dynamic texture declared with 'enable_drawing=True' alone.")
-        if self._slot == TEXTURE_SLOT.EMISSIVE:
+        if self._texture_map == TEXTURE_MAP.EMISSIVE:
             dtype, alpha = torch.float16, 1.0
             if image.is_floating_point():
                 image = image.clamp(0.0, torch.finfo(dtype).max)
@@ -163,16 +163,16 @@ class Texture:
         self.set_texture(self._initial_variant, envs_idx)
 
 
-def get_dynamic_texture(textures: list[Texture], slot: TEXTURE_SLOT | None) -> Texture:
-    """Return the dynamic texture filling 'slot', or the only one of 'textures' if 'slot' is None.
+def get_dynamic_texture(textures: list[Texture], texture_map: TEXTURE_MAP | None) -> Texture:
+    """Return the dynamic texture filling 'texture_map', or the only one of 'textures' if 'texture_map' is None.
 
-    'textures' are the dynamic textures of one visual geom, one per slot at most.
+    'textures' are the dynamic textures of one visual geom, one per map at most.
     """
-    if slot is not None:
-        textures = [texture for texture in textures if texture.slot == slot]
+    if texture_map is not None:
+        textures = [texture for texture in textures if texture.texture_map == texture_map]
     if len(textures) == 1:
         return textures[0]
     if not textures:
-        target = "" if slot is None else f" in the {slot.name.lower()} slot"
+        target = "" if texture_map is None else f" in the {texture_map.name.lower()} map"
         gs.raise_exception(f"This visual geom draws no dynamic texture{target}.")
-    gs.raise_exception("This visual geom draws a dynamic texture in both slots. Pick one by 'slot'.")
+    gs.raise_exception("This visual geom draws a dynamic texture in both maps. Pick one by 'texture_map'.")

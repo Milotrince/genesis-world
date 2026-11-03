@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 import genesis as gs
-from genesis.constants import TEXTURE_SLOT, link_ref_frame
+from genesis.constants import TEXTURE_MAP, link_ref_frame
 from genesis.engine.states.entities import RigidEntityState
 from genesis.engine.texture import TextureValueType
 from genesis.options.indices import VGeomIndex, get_links_path
@@ -1114,13 +1114,14 @@ class KinematicEntity(Entity):
         vgeoms_idx: VGeomIndex | IndexType | None = None,
         envs_idx: IndexType | None = None,
         *,
-        slot: TEXTURE_SLOT | None = None,
+        texture_map: TEXTURE_MAP | None = None,
     ) -> None:
         """Show a variant, or draw pixels, on the dynamic texture of every selected visual geom of the entity.
 
         'vgeoms_idx' selects visual geoms by their position among ``vgeoms``, or by a ``gs.VGeomIndex`` as the visual
         geom options do, whose ordinals count within each link. None selects every visual geom drawing a dynamic
-        texture, in 'slot' when given. See ``RigidVisGeom.set_texture`` for 'texture', 'envs_idx' and 'slot'.
+        texture, in 'texture_map' when given. See ``RigidVisGeom.set_texture`` for 'texture', 'envs_idx' and
+        'texture_map'.
         """
         if isinstance(vgeoms_idx, VGeomIndex):
             vgeoms = self.get_vgeoms(vgeoms_idx)
@@ -1128,14 +1129,15 @@ class KinematicEntity(Entity):
             vgeoms = dict.fromkeys(
                 dynamic_texture.vgeom
                 for dynamic_texture in self._scene.dynamic_textures
-                if dynamic_texture.vgeom.entity is self and (slot is None or dynamic_texture.slot == slot)
+                if dynamic_texture.vgeom.entity is self
+                and (texture_map is None or dynamic_texture.texture_map == texture_map)
             )
             if not vgeoms:
                 gs.raise_exception(f"No visual geom of entity '{self.name}' draws a dynamic texture.")
         else:
             vgeoms = [self.vgeoms[i_vg] for i_vg in self._get_global_idx(vgeoms_idx, self.n_vgeoms)]
         for vgeom in vgeoms:
-            vgeom.set_texture(texture, envs_idx, slot=slot)
+            vgeom.set_texture(texture, envs_idx, texture_map=texture_map)
 
     @gs.assert_built
     def set_vverts(self, vverts, envs_idx=None):
