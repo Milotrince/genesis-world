@@ -6,6 +6,7 @@ Left mouse  - Paint on the canvas or the duck
 Right       - Next texture
 Left        - Previous texture
 Space       - Draw a random color per environment
+C           - Clear the paint
 Esc         - Quit
 """
 
@@ -204,7 +205,7 @@ def main():
 
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(1.2, -1.0, 0.8),
+            camera_pos=(1.2, 1.5, 0.8),
             camera_lookat=(0.25, 0.25, 0.1),
             camera_fov=40,
         ),
@@ -251,11 +252,11 @@ def main():
         ),
     )
     # A white board standing behind the duck, its texture coordinates spanning the image once
-    scene.add_entity(
+    board = scene.add_entity(
         options=gs.entities.Rigid(
             morph=gs.morphs.Plane(
-                pos=(0.0, 0.15, 0.13),
-                normal=(0.0, -1.0, 0.0),
+                pos=(0.0, -0.15, 0.13),
+                normal=(0.0, 1.0, 0.0),
                 plane_size=(0.3, 0.2),
                 tile_size=(0.3, 0.2),
             ),
@@ -265,6 +266,7 @@ def main():
                     variants={"white": gs.textures.ColorTexture(color=(1.0, 1.0, 1.0))},
                     enable_drawing=True,
                 ),
+                double_sided=True,
             ),
             use_visual_raycasting=True,
         ),
@@ -280,6 +282,7 @@ def main():
     i_variant = 0
     i_variant_shown = None
     is_drawing = False
+    is_clearing = False
     is_running = True
 
     # Keybind callbacks run on the viewer thread, so they only pick what the main loop sets between steps
@@ -292,6 +295,10 @@ def main():
         nonlocal is_drawing
         is_drawing = True
 
+    def clear():
+        nonlocal is_clearing
+        is_clearing = True
+
     def stop():
         nonlocal is_running
         is_running = False
@@ -301,6 +308,7 @@ def main():
             Keybind("next_texture", Key.RIGHT, KeyAction.PRESS, callback=swap, args=(1,)),
             Keybind("previous_texture", Key.LEFT, KeyAction.PRESS, callback=swap, args=(-1,)),
             Keybind("draw_texture", Key.SPACE, KeyAction.PRESS, callback=draw),
+            Keybind("clear_texture", Key.C, KeyAction.PRESS, callback=clear),
             Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
         )
         horizon = math.inf
@@ -311,6 +319,10 @@ def main():
     while is_running and step < horizon:
         if not args.vis and step % 100 == 99:
             swap(1)
+        if is_clearing:
+            board.set_texture("white")
+            i_variant_shown = None
+            is_clearing = False
         if i_variant != i_variant_shown:
             duck.set_texture((i_variant + envs_offset) % len(variants_name))
             i_variant_shown = i_variant
