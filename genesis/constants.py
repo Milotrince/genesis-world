@@ -201,7 +201,7 @@ DRAWN_IMAGE = -1
 
 
 # surface maps a dynamic texture binds to
-class TEXTURE_MAP(IntEnum):
+class TEXTURE_MAP_TYPE(IntEnum):
     DIFFUSE = 0
     EMISSIVE = 1
 

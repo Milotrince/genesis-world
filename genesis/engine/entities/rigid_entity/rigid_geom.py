@@ -9,7 +9,7 @@ import trimesh
 
 import genesis as gs
 import genesis.utils.geom as gu
-from genesis.constants import TEXTURE_MAP
+from genesis.constants import TEXTURE_MAP_TYPE
 from genesis.engine.mesh import Mesh
 from genesis.engine.texture import Texture, TextureValueType, get_dynamic_texture
 from genesis.repr_base import RBC
@@ -730,23 +730,29 @@ class RigidVisGeom(RBC):
         return tensor[0] if self._solver.n_envs == 0 else tensor
 
     @gs.assert_built
-    def get_texture(self, envs_idx: IndexType | None = None, *, texture_map: TEXTURE_MAP | None = None) -> torch.Tensor:
+    def get_texture(
+        self, envs_idx: IndexType | None = None, *, texture_map_type: TEXTURE_MAP_TYPE | None = None
+    ) -> torch.Tensor:
         """Return the variant each environment shows on a dynamic texture of this visual geom.
 
-        'texture_map' picks the texture filling that map, and may be None when the visual geom draws a single one. See
-        ``Texture.get_texture`` for 'envs_idx' and the returned value.
+        'texture_map_type' picks the texture filling that type of map, and may be None when the visual geom draws a
+        single one. See ``Texture.get_texture`` for 'envs_idx' and the returned value.
         """
-        return get_dynamic_texture(self._dynamic_textures, texture_map).get_texture(envs_idx)
+        return get_dynamic_texture(self._dynamic_textures, texture_map_type).get_texture(envs_idx)
 
     @gs.assert_built
     def set_texture(
-        self, texture: TextureValueType, envs_idx: IndexType | None = None, *, texture_map: TEXTURE_MAP | None = None
+        self,
+        texture: TextureValueType,
+        envs_idx: IndexType | None = None,
+        *,
+        texture_map_type: TEXTURE_MAP_TYPE | None = None,
     ) -> None:
         """Show a variant, or draw pixels, on a dynamic texture of this visual geom.
 
-        See ``get_texture`` for 'texture_map', and ``Texture.set_texture`` for 'texture' and 'envs_idx'.
+        See ``get_texture`` for 'texture_map_type', and ``Texture.set_texture`` for 'texture' and 'envs_idx'.
         """
-        get_dynamic_texture(self._dynamic_textures, texture_map).set_texture(texture, envs_idx)
+        get_dynamic_texture(self._dynamic_textures, texture_map_type).set_texture(texture, envs_idx)
 
     # ------------------------------------------------------------------------------------
     # ----------------------------------- properties -------------------------------------

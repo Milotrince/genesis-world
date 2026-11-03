@@ -87,10 +87,10 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
         super().build(viewer, camera, scene)
 
         for texture in scene.dynamic_textures:
-            if not texture.options.enable_drawing or texture.texture_map != gs.TEXTURE_MAP.DIFFUSE:
+            if not texture.options.enable_drawing or texture.texture_map_type != gs.TEXTURE_MAP_TYPE.DIFFUSE:
                 continue
             vgeom = texture.vgeom
-            variants = texture.options.get_variants_image(texture.texture_map)
+            variants = texture.options.get_variants_image(texture.texture_map_type)
             images = variants[texture.selection]
             width, height = texture.options.resolution
             pixels_pos = np.stack(np.meshgrid(np.arange(width) + 0.5, np.arange(height) + 0.5), axis=-1)
