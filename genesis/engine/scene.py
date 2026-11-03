@@ -23,7 +23,7 @@ import trimesh
 import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
-from genesis.constants import TEXTURE_MAP
+from genesis.constants import TEXTURE_MAP_TYPE
 from genesis.engine.entities.base_entity import Entity, EntityDescription
 from genesis.engine.entities.rigid_entity import KinematicEntity
 from genesis.engine.force_fields import ForceField
@@ -979,9 +979,9 @@ class Scene(RBC):
                 if isinstance(entity, KinematicEntity):
                     for vgeom in entity.vgeoms:
                         surface_textures = dict(vgeom.surface)
-                        for texture_map, field_name in (
-                            (TEXTURE_MAP.DIFFUSE, "diffuse_texture"),
-                            (TEXTURE_MAP.EMISSIVE, "emissive_texture"),
+                        for texture_map_type, field_name in (
+                            (TEXTURE_MAP_TYPE.DIFFUSE, "diffuse_texture"),
+                            (TEXTURE_MAP_TYPE.EMISSIVE, "emissive_texture"),
                         ):
                             options = surface_textures.get(field_name)
                             if isinstance(options, DynamicTexture):
@@ -990,7 +990,7 @@ class Scene(RBC):
                                         "A dynamic texture cannot be drawn on an entity with custom visual vertices, "
                                         f"got '{entity.name}'."
                                     )
-                                texture = Texture(self, options, texture_map, vgeom)
+                                texture = Texture(self, options, texture_map_type, vgeom)
                                 self._dynamic_textures.append(texture)
                                 vgeom._dynamic_textures.append(texture)
                 elif any(isinstance(texture, DynamicTexture) for _, texture in entity.surface):

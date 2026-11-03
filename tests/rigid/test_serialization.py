@@ -360,8 +360,8 @@ def test_export_and_load_rigid(
     assert_equal(restored_visual.uv, anchored.vgeoms[0].trimesh.visual.uv)
     restored_texture = restored.entities[6].vgeoms[0].vmesh.surface.emissive_texture
     assert_equal(
-        restored_texture.get_variants_image(gs.TEXTURE_MAP.EMISSIVE),
-        anchored.vgeoms[0].vmesh.surface.emissive_texture.get_variants_image(gs.TEXTURE_MAP.EMISSIVE),
+        restored_texture.get_variants_image(gs.TEXTURE_MAP_TYPE.EMISSIVE),
+        anchored.vgeoms[0].vmesh.surface.emissive_texture.get_variants_image(gs.TEXTURE_MAP_TYPE.EMISSIVE),
     )
     assert restored_texture.enable_drawing
     # A morph names the asset it was created from, since the description stands for what was parsed out of it
