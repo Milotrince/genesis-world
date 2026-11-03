@@ -13,7 +13,7 @@ import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
 import genesis.utils.particle as pu
-from genesis.constants import DRAWN_IMAGE, TEXTURE_MAP_TYPE
+from genesis.constants import DRAWN_VARIANT_IDX, TEXTURE_MAP_TYPE
 from genesis.engine.state_change import StateChange, Subscriber
 from genesis.engine.texture import Texture
 from genesis.ext import pyrender
@@ -1409,7 +1409,7 @@ class RasterizerContext:
                     envs_drawn_layer = binding.envs_drawn_layer[self.rendered_envs_idx]
                     texture_layers = primitive.texture_layers
                     texture_layers[:, 0 if binding.is_base_color else 1] = np.where(
-                        active_variants_idx == DRAWN_IMAGE, envs_drawn_layer, active_variants_idx
+                        active_variants_idx == DRAWN_VARIANT_IDX, envs_drawn_layer, active_variants_idx
                     )
                     self.jit.update_texture_layers(node, texture_layers)
 

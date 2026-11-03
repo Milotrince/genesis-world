@@ -171,7 +171,7 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
             if i_env not in envs_idx:
                 envs_idx.add(i_env)
                 i_variant = canvas.texture.active_variants_idx[i_env]
-                if i_variant != gs.DRAWN_IMAGE:
+                if i_variant != gs.DRAWN_VARIANT_IDX:
                     canvas.images[i_env] = canvas.variants[i_variant]
 
             # A stroke joins its successive points, unless it crosses to another canvas or environment, or across a

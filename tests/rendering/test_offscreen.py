@@ -334,7 +334,7 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     label.set_texture(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None], vgeoms_idx=gs.VGeomIndex.all())
     lamp.set_texture(gs.textures.ColorTexture(color=(0.0, 1.0, 0.0)), vgeoms_idx=0)
     assert_equal(screen_vgeom.get_texture(), [0, 1])
-    assert_equal(label_vgeom.get_texture(envs_idx=[1]), [gs.DRAWN_IMAGE])
+    assert_equal(label_vgeom.get_texture(envs_idx=[1]), [gs.DRAWN_VARIANT_IDX])
     # The camera shows the variants as soon as they change, while the sensor renders them at the next step
     scene.step()
     rgb_switched = camera.render(rgb=True)[0]
@@ -407,7 +407,7 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
 
     # A reset of one environment shows its initial variants again, and a reset of the scene those of every environment
     scene.reset(envs_idx=[1])
-    assert_equal(label_vgeom.get_texture(), [gs.DRAWN_IMAGE, 0])
+    assert_equal(label_vgeom.get_texture(), [gs.DRAWN_VARIANT_IDX, 0])
     scene.reset()
     colors = get_colors(camera.render(rgb=True)[0])
     assert (colors[:, 0, 2] > 150.0).all() and (colors[:, 0, :2] < 30.0).all()
