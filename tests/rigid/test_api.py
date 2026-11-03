@@ -1388,7 +1388,7 @@ def test_object_repr():
         ),
     )
     cam = scene.add_camera(
-        resolution=(64, 64),
+        res=(64, 64),
         pos=(1.0, 1.0, 1.0),
         lookat=(0.0, 0.0, 0.0),
     )
