@@ -17,50 +17,45 @@ if TYPE_CHECKING:
 
 
 class Texture:
-    """The variant each environment shows for one dynamic texture, and the renderers drawing it.
+    """The variant each environment shows for the dynamic texture of one slot of a visual geom, and its renderers.
 
     Genesis holds the selection alone: the position of the variant each environment shows, or 'DRAWN_IMAGE' for the
-    pixels drawn on its canvas. The renderers hold the pixels, and each one implements the same contract:
+    pixels drawn for it. The renderers hold the pixels, and each one implements the same contract:
 
-    - at build, it allocates the variants ('options.get_variants_image(slot)'), then the canvases, one per
-      environment it renders when 'options.is_batched' and a single shared one otherwise, binds them to the 'slot' of
-      the visual geoms in 'vgeoms', and subscribes a callback with 'subscribe';
+    - at build, it allocates the variants ('options.get_variants_image(slot)'), then one drawn image per environment
+      it renders when 'options.enable_drawing', binds them to the 'slot' of 'vgeom', and subscribes a callback with
+      'subscribe';
     - on every drawing, the callback receives the environments drawn and their pixels, as an RGBA tensor on the device
-      of shape (len(envs_idx), height, width, 4), or (1, height, width, 4) when the texture is not batched;
+      of shape (len(envs_idx), height, width, 4);
     - at sync, it reads 'selection' when 'selection_version' moved since it last read it.
 
     The images are uint8 sRGB values in the diffuse slot, and float16 linear values in the emissive slot.
     """
 
-    def __init__(self, scene: "Scene", options: DynamicTexture, slot: TEXTURE_SLOT, vgeoms: "list[RigidVisGeom]"):
+    def __init__(self, scene: "Scene", options: DynamicTexture, slot: TEXTURE_SLOT, vgeom: "RigidVisGeom"):
         self._scene = scene
         self._options = options
         self._slot = slot
-        self._vgeoms = vgeoms
+        self._vgeom = vgeom
         (self._initial_variant,) = options.get_variants_idx(options.initial_variant)
         self._selection = np.full(scene._B, self._initial_variant, dtype=gs.np_int)
         self._selection_version = 0
         self._callbacks: list[Callable[[np.ndarray, torch.Tensor], None]] = []
 
     @property
-    def texture_name(self) -> str | None:
-        """The name of the texture, by which the setters of an entity holding several dynamic textures pick it."""
-        return self._options.texture_name
-
-    @property
     def options(self) -> DynamicTexture:
-        """The declaration of the texture, as the surface of its visual geoms holds it."""
+        """The declaration of the texture, as the surface of its visual geom holds it."""
         return self._options
 
     @property
     def slot(self) -> TEXTURE_SLOT:
-        """The slot of the surfaces that the texture fills, which sets the format of its images."""
+        """The slot of the surface that the texture fills, which sets the format of its images."""
         return self._slot
 
     @property
-    def vgeoms(self) -> "list[RigidVisGeom]":
-        """The visual geoms drawing the texture."""
-        return self._vgeoms
+    def vgeom(self) -> "RigidVisGeom":
+        """The visual geom drawing the texture."""
+        return self._vgeom
 
     @property
     def selection(self) -> np.ndarray:
@@ -99,14 +94,12 @@ class Texture:
         'texture' is either variants or pixels. A variant is given by position or by name, one for all the selected
         environments, or a sequence of them, one per selected environment. Pixels are a ``ColorTexture``, an
         ``ImageTexture``, or an RGB or RGBA array of shape (height, width, channels) for all the selected environments
-        or (len(envs_idx), height, width, channels) for one each. Pixels go to the canvas of each selected environment
-        when the texture is batched, and to the canvas every environment shares otherwise, which takes a single image.
+        or (len(envs_idx), height, width, channels) for one each, and require 'enable_drawing' in the declaration.
 
         An array holds uint8 values, or floats on the scale where 1 stands for 255. In the diffuse slot, they are sRGB
         values clamped between 0 and 1. In the emissive slot, they are linear values clamped at 0 alone, so that an
         emission may exceed 1.
         """
-        is_envs_selected = envs_idx is not None
         envs_idx = tensor_to_array(self._scene._sanitize_envs_idx(envs_idx))
         if isinstance(texture, (ColorTexture, ImageTexture)):
             texture = texture_to_rgba(texture, self._options.resolution, self._slot)
@@ -133,17 +126,11 @@ class Texture:
         if isinstance(texture, np.ndarray) and not texture.flags.writeable:
             texture = texture.copy()
         image = torch.as_tensor(texture, device=gs.device)
-        if not self._options.is_batched:
-            if image.ndim == 4:
-                gs.raise_exception("A dynamic texture that is not batched takes a single image.")
-            if is_envs_selected:
-                gs.logger.warning(
-                    "Pixels drawn on a dynamic texture that is not batched are shared by every environment showing "
-                    "them. Declare it with 'is_batched=True' to draw per environment."
-                )
         n_channels = image.shape[-1]
         if n_channels not in (3, 4):
             gs.raise_exception(f"Pixels are drawn as RGB or RGBA, got {n_channels} channels.")
+        if not self._options.enable_drawing:
+            gs.raise_exception("Pixels are drawn on a dynamic texture declared with 'enable_drawing=True' alone.")
         if self._slot == TEXTURE_SLOT.EMISSIVE:
             dtype, alpha = torch.float16, 1.0
             if image.is_floating_point():
@@ -157,7 +144,7 @@ class Texture:
             else:
                 image = image.clamp(0, 255)
         width, height = self._options.resolution
-        n_images = len(envs_idx) if self._options.is_batched else 1
+        n_images = len(envs_idx)
         image = broadcast_tensor(image, dtype, (n_images, height, width, n_channels))
         if n_channels == 3:
             image = torch.cat((image, image.new_full((n_images, height, width, 1), alpha)), dim=-1)
@@ -171,19 +158,16 @@ class Texture:
         self.set_texture(self._initial_variant, envs_idx)
 
 
-def get_dynamic_texture(textures: list[Texture], texture_name: str | None, owner: str) -> Texture:
-    """Return the dynamic texture of 'owner' named 'texture_name', or its only one if 'texture_name' is None.
+def get_dynamic_texture(textures: list[Texture], slot: TEXTURE_SLOT | None) -> Texture:
+    """Return the dynamic texture filling 'slot', or the only one of 'textures' if 'slot' is None.
 
-    'textures' are the dynamic textures that the visual geoms of 'owner' draw, and 'owner' describes it in the errors.
+    'textures' are the dynamic textures of one visual geom, one per slot at most.
     """
-    if texture_name is not None:
-        textures = [texture for texture in textures if texture.texture_name == texture_name]
+    if slot is not None:
+        textures = [texture for texture in textures if texture.slot == slot]
     if len(textures) == 1:
         return textures[0]
     if not textures:
-        target = "any dynamic texture" if texture_name is None else f"a dynamic texture named '{texture_name}'"
-        gs.raise_exception(f"No visual geom of {owner} draws {target}.")
-    textures_name = [texture.texture_name for texture in textures]
-    gs.raise_exception(
-        f"The visual geoms of {owner} draw {len(textures)} dynamic textures {textures_name}. Pick one by 'texture_name'."
-    )
+        target = "" if slot is None else f" in the {slot.name.lower()} slot"
+        gs.raise_exception(f"This visual geom draws no dynamic texture{target}.")
+    gs.raise_exception("This visual geom draws a dynamic texture in both slots. Pick one by 'slot'.")
