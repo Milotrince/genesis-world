@@ -220,7 +220,7 @@ def main():
         gs.morphs.Plane(),
     )
     # The variants to switch between, named and each the size of the dynamic texture: the texture of the asset, a
-    # checkerboard, vertical stripes and a flat color
+    # checkerboard, vertical stripes and the texture of the asset wearing glasses and hair
     width, height = TEXTURE_RESOLUTION
     cols, rows = np.arange(width) // 32, np.arange(height)[:, None] // 32
     is_checker_dark = (rows + cols) % 2 == 0
@@ -233,8 +233,8 @@ def main():
         "stripes": gs.textures.ImageTexture(
             image_array=np.where(is_stripe[..., None], [230, 60, 60], [250, 240, 230]).astype(np.uint8),
         ),
-        "blue": gs.textures.ColorTexture(
-            color=(0.24, 0.47, 0.86),
+        "duckurcqa": gs.textures.ImageTexture(
+            image_path="meshes/duck/duckurcqa.png",
         ),
     }
     duck = scene.add_entity(
