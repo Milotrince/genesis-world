@@ -96,9 +96,7 @@ class ViewerOptions(Options):
             self.refresh_rate = self.max_FPS
             self.max_FPS = None
         if self.res is not None:
-            if "resolution" in self.model_fields_set:
-                gs.raise_exception("'res' is deprecated and replaced by 'resolution'; set only one of them.")
-            gs.logger.warning("'res' is deprecated and will be removed; it now maps to 'resolution'.")
+            gs.logger.warning("'res' is deprecated and will be removed; it overrides 'resolution'.")
             self.resolution = self.res
             self.res = None
         if not self.enable_gui:
