@@ -283,17 +283,17 @@ def main():
     variants_name = tuple(variants)
 
     # The variant each environment shows is offset by the index of the environment
-    envs_offset = np.arange(max(args.n_envs, 1))
+    envs_idx = np.arange(max(args.n_envs, 1))
     i_variant = 0
     is_running = True
 
     def show_variant(offset=0):
         nonlocal i_variant
         i_variant = (i_variant + offset) % len(variants_name)
-        duck.set_texture((i_variant + envs_offset) % len(variants_name))
+        duck.set_texture((i_variant + envs_idx) % len(variants_name))
 
     def draw():
-        duck.set_texture(np.random.rand(len(envs_offset), 1, 1, 3))
+        duck.set_texture(np.random.rand(len(envs_idx), 1, 1, 3))
 
     def clear():
         board.set_texture("white")

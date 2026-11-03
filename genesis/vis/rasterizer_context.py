@@ -47,14 +47,14 @@ class DynamicTextureBinding:
 
     The array holds the variants, then the drawn images of the rendered environments when the texture enables drawing.
     The node samples it through the material texture it binds, the base color or the emissive ('is_base_color'), at the
-    layer each rendered environment selects. 'drawn_layer' holds the layer of the drawn image of each environment of the
-    scene, -1 for one not rendered or a texture without drawing. 'node' holds the node the visual geom was last bound
-    through, so that a node drawn anew is bound again, and 'subscriber' the variant switches the node has yet to show.
+    layer each rendered environment selects. 'envs_drawn_layer' holds the layer of the drawn image of each environment
+    of the scene, -1 for one not rendered or a texture without drawing. 'node' holds the node the visual geom was last
+    bound through, so that a node drawn anew is bound again, and 'subscriber' the variant switches still to show.
     """
 
     texture: "Texture"
     texture_array: "pyrender.Texture"
-    drawn_layer: np.ndarray
+    envs_drawn_layer: np.ndarray
     is_base_color: bool
     node: "pyrender.Node | None"
     subscriber: Subscriber
@@ -632,10 +632,10 @@ class RasterizerContext:
         # which the shaders read from the type of the array.
         for texture in self.scene.dynamic_textures:
             images = texture.options.get_variants_image(texture.texture_map_type)
-            drawn_layer = np.full(self.sim._B, -1, dtype=gs.np_int)
+            envs_drawn_layer = np.full(self.sim._B, -1, dtype=gs.np_int)
             n_drawn = len(self.rendered_envs_idx) if texture.options.enable_drawing else 0
             if n_drawn > 0:
-                drawn_layer[self.rendered_envs_idx] = len(images) + np.arange(n_drawn)
+                envs_drawn_layer[self.rendered_envs_idx] = len(images) + np.arange(n_drawn)
             is_base_color = texture.vgeom.surface.get_rgba() is texture.options
             texture_array = pyrender.Texture(
                 source=images,
@@ -649,7 +649,7 @@ class RasterizerContext:
             binding = DynamicTextureBinding(
                 texture,
                 texture_array,
-                drawn_layer,
+                envs_drawn_layer,
                 is_base_color,
                 None,
                 Subscriber(to=frozenset((StateChange.VISUAL,))),
@@ -1366,7 +1366,7 @@ class RasterizerContext:
     def _on_dynamic_texture_draw(self, texture: "Texture", envs_idx: np.ndarray, image: torch.Tensor) -> None:
         """Queue the upload of the pixels drawn for the rendered environments."""
         binding = self._dynamic_texture_bindings[texture]
-        layers_idx = binding.drawn_layer[envs_idx]
+        layers_idx = binding.envs_drawn_layer[envs_idx]
         (images_idx,) = np.nonzero(layers_idx >= 0)
         if len(images_idx) > 0:
             images = tensor_to_array(image[torch.as_tensor(images_idx, device=image.device)])
@@ -1406,10 +1406,10 @@ class RasterizerContext:
                     # another thread in between is applied again on the next update
                     binding.subscriber.clear()
                     active_variants_idx = binding.texture.active_variants_idx[self.rendered_envs_idx]
-                    drawn_layer = binding.drawn_layer[self.rendered_envs_idx]
+                    envs_drawn_layer = binding.envs_drawn_layer[self.rendered_envs_idx]
                     texture_layers = primitive.texture_layers
                     texture_layers[:, 0 if binding.is_base_color else 1] = np.where(
-                        active_variants_idx == DRAWN_IMAGE, drawn_layer, active_variants_idx
+                        active_variants_idx == DRAWN_IMAGE, envs_drawn_layer, active_variants_idx
                     )
                     self.jit.update_texture_layers(node, texture_layers)
 
