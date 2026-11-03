@@ -45,8 +45,8 @@ class Texture:
         self._options = options
         self._texture_map_type = texture_map_type
         self._vgeom = vgeom
-        (self._initial_variant,) = options.get_variants_idx(options.initial_variant)
-        self._active_variants_idx = np.full(scene._B, self._initial_variant, dtype=gs.np_int)
+        (self._initial_variant_idx,) = options.get_variants_idx(options.initial_variant)
+        self._active_variants_idx = np.full(scene._B, self._initial_variant_idx, dtype=gs.np_int)
         # The subscribers, each with the callback receiving the pixels of every drawing, if any
         self._subscribers: dict[Subscriber, Callable[[np.ndarray, torch.Tensor], None] | None] = {}
 
@@ -167,7 +167,7 @@ class Texture:
 
     def reset(self, envs_idx: IndexType | None = None) -> None:
         """Show the initial variant again in the selected environments."""
-        self.set_texture(self._initial_variant, envs_idx)
+        self.set_texture(self._initial_variant_idx, envs_idx)
 
 
 def get_dynamic_texture(textures: list[Texture], texture_map_type: TEXTURE_MAP_TYPE | None) -> Texture:
