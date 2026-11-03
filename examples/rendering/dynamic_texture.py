@@ -1,0 +1,325 @@
+"""A duck switching between the variants of a dynamic texture, and a canvas painted on with the mouse, at runtime.
+
+In parallel environments, the duck of environment i starts on variant i. Without the viewer, the textures cycle on their
+own. With it, the keyboard sets them in every environment, and the mouse paints in the environment it points at:
+Left mouse  - Paint on the canvas or the duck
+Right       - Next texture
+Left        - Previous texture
+Space       - Draw a random color per environment
+Esc         - Quit
+"""
+
+import argparse
+import math
+import os
+from collections.abc import Callable
+from threading import Lock
+from typing import TYPE_CHECKING, NamedTuple, override
+
+import numpy as np
+import torch
+import trimesh
+
+import genesis as gs
+import genesis.utils.geom as gu
+from genesis.utils.misc import tensor_to_array, with_lock
+from genesis.vis.keybindings import Key, KeyAction, Keybind, MouseButton
+from genesis.vis.viewer_plugins import EVENT_HANDLE_STATE, EVENT_HANDLED, RaycasterViewerPlugin
+
+if TYPE_CHECKING:
+    from genesis.engine.scene import Scene
+    from genesis.engine.texture import Texture
+    from genesis.ext.pyrender.node import Node
+
+TEXTURE_RESOLUTION = (256, 256)
+
+
+class Canvas(NamedTuple):
+    """A dynamic texture taking paint, with the image each environment shows as the painter last saw it."""
+
+    texture: "Texture"
+    # The visual mesh of the geom drawing the texture, in the frame of the geom
+    mesh: trimesh.Trimesh
+    # The variants, then the image of each environment, as RGBA uint8 arrays of shape (height, width, 4)
+    variants: np.ndarray
+    images: np.ndarray
+    # The center of each pixel, as (column, row) of shape (height, width, 2)
+    pixels_pos: np.ndarray
+    callback: Callable[[np.ndarray, torch.Tensor], None]
+
+
+class TexturePainterPlugin(RaycasterViewerPlugin):
+    """
+    Paint with the left mouse button on the visual geoms drawing a dynamic texture in their diffuse map.
+
+    The paint goes to the entities whose options set use_visual_raycasting=True and whose dynamic texture sets
+    enable_drawing=True, in the environment under the cursor. It covers the image this environment shows, a variant or
+    the pixels drawn last, so showing a variant again erases it.
+
+    Parameters
+    ----------
+    color : tuple of int, optional
+        sRGB color of the paint, between 0 and 255. Default is (20, 20, 20).
+    brush_radius : float, optional
+        Radius of the brush, in pixels of the texture. Default is 3.0.
+    """
+
+    def __init__(self, color: tuple[int, int, int] = (20, 20, 20), brush_radius: float = 3.0) -> None:
+        super().__init__(use_visual_geom=True)
+        self.color = (*color, 255)
+        self.brush_radius = brush_radius
+
+        self._canvases: dict[int, Canvas] = {}
+        # The mouse positions of the strokes, collected by the viewer thread and painted by the stepping one, a stroke
+        # ending at None
+        self._strokes_pos: list[tuple[int, int] | None] = []
+        self._is_painting = False
+        # The canvas, environment and pixel painted last, None at the start of a stroke
+        self._stroke_end: tuple[Canvas, int, np.ndarray] | None = None
+        self._lock = Lock()
+
+    def build(self, viewer, camera: "Node", scene: "Scene"):
+        super().build(viewer, camera, scene)
+
+        for texture in scene.dynamic_textures:
+            if not texture.options.enable_drawing or texture.texture_map != gs.TEXTURE_MAP.DIFFUSE:
+                continue
+            vgeom = texture.vgeom
+            variants = texture.options.get_variants_image(texture.texture_map)
+            images = variants[texture.selection]
+            width, height = texture.options.resolution
+            pixels_pos = np.stack(np.meshgrid(np.arange(width) + 0.5, np.arange(height) + 0.5), axis=-1)
+
+            # Genesis keeps no pixels, so the painter follows the pixels drawn by others to paint over them
+            def copy_drawing(envs_idx: np.ndarray, image: torch.Tensor, images: np.ndarray = images) -> None:
+                images[envs_idx] = tensor_to_array(image)
+
+            texture.subscribe(copy_drawing)
+            mesh = trimesh.Trimesh(vgeom.init_vverts, vgeom.init_vfaces, process=False)
+            self._canvases[vgeom.uid] = Canvas(texture, mesh, variants, images, pixels_pos, copy_drawing)
+
+    @with_lock
+    @override
+    def on_mouse_press(self, x: int, y: int, button: int, modifiers: int) -> EVENT_HANDLE_STATE:
+        if button != MouseButton.LEFT:
+            return
+        ray_hit = self._raycaster.cast(*self._screen_position_to_ray(x, y))
+        if ray_hit is None or ray_hit.geom is None or ray_hit.geom.uid not in self._canvases:
+            return
+        self._is_painting = True
+        self._strokes_pos.append((x, y))
+        return EVENT_HANDLED
+
+    @with_lock
+    @override
+    def on_mouse_drag(self, x: int, y: int, dx: int, dy: int, buttons: int, modifiers: int) -> EVENT_HANDLE_STATE:
+        if self._is_painting:
+            self._strokes_pos.append((x, y))
+            return EVENT_HANDLED
+
+    @with_lock
+    @override
+    def on_mouse_release(self, x: int, y: int, button: int, modifiers: int) -> EVENT_HANDLE_STATE:
+        if button == MouseButton.LEFT and self._is_painting:
+            self._is_painting = False
+            self._strokes_pos.append(None)
+            return EVENT_HANDLED
+
+    @override
+    def update_on_sim_step(self) -> None:
+        super().update_on_sim_step()
+
+        with self._lock:
+            strokes_pos, self._strokes_pos = self._strokes_pos, []
+
+        canvases_envs_idx: dict[int, set[int]] = {}
+        for stroke_pos in strokes_pos:
+            ray_hit = None
+            if stroke_pos is not None:
+                ray_hit = self._raycaster.cast(*self._screen_position_to_ray(*stroke_pos))
+            canvas = None
+            if ray_hit is not None and ray_hit.geom is not None:
+                canvas = self._canvases.get(ray_hit.geom.uid)
+            if canvas is None:
+                self._stroke_end = None
+                continue
+
+            # The texture coordinates of the point hit, interpolated over the face of the visual mesh holding it
+            vgeom = canvas.texture.vgeom
+            env_idx = ray_hit.env_idx
+            vgeom_pos = tensor_to_array(vgeom.get_pos(env_idx, relative=False).squeeze(0))
+            vgeom_quat = tensor_to_array(vgeom.get_quat(env_idx, relative=False).squeeze(0))
+            hit_pos = ray_hit.position if env_idx is None else ray_hit.position - self.scene.envs_offset[env_idx]
+            hit_pos_local = gu.inv_transform_by_trans_quat(hit_pos, vgeom_pos, vgeom_quat)
+            hit_pos_mesh, _, faces_idx = canvas.mesh.nearest.on_surface(hit_pos_local[None])
+            barycentric = trimesh.triangles.points_to_barycentric(canvas.mesh.triangles[faces_idx], hit_pos_mesh)
+            uv = barycentric[0] @ vgeom.uvs[canvas.mesh.faces[faces_idx[0]]]
+            height, width = canvas.images.shape[1:3]
+            pixel_pos = uv * (width, height)
+
+            # The first paint of a step over a variant starts from that variant, which the drawing then replaces
+            i_env = 0 if env_idx is None else env_idx
+            envs_idx = canvases_envs_idx.setdefault(vgeom.uid, set())
+            if i_env not in envs_idx:
+                envs_idx.add(i_env)
+                i_variant = canvas.texture.selection[i_env]
+                if i_variant != gs.DRAWN_IMAGE:
+                    canvas.images[i_env] = canvas.variants[i_variant]
+
+            # A stroke joins its successive points, unless it crosses to another canvas or environment, or across a
+            # seam of the texture coordinates, which moves it to a distant part of the image
+            stroke_start = pixel_pos
+            if self._stroke_end is not None:
+                end_canvas, end_env_idx, end_pixel_pos = self._stroke_end
+                is_same_area = end_canvas is canvas and end_env_idx == i_env
+                if is_same_area and np.linalg.norm(pixel_pos - end_pixel_pos) < 0.25 * max(width, height):
+                    stroke_start = end_pixel_pos
+            segment = pixel_pos - stroke_start
+            ratio = np.clip((canvas.pixels_pos - stroke_start) @ segment / max(segment @ segment, gs.EPS), 0.0, 1.0)
+            pixels_dist = np.linalg.norm(canvas.pixels_pos - stroke_start - ratio[..., None] * segment, axis=-1)
+            canvas.images[i_env][pixels_dist <= self.brush_radius] = self.color
+            self._stroke_end = (canvas, i_env, pixel_pos)
+
+        for vgeom_uid, envs_idx in canvases_envs_idx.items():
+            canvas = self._canvases[vgeom_uid]
+            envs_idx = sorted(envs_idx)
+            canvas.texture.set_texture(canvas.images[envs_idx], envs_idx if self.scene.n_envs > 0 else None)
+
+    @override
+    def on_close(self) -> None:
+        super().on_close()
+
+        for canvas in self._canvases.values():
+            canvas.texture.unsubscribe(canvas.callback)
+        self._canvases.clear()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-v", "--vis", action="store_true", help="Show visualization GUI")
+    parser.add_argument("-n", "--n_envs", type=int, default=4, help="Number of parallel environments")
+    args = parser.parse_args()
+
+    gs.init(backend=gs.cpu)
+
+    scene = gs.Scene(
+        viewer_options=gs.options.ViewerOptions(
+            camera_pos=(1.2, -1.0, 0.8),
+            camera_lookat=(0.25, 0.25, 0.1),
+            camera_fov=40,
+        ),
+        show_viewer=args.vis,
+    )
+    scene.add_entity(
+        gs.morphs.Plane(),
+    )
+    # The variants to switch between, named and each the size of the dynamic texture: the texture of the asset, a
+    # checkerboard, vertical stripes and a flat color
+    width, height = TEXTURE_RESOLUTION
+    cols, rows = np.arange(width) // 32, np.arange(height)[:, None] // 32
+    is_checker_dark = (rows + cols) % 2 == 0
+    is_stripe = np.broadcast_to(cols % 2 == 0, (height, width))
+    variants = {
+        "duck": gs.textures.AssetTexture(),
+        "checker": gs.textures.ImageTexture(
+            image_array=np.where(is_checker_dark[..., None], [240, 140, 30], [250, 240, 230]).astype(np.uint8),
+        ),
+        "stripes": gs.textures.ImageTexture(
+            image_array=np.where(is_stripe[..., None], [230, 60, 60], [250, 240, 230]).astype(np.uint8),
+        ),
+        "blue": gs.textures.ColorTexture(
+            color=(0.24, 0.47, 0.86),
+        ),
+    }
+    duck = scene.add_entity(
+        options=gs.entities.Rigid(
+            morph=gs.morphs.Mesh(
+                file="meshes/duck/duck.obj",
+                scale=0.0005,
+                pos=(0.0, 0.0, 0.04),
+                euler=(90.0, 0.0, 90.0),
+                fixed=True,
+            ),
+            surface=gs.surfaces.Default(
+                diffuse_texture=gs.textures.DynamicTexture(
+                    resolution=TEXTURE_RESOLUTION,
+                    variants=variants,
+                    enable_drawing=True,
+                ),
+            ),
+            use_visual_raycasting=True,
+        ),
+    )
+    # A white board standing behind the duck, its texture coordinates spanning the image once
+    scene.add_entity(
+        options=gs.entities.Rigid(
+            morph=gs.morphs.Plane(
+                pos=(0.0, 0.15, 0.13),
+                normal=(0.0, -1.0, 0.0),
+                plane_size=(0.3, 0.2),
+                tile_size=(0.3, 0.2),
+            ),
+            surface=gs.surfaces.Default(
+                diffuse_texture=gs.textures.DynamicTexture(
+                    resolution=(300, 200),
+                    variants={"white": gs.textures.ColorTexture(color=(1.0, 1.0, 1.0))},
+                    enable_drawing=True,
+                ),
+            ),
+            use_visual_raycasting=True,
+        ),
+    )
+    if args.vis:
+        scene.viewer.add_plugin(TexturePainterPlugin())
+    scene.build(n_envs=args.n_envs, env_spacing=(0.5, 0.5))
+
+    variants_name = tuple(variants)
+
+    # The variant each environment shows is offset by the index of the environment
+    envs_offset = np.arange(max(args.n_envs, 1))
+    i_variant = 0
+    i_variant_shown = None
+    is_drawing = False
+    is_running = True
+
+    # Keybind callbacks run on the viewer thread, so they only pick what the main loop sets between steps
+    def swap(offset):
+        nonlocal i_variant, i_variant_shown
+        i_variant = (i_variant + offset) % len(variants_name)
+        i_variant_shown = None
+
+    def draw():
+        nonlocal is_drawing
+        is_drawing = True
+
+    def stop():
+        nonlocal is_running
+        is_running = False
+
+    if args.vis:
+        scene.viewer.register_keybinds(
+            Keybind("next_texture", Key.RIGHT, KeyAction.PRESS, callback=swap, args=(1,)),
+            Keybind("previous_texture", Key.LEFT, KeyAction.PRESS, callback=swap, args=(-1,)),
+            Keybind("draw_texture", Key.SPACE, KeyAction.PRESS, callback=draw),
+            Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
+        )
+        horizon = math.inf
+    else:
+        horizon = 400 if "PYTEST_VERSION" not in os.environ else 5
+
+    step = 0
+    while is_running and step < horizon:
+        if not args.vis and step % 100 == 99:
+            swap(1)
+        if i_variant != i_variant_shown:
+            duck.set_texture((i_variant + envs_offset) % len(variants_name))
+            i_variant_shown = i_variant
+        if is_drawing:
+            duck.set_texture(np.random.rand(len(envs_offset), 1, 1, 3))
+            is_drawing = False
+        scene.step()
+        step += 1
+
+
+if __name__ == "__main__":
+    main()
