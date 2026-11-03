@@ -360,7 +360,8 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     assert_allclose(colors_variant[:, 2], colors_drawn[:, 2], atol=2.0)
     # Refused inputs: a variant the texture does not declare, a value that is neither a variant nor pixels, pixels on a
     # texture without drawing, a number of variants matching neither one nor the environments, an HDR image, a map, a
-    # visual geom or an entity without dynamic texture, and a selection matching no visual geom
+    # visual geom or an entity without dynamic texture, a selection matching no visual geom, and one by ordinal on an
+    # entity of several links
     with pytest.raises(gs.GenesisException, match="No variant is named"):
         screen_vgeom.set_texture("green")
     with pytest.raises(gs.GenesisException, match="integer position"):
@@ -383,6 +384,10 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
         reference.set_texture(0)
     with pytest.raises(gs.GenesisException, match="No visual geom"):
         label.get_vgeoms(gs.VGeomIndex.with_material("lcd"))
+    with pytest.raises(gs.GenesisException, match="by ordinal"):
+        gs.Scene().add_entity(morph=gs.morphs.URDF(file="urdf/simple/two_link_arm.urdf")).get_vgeoms(
+            gs.VGeomIndex.at(0)
+        )
     with pytest.raises(gs.GenesisException, match="diffuse_texture"):
         gs.surfaces.Default(roughness_texture=gs.textures.DynamicTexture(resolution=(4, 4)))
     with pytest.raises(gs.GenesisException, match="texture coordinates"):
@@ -410,6 +415,8 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
 
 @pytest.mark.required
 def test_dynamic_texture_side_by_side_envs(show_viewer):
+    # Drawing every environment in one pass needs 'split_envs' off, which 'test_dynamic_texture' needs on for the
+    # images of each environment, and the option holds for a whole scene
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
             camera_pos=(0.0, 0.75, 4.0),

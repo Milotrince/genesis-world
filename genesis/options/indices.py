@@ -231,6 +231,11 @@ class VGeomIndex(_NamedOrdinalIndex):
         """Select the visual geoms whose asset material has one of the given names, each exact or a glob pattern."""
         return cls(material_names=names)
 
+    @property
+    def is_by_ordinal(self) -> bool:
+        """Whether the selection holds visual geoms by ordinal, by mask or by span, which count within a link."""
+        return self.names is None and self.material_names is None
+
     def matches_material(self, material_name: str) -> bool:
         """Whether a selection by material name holds the visual geom of a given asset material name."""
         return any(fnmatchcase(material_name, name) for name in self.material_names)
