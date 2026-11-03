@@ -196,7 +196,7 @@ class IMAGE_TYPE(IntEnum):
         return self.name
 
 
-# The selection of an environment showing the pixels drawn on the canvas of a dynamic texture, in place of a variant
+# The selection of an environment showing the pixels drawn for it on a dynamic texture, in place of a variant
 DRAWN_IMAGE = -1
 
 

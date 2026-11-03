@@ -7,8 +7,7 @@ import torch
 import genesis as gs
 from genesis.constants import link_ref_frame
 from genesis.engine.states.entities import RigidEntityState
-from genesis.engine.texture import Texture, get_dynamic_texture
-from genesis.options.indices import get_links_path
+from genesis.options.indices import VGeomIndex, get_links_path
 from genesis.typing import UnitVec4FType, Vec3FType
 from genesis.utils import geom as gu
 from genesis.utils.misc import DeprecationError, broadcast_tensor, qd_to_torch
@@ -23,7 +22,7 @@ from .description import (
 )
 from .inertial import RHO_MUJOCO, RHO_OBJECT, RHO_ROBOT, compose_inertial_from_g_infos, finalize_inertial
 from .rigid_equality import RigidEquality
-from .rigid_geom import RigidGeom
+from .rigid_geom import RigidGeom, RigidVisGeom
 from .rigid_joint import RigidJoint
 from .rigid_link import KinematicLink, RigidLink
 
@@ -73,8 +72,6 @@ class KinematicEntity(Entity):
         self._is_built: bool = False
         self._is_attached: bool = False
         self._is_vverts_overridden: bool = False
-        # The dynamic textures its visual geoms draw, which the scene lists as it builds
-        self._dynamic_textures: list[Texture] = []
 
         # The names from the root of the kinematic tree down to each link, by local link index, which the link options
         # select on (see 'gs.LinkIndex')
@@ -1094,24 +1091,20 @@ class KinematicEntity(Entity):
             return self._vgeoms
         return gs.List(vgeom for link in self._links for vgeom in link.vgeoms)
 
-    @gs.assert_built
-    def get_texture(self, texture_name: str | None = None, envs_idx=None) -> torch.Tensor:
-        """Return the variant each environment shows on a dynamic texture drawn by the visual geoms of the entity.
+    def get_vgeoms(self, vgeom_index: VGeomIndex) -> gs.List[RigidVisGeom]:
+        """Return the visual geoms of the entity that a selection holds, link after link.
 
-        'texture_name' picks the texture of that name, and may be None when they draw a single one. See
-        ``Texture.get_texture`` for 'envs_idx' and the returned value.
+        'vgeom_index' selects within every link, as the visual geom options of the entity do, so that the selection
+        giving a visual geom its surface finds it again (see ``gs.VGeomIndex``).
         """
-        return get_dynamic_texture(self._dynamic_textures, texture_name, f"entity '{self.name}'").get_texture(envs_idx)
-
-    @gs.assert_built
-    def set_texture(self, texture, texture_name: str | None = None, envs_idx=None):
-        """Show a variant, or draw pixels, on a dynamic texture drawn by the visual geoms of the entity.
-
-        See ``get_texture`` for 'texture_name', and ``Texture.set_texture`` for 'texture' and 'envs_idx'.
-        """
-        get_dynamic_texture(self._dynamic_textures, texture_name, f"entity '{self.name}'").set_texture(
-            texture, envs_idx
-        )
+        vgeoms = gs.List()
+        for link in self._links:
+            vgeoms_name = [vgeom.name for vgeom in link.vgeoms]
+            vgeoms_material_name = [vgeom.material_name for vgeom in link.vgeoms]
+            vgeoms.extend(link.vgeoms[i_vg] for i_vg in vgeom_index.resolve(vgeoms_name, vgeoms_material_name))
+        if not vgeoms:
+            gs.raise_exception(f"No visual geom of entity '{self.name}' matches {vgeom_index}.")
+        return vgeoms
 
     @gs.assert_built
     def set_vverts(self, vverts, envs_idx=None):
