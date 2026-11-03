@@ -42,15 +42,14 @@ class RigidNodeBatch(NamedTuple):
 
 
 @dataclass
-class DynamicTextureTargets:
+class DynamicTextureBinding:
     """The node drawing one dynamic texture, and the texture array holding its images that it samples.
 
     The array holds the variants, then the drawn images of the rendered environments when the texture enables drawing.
     The node samples it through the material texture it binds, the base color or the emissive ('is_base_color'), at the
     layer each rendered environment selects. 'drawn_layer' holds the layer of the drawn image of each environment of the
     scene, -1 for one not rendered or a texture without drawing. 'node' holds the node the visual geom was last bound
-    through, so that a node drawn anew is bound again. 'subscriber' holds the switches of variant the node has yet to
-    show.
+    through, so that a node drawn anew is bound again, and 'subscriber' the variant switches the node has yet to show.
     """
 
     texture: "Texture"
@@ -225,7 +224,7 @@ class RasterizerContext:
         self.frustum_nodes = dict()  # nodes camera frustums
         self.rigid_nodes = dict()
         # The rigid nodes that the dynamic textures of the scene are drawn by, synced at update time
-        self._dynamic_texture_targets: dict["Texture", DynamicTextureTargets] = {}
+        self._dynamic_texture_bindings: dict["Texture", DynamicTextureBinding] = {}
         # The geoms behind the rigid nodes, grouped by solver and visual mode for placement at update time
         self._rigid_batches: dict[tuple["RigidSolver | KinematicSolver", bool], RigidNodeBatch] = {}
         # (env_idx, geom.uid) -> per-env pyrender node for kinematic entities currently driven by set_vverts
@@ -327,9 +326,9 @@ class RasterizerContext:
                 self.remove_node(external_node)
             node_registry.clear()
         self._per_env_vverts_entity_uids.clear()
-        for targets in self._dynamic_texture_targets.values():
-            targets.texture.unsubscribe(targets.subscriber)
-        self._dynamic_texture_targets.clear()
+        for binding in self._dynamic_texture_bindings.values():
+            binding.texture.unsubscribe(binding.subscriber)
+        self._dynamic_texture_bindings.clear()
 
     def reset(self):
         self._t = -1
@@ -658,7 +657,7 @@ class RasterizerContext:
                 else GL_UNSIGNED_BYTE,
                 n_layers=len(images) + n_drawn,
             )
-            targets = DynamicTextureTargets(
+            binding = DynamicTextureBinding(
                 texture,
                 texture_array,
                 drawn_layer,
@@ -666,8 +665,8 @@ class RasterizerContext:
                 None,
                 Subscriber(to=frozenset((StateChange.VISUAL,))),
             )
-            texture.subscribe(targets.subscriber, partial(self._on_dynamic_texture_draw, texture))
-            self._dynamic_texture_targets[texture] = targets
+            texture.subscribe(binding.subscriber, partial(self._on_dynamic_texture_draw, texture))
+            self._dynamic_texture_bindings[texture] = binding
 
         if self.sim.rigid_solver.is_active and any(link.visualize_contact for link in self.sim.rigid_solver.links):
             # Scale contact arrows by the parent link's overall size rather than the individual contacting geom, so
@@ -1377,14 +1376,14 @@ class RasterizerContext:
 
     def _on_dynamic_texture_draw(self, texture: "Texture", envs_idx: np.ndarray, image: torch.Tensor) -> None:
         """Queue the upload of the pixels drawn for the rendered environments."""
-        targets = self._dynamic_texture_targets[texture]
-        layers_idx = targets.drawn_layer[envs_idx]
+        binding = self._dynamic_texture_bindings[texture]
+        layers_idx = binding.drawn_layer[envs_idx]
         (images_idx,) = np.nonzero(layers_idx >= 0)
         if len(images_idx) > 0:
             images = tensor_to_array(image[torch.as_tensor(images_idx, device=image.device)])
             with self.scene._visualizer.viewer_lock:
-                targets.texture_array.set_layers(layers_idx[images_idx], images)
-                self._scene.updated_textures.add(targets.texture_array)
+                binding.texture_array.set_layers(layers_idx[images_idx], images)
+                self._scene.updated_textures.add(binding.texture_array)
 
     def update(self, force_render: bool = False, solvers=None):
         """
@@ -1395,32 +1394,32 @@ class RasterizerContext:
         """
         # The dynamic textures are drawn and switched at any time, stepping or not. The lock is taken only for them, so
         # that a scene without any renders without waiting for the viewer.
-        if self._dynamic_texture_targets:
+        if self._dynamic_texture_bindings:
             with self.scene._visualizer.viewer_lock:
-                for targets in self._dynamic_texture_targets.values():
-                    node = self.rigid_nodes.get(targets.texture.vgeom.uid)
+                for binding in self._dynamic_texture_bindings.values():
+                    node = self.rigid_nodes.get(binding.texture.vgeom.uid)
                     if node is None:
                         continue
                     primitive = node.mesh.primitives[0]
                     # A node drawn anew samples the texture its trimesh visual seeds, which the array replaces
-                    if node is not targets.node:
-                        if targets.is_base_color:
-                            primitive.material.baseColorTexture = targets.texture_array
+                    if node is not binding.node:
+                        if binding.is_base_color:
+                            primitive.material.baseColorTexture = binding.texture_array
                         else:
-                            primitive.material.emissiveTexture = targets.texture_array
+                            primitive.material.emissiveTexture = binding.texture_array
                         if primitive.texture_layers is None:
                             primitive.texture_layers = np.zeros((len(self.rendered_envs_idx), 2), np.float32)
                         self._scene._meshes_updated = True
-                        targets.node = node
-                    elif StateChange.VISUAL not in targets.subscriber.pending:
+                        binding.node = node
+                    elif StateChange.VISUAL not in binding.subscriber.pending:
                         continue
                     # The switches are cleared before the active variants are read, so that a variant switched by
                     # another thread in between is applied again on the next update
-                    targets.subscriber.clear()
-                    active_variants_idx = targets.texture.active_variants_idx[self.rendered_envs_idx]
-                    drawn_layer = targets.drawn_layer[self.rendered_envs_idx]
+                    binding.subscriber.clear()
+                    active_variants_idx = binding.texture.active_variants_idx[self.rendered_envs_idx]
+                    drawn_layer = binding.drawn_layer[self.rendered_envs_idx]
                     texture_layers = primitive.texture_layers
-                    texture_layers[:, 0 if targets.is_base_color else 1] = np.where(
+                    texture_layers[:, 0 if binding.is_base_color else 1] = np.where(
                         active_variants_idx == DRAWN_IMAGE, drawn_layer, active_variants_idx
                     )
                     self.jit.update_texture_layers(node, texture_layers)
