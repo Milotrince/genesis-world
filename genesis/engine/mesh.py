@@ -320,7 +320,7 @@ class Mesh(RBC, serialization.SerializationMixin):
         self._surface.update_texture()
         self._uvs = None
 
-    def _check_uvs(self):
+    def _check_uvs(self) -> None:
         if self._uvs is None and any(
             isinstance(texture, gs.textures.DynamicTexture)
             for texture in (self._surface.texture, self._surface.emission)

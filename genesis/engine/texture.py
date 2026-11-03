@@ -1,6 +1,6 @@
 """Runtime state of the dynamic textures of a scene (see ``gs.textures.DynamicTexture``)."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -9,11 +9,16 @@ import torch
 import genesis as gs
 from genesis.constants import DRAWN_IMAGE, TEXTURE_SLOT
 from genesis.options.textures import ColorTexture, DynamicTexture, ImageTexture, texture_to_rgba
+from genesis.typing import IndexType
 from genesis.utils.misc import broadcast_tensor, tensor_to_array
 
 if TYPE_CHECKING:
     from genesis.engine.entities.rigid_entity.rigid_geom import RigidVisGeom
     from genesis.engine.scene import Scene
+
+
+# The variants to show, by position or by name, or the pixels to draw (see 'Texture.set_texture')
+TextureValueType = int | str | Sequence[int | str] | np.ndarray | torch.Tensor | ColorTexture | ImageTexture
 
 
 class Texture:
@@ -82,13 +87,13 @@ class Texture:
         """Stop calling a callback given to 'subscribe'."""
         self._callbacks.remove(callback)
 
-    def get_texture(self, envs_idx=None) -> torch.Tensor:
+    def get_texture(self, envs_idx: IndexType | None = None) -> torch.Tensor:
         """Return the position of the variant each selected environment shows, 'DRAWN_IMAGE' for drawn pixels."""
         selection = self._selection[tensor_to_array(self._scene._sanitize_envs_idx(envs_idx))]
         selection = torch.as_tensor(selection, dtype=gs.tc_int, device=gs.device)
         return selection[0] if self._scene.n_envs == 0 else selection
 
-    def set_texture(self, texture, envs_idx=None) -> None:
+    def set_texture(self, texture: TextureValueType, envs_idx: IndexType | None = None) -> None:
         """Show a variant, or draw pixels, in the selected environments.
 
         'texture' is either variants or pixels. A variant is given by position or by name, one for all the selected
@@ -153,7 +158,7 @@ class Texture:
         for callback in self._callbacks:
             callback(envs_idx, image)
 
-    def reset(self, envs_idx=None) -> None:
+    def reset(self, envs_idx: IndexType | None = None) -> None:
         """Show the initial variant again in the selected environments."""
         self.set_texture(self._initial_variant, envs_idx)
 

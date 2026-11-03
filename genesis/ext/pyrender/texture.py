@@ -170,7 +170,7 @@ class Texture(object):
     ##################
 
     @property
-    def _gl_format(self):
+    def _gl_format(self) -> int:
         """The OpenGL format of the channels of the texture."""
         if self.source_channels == "R":
             return GL_RED
@@ -182,12 +182,12 @@ class Texture(object):
             return GL_RGBA
         return GL_DEPTH_COMPONENT
 
-    def set_layers(self, layers_idx, images):
+    def set_layers(self, layers_idx: np.ndarray, images: np.ndarray) -> None:
         """Write (len(layers_idx),h,w,c) images into layers of a texture array, uploaded by 'upload_source'."""
         self._source[layers_idx] = images[..., : len(self.source_channels)]
         self._pending_layers.update(layers_idx.tolist())
 
-    def upload_source(self):
+    def upload_source(self) -> None:
         """Upload the current source of the texture, which keeps its size and channels, the written layers alone for a
         texture array.
 
