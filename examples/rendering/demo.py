@@ -6,7 +6,7 @@ def main():
 
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
-            res=(1920, 1080),
+            resolution=(1920, 1080),
             camera_pos=(8.5, 0.0, 4.5),
             camera_lookat=(3.0, 0.0, 0.5),
             camera_fov=50,
@@ -156,7 +156,7 @@ def main():
         ),
     )
     cam_0 = scene.add_camera(
-        res=(1600, 900),
+        resolution=(1600, 900),
         pos=(8.5, 0.0, 1.5),
         lookat=(3.0, 0.0, 0.7),
         fov=60,

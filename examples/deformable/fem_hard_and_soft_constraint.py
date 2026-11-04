@@ -104,7 +104,7 @@ def main():
     video_fps = min(100.0, 1.0 / args.dt)
 
     cam = scene.add_camera(
-        res=(640, 480),
+        resolution=(640, 480),
         pos=(-2.0, 3.0, 2.0),
         lookat=SCENE_POS + np.array([0.0, 0.0, -0.8]),
         fov=30,

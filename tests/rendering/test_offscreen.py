@@ -181,7 +181,7 @@ def test_emissive_composites(base_plus_emissive_glb, show_viewer, renderer):
     camera = scene.add_camera(
         pos=(0.0, 0.0, 16.0),
         lookat=(0.0, 0.0, 0.0),
-        res=(256, 96),
+        resolution=(256, 96),
         GUI=show_viewer,
     )
     scene.build()
@@ -306,13 +306,13 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     camera = scene.add_camera(
         pos=(0.0, 0.0, 4.0),
         lookat=(0.0, 0.0, 0.0),
-        res=(192, 64),
+        resolution=(192, 64),
         fov=40.0,
         GUI=show_viewer,
     )
     sensor = scene.add_sensor(
         RasterizerCameraOptions(
-            res=(192, 64),
+            resolution=(192, 64),
             pos=(0.0, 0.0, 4.0),
             lookat=(0.0, 0.0, 0.0),
             fov=40.0,
@@ -510,7 +510,7 @@ def test_dynamic_texture_side_by_side_envs(show_viewer):
     camera = scene.add_camera(
         pos=(0.0, 0.75, 4.0),
         lookat=(0.0, 0.75, 0.0),
-        res=(64, 128),
+        resolution=(64, 128),
         fov=40.0,
     )
     scene.build(n_envs=2, env_spacing=(0.0, 1.5))
@@ -603,7 +603,7 @@ def test_render_api_advanced(tmp_path, n_envs, show_viewer, png_snapshot, render
         ),
     )
     cam_debug = scene.add_camera(
-        res=(640, 480),
+        resolution=(640, 480),
         pos=(1.5, 0.5, 1.5),
         lookat=(0.0, 0.0, 0.5),
         fov=45,
@@ -614,7 +614,7 @@ def test_render_api_advanced(tmp_path, n_envs, show_viewer, png_snapshot, render
     for i in range(max(1 if IS_BATCHRENDER else n_envs, 1)):
         env_idx = None if i < 1 else i
         cam_0 = scene.add_camera(
-            res=CAM_RES,
+            resolution=CAM_RES,
             pos=(1.5, 0.5, 1.5),
             lookat=(0.0, 0.0, 0.5),
             fov=45,
@@ -624,7 +624,7 @@ def test_render_api_advanced(tmp_path, n_envs, show_viewer, png_snapshot, render
             GUI=show_viewer,
         )
         cam_1 = scene.add_camera(
-            res=CAM_RES,
+            resolution=CAM_RES,
             pos=(0.8, -0.5, 0.8),
             lookat=(0.0, 0.0, 0.5),
             fov=45,
@@ -634,7 +634,7 @@ def test_render_api_advanced(tmp_path, n_envs, show_viewer, png_snapshot, render
             GUI=show_viewer,
         )
         cam_2 = scene.add_camera(
-            res=CAM_RES,
+            resolution=CAM_RES,
             fov=45,
             env_idx=env_idx,
             near=0.05,
@@ -946,7 +946,7 @@ def test_deterministic(tmp_path, renderer_type, renderer, show_viewer, tol):
     cam = scene.add_camera(
         pos=CAM_POS_LOCAL,
         lookat=CAM_LOOKAT_LOCAL,
-        res=(500, 500),
+        resolution=(500, 500),
         fov=60,
         spp=512,
         GUI=show_viewer,
@@ -1067,7 +1067,7 @@ def test_renders_heterogeneous_entities(n_envs, show_viewer, png_snapshot, rende
         ),
     )
     camera = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=(0.0, 5.0, 2.6),
         lookat=(0.0, 0.0, 0.2),
         fov=55.0,
@@ -1238,7 +1238,7 @@ def test_segmentation_map(segmentation_level, particle_mode, renderer_type, rend
 
     camera = scene.add_camera(
         # Using very low resolution to speed up rendering
-        res=(128, 128),
+        resolution=(128, 128),
         pos=(2.0, 0.0, 2.0),
         lookat=(0, 0, 0.5),
         fov=40,
@@ -1304,7 +1304,7 @@ def test_multi_submesh_fem_render(renderer_type, renderer, show_viewer, png_snap
         ),
     )
     camera = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=(0.6, 0.6, 0.55),
         lookat=(0.0, 0.0, 0.32),
         fov=45,
@@ -1394,7 +1394,7 @@ def test_point_cloud(renderer_type, renderer, show_viewer):
         )
     )
     camera_sphere = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=(0.0, OBJ_OFFSET, CAMERA_DIST),
         lookat=(0.0, OBJ_OFFSET, 0.0),
         near=2.0,
@@ -1402,7 +1402,7 @@ def test_point_cloud(renderer_type, renderer, show_viewer):
         GUI=show_viewer,
     )
     camera_box_1 = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=(0.0, -OBJ_OFFSET, CAMERA_DIST),
         lookat=(0.0, -OBJ_OFFSET, 0.0),
         near=2.0,
@@ -1410,7 +1410,7 @@ def test_point_cloud(renderer_type, renderer, show_viewer):
         GUI=show_viewer,
     )
     camera_box_2 = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=np.array((CAMERA_DIST, CAMERA_DIST - OBJ_OFFSET, CAMERA_DIST)),
         lookat=(0.0, -OBJ_OFFSET, 0.0),
         near=2.0,
@@ -1492,7 +1492,7 @@ def test_render_planes(tmp_path, png_snapshot, renderer_type, renderer):
             gs.morphs.Plane(plane_size=plane_size, tile_size=tile_size),
         )
         camera = scene.add_camera(
-            res=(256, 256),
+            resolution=(256, 256),
             pos=(0.0, 0.0, 8),
             lookat=(0.0, 0.0, 0.0),
             fov=45,
@@ -1519,7 +1519,7 @@ def test_render_oversized_resolution(renderer):
     requested_res = (1920, 1440)
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
-            res=requested_res,
+            resolution=requested_res,
         ),
         renderer=renderer,
         show_viewer=True,
@@ -1560,7 +1560,7 @@ def test_context_isolation(renderer_type):
         )
     )
     camera_a = scene_a.add_camera(
-        res=(64, 64),
+        resolution=(64, 64),
         pos=(1.5, 1.5, 1.0),
         lookat=(0.0, 0.0, 0.0),
     )
@@ -1580,7 +1580,7 @@ def test_context_isolation(renderer_type):
         )
     )
     camera_b = scene_b.add_camera(
-        res=(64, 64),
+        resolution=(64, 64),
         pos=(1.5, 1.5, 1.0),
         lookat=(0.0, 0.0, 0.0),
     )
@@ -1638,7 +1638,7 @@ def test_camera_follow_entity(n_envs, renderer, show_viewer):
             ),
         )
         cam = scene.add_camera(
-            res=CAM_RES,
+            resolution=CAM_RES,
             pos=(0.0, 0.0, 0.0),
             lookat=(1.0, 0, 0.0),
             env_idx=1 if n_envs else None,
@@ -1771,7 +1771,7 @@ def test_rasterizer_env_separate(renderer, png_snapshot, show_viewer, force_show
             rendered_envs_idx=RENDERED_ENVS,
         ),
         viewer_options=gs.options.ViewerOptions(
-            res=CAM_RES,
+            resolution=CAM_RES,
             run_in_thread=False,
             # Far enough back for the whole ground to fit in frame, as every camera below requires
             camera_pos=(3.0, 0.3, 2.0),
@@ -1798,14 +1798,14 @@ def test_rasterizer_env_separate(renderer, png_snapshot, show_viewer, force_show
     )
 
     cam = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=(3.5, 0.0, 2.5),
         lookat=(0.0, 0.0, 0.5),
         fov=30,
         GUI=show_viewer,
     )
     cam_debug = scene.add_camera(
-        res=CAM_RES,
+        resolution=CAM_RES,
         pos=(3.5, 0.0, 2.5),
         lookat=(0.0, 0.0, 0.5),
         fov=30,
@@ -1958,7 +1958,7 @@ def test_rasterizer_sensor_env_spacing_invariance(renderer, context_mode):
             split_envs=context_mode == "with_scene_camera",
         ),
         viewer_options=gs.options.ViewerOptions(
-            res=CAM_RES,
+            resolution=CAM_RES,
             run_in_thread=False,
             camera_pos=(2.0, -2.0, 1.5),
             camera_lookat=(0.0, 0.0, 0.3),
@@ -2012,7 +2012,7 @@ def test_rasterizer_sensor_env_spacing_invariance(renderer, context_mode):
         lights.append({"type": "point", "pos": (1.0, -1.0, 2.0), "color": (1.0, 0.5, 0.25), "intensity": 5.0})
     sensor = scene.add_sensor(
         RasterizerCameraOptions(
-            res=CAM_RES,
+            resolution=CAM_RES,
             pos=(2.0, -2.0, 1.5),
             lookat=(0.0, 0.0, 0.3),
             fov=40.0,
@@ -2021,7 +2021,7 @@ def test_rasterizer_sensor_env_spacing_invariance(renderer, context_mode):
     )
     if context_mode == "with_scene_camera":
         cam = scene.add_camera(
-            res=CAM_RES,
+            resolution=CAM_RES,
             pos=(2.0, -2.0, 1.5),
             lookat=(0.0, 0.0, 0.3),
             fov=40.0,
@@ -2084,7 +2084,7 @@ def test_video_recording_lifecycle(tmp_path, monkeypatch, renderer, show_viewer)
         ),
     )
     cam = scene.add_camera(
-        res=(64, 64),
+        resolution=(64, 64),
         pos=(2.5, 0.0, 1.5),
         lookat=(0.0, 0.0, 0.5),
     )
@@ -2210,7 +2210,7 @@ def test_transparent_surfaces_show_what_lies_behind_them(renderer, show_viewer):
         ),
     )
     cam = scene.add_camera(
-        res=(RES, RES),
+        resolution=(RES, RES),
         pos=(2.5, 0.0, 0.5),
         lookat=(0.0, 0.0, 0.5),
     )

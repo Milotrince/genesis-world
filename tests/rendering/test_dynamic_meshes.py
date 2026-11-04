@@ -48,7 +48,7 @@ def test_batch_deformable_render(monkeypatch, png_snapshot):
             shadow=False,
         ),
         viewer_options=gs.options.ViewerOptions(
-            res=(640, 480),
+            resolution=(640, 480),
             run_in_thread=False,
             camera_pos=(6.0, 0.0, 4.0),
             camera_lookat=(0.0, 0.0, 0.0),
@@ -245,7 +245,7 @@ def test_deformable_uv_textures(renderer_type, renderer, show_viewer, png_snapsh
     )
 
     camera = scene.add_camera(
-        res=(256, 256),
+        resolution=(256, 256),
         pos=(1.5, 1.5, 1),
         lookat=(0.0, 0.0, 0.3),
         fov=45,
@@ -296,7 +296,7 @@ def test_set_vverts(renderer, show_viewer):
         ),
     )
     cam = scene.add_camera(
-        res=(160, 120),
+        resolution=(160, 120),
         pos=(0.0, -1.5, 0.5),
         lookat=(0.0, 0.0, 0.5),
     )
@@ -453,7 +453,7 @@ def test_set_vverts_sphere_to_box(renderer, show_viewer):
         ),
     )
     cam = scene.add_camera(
-        res=(256, 256),
+        resolution=(256, 256),
         pos=(pos_sphere[0], pos_sphere[1], pos_sphere[2] + cam_dz),
         lookat=pos_sphere,
         up=(0.0, 1.0, 0.0),

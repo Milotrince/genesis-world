@@ -50,7 +50,9 @@ class Rasterizer(RBC):
                 aspectRatio=camera.aspect_ratio,
             ),
         )
-        self._camera_targets[camera.uid] = pyrender.Renderer(camera.res[0], camera.res[1], self._context.jit)
+        self._camera_targets[camera.uid] = pyrender.Renderer(
+            camera.resolution[0], camera.resolution[1], self._context.jit
+        )
 
     def update_camera(self, camera):
         self._camera_nodes[camera.uid].camera.yfov = np.deg2rad(camera.fov)
