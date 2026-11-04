@@ -206,7 +206,7 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     #  - screen: an emissive texture switching between two named colors per environment, drawn as the color of an
     #    Emission surface.
     #  - label: a diffuse texture drawn per environment, given through the options of the visual geom, which starts as
-    #    the texture the plane asset gives, as a plain plane beside it shows.
+    #    the texture the plane asset gives, as a plain plane beside it shows, in the batched variant it starts on.
     #  - lamp: an emissive texture drawn with one image for every environment, added on top of a dark red base color,
     #    which starts as the checkerboard of no texture.
     # A camera sensor renders through a rasterizer of its own, so it uploads the drawings independently of the camera.
@@ -253,8 +253,17 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
                     surface=gs.surfaces.Rough(
                         diffuse_texture=gs.textures.DynamicTexture(
                             resolution=(8, 8),
-                            variants=(gs.textures.AssetTexture(),),
-                            enable_drawing=True,
+                            variants=(
+                                gs.textures.AssetTexture(),
+                                gs.textures.AssetTexture(
+                                    is_batched=True,
+                                ),
+                                gs.textures.ColorTexture(
+                                    color=(1.0, 1.0, 1.0),
+                                    is_batched=True,
+                                ),
+                            ),
+                            initial_variant=1,
                         ),
                     ),
                 ),
@@ -276,8 +285,11 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
                     gs.textures.ImageTexture(
                         image_array=np.full((1, 1, 3), (0, 128, 0), dtype=np.uint8),
                     ),
+                    gs.textures.ColorTexture(
+                        color=(0.0, 0.0, 0.0),
+                        is_batched=True,
+                    ),
                 ),
-                enable_drawing=True,
             ),
         ),
     )
@@ -332,7 +344,7 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     label.set_texture(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None], vgeoms_idx=gs.VGeomIndex.all())
     lamp.set_texture(gs.textures.ColorTexture(color=(0.0, 1.0, 0.0)), vgeoms_idx=0)
     assert_equal(screen_vgeom.get_texture(), [0, 1])
-    assert_equal(label_vgeom.get_texture(envs_idx=[1]), [gs.DRAWN_VARIANT_IDX])
+    assert_equal(label_vgeom.get_texture(envs_idx=[1]), [1])
     # The camera shows the variants as soon as they change, while the sensor renders them at the next step
     scene.step()
     rgb_switched = camera.render(rgb=True)[0]
@@ -359,23 +371,30 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     colors_drawn = get_colors(camera.render(rgb=True)[0])
     assert_allclose(colors_variant[:, 2], colors_drawn[:, 2], atol=2.0)
     # Refused inputs: a variant the texture does not declare, a value that is neither a variant nor pixels, pixels on a
-    # texture without drawing, a number of variants matching neither one nor the environments, an HDR image, a map, a
-    # visual geom or an entity without dynamic texture, a selection matching no visual geom, and one by ordinal on an
-    # entity of several links
+    # texture without batched variant, or on one with several where the environment shows none of them, a number of
+    # variants matching neither one nor the environments, an HDR image, drawn or batched, a map, a visual geom or an
+    # entity without dynamic texture, a selection matching no visual geom, and one by ordinal on an entity of several
+    # links
     with pytest.raises(gs.GenesisException, match="No variant is named"):
         screen_vgeom.set_texture("green")
     with pytest.raises(gs.GenesisException, match="integer position"):
         screen_vgeom.set_texture(0.5)
     with pytest.raises(gs.GenesisException, match="2 dims"):
         screen_vgeom.set_texture(np.zeros((16, 16)))
-    with pytest.raises(gs.GenesisException, match="enable_drawing"):
+    with pytest.raises(gs.GenesisException, match="batched variant"):
         screen_vgeom.set_texture(np.zeros((16, 16, 3)))
+    label_vgeom.set_texture(0)
+    with pytest.raises(gs.GenesisException, match="several batched variants"):
+        label_vgeom.set_texture(np.zeros((8, 8, 3)))
+    label_vgeom.set_texture(1)
     with pytest.raises(gs.GenesisException, match="one per selected environment"):
         screen_vgeom.set_texture(["red", "blue", "red"])
     hdr_path = tmp_path / "sky.hdr"
     hdr_path.touch()
     with pytest.raises(gs.GenesisException, match="no HDR image"):
         screen_vgeom.set_texture(gs.textures.ImageTexture(image_path=str(hdr_path), encoding="linear"))
+    with pytest.raises(gs.GenesisException, match="no HDR image"):
+        gs.textures.ImageTexture(image_path=[str(hdr_path)], encoding="linear", is_batched=True)
     with pytest.raises(gs.GenesisException, match="diffuse map"):
         lamp_vgeom.set_texture(0, texture_map_type=gs.TEXTURE_MAP_TYPE.DIFFUSE)
     with pytest.raises(gs.GenesisException, match="no dynamic texture"):
@@ -390,11 +409,15 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
         )
     with pytest.raises(gs.GenesisException, match="diffuse_texture"):
         gs.surfaces.Default(roughness_texture=gs.textures.DynamicTexture(resolution=(4, 4)))
-    with pytest.raises(gs.GenesisException, match="texture coordinates"):
-        gs.Scene().add_entity(
-            morph=gs.morphs.Box(size=(0.1, 0.1, 0.1)),
-            surface=gs.surfaces.Emission(emissive_texture=gs.textures.DynamicTexture(resolution=(4, 4))),
-        )
+    for texture in (
+        gs.textures.DynamicTexture(resolution=(4, 4)),
+        gs.textures.ColorTexture(color=((1.0, 0.0, 0.0), (0.0, 1.0, 0.0)), is_batched=True),
+    ):
+        with pytest.raises(gs.GenesisException, match="texture coordinates"):
+            gs.Scene().add_entity(
+                morph=gs.morphs.Box(size=(0.1, 0.1, 0.1)),
+                surface=gs.surfaces.Emission(emissive_texture=texture),
+            )
     with pytest.raises(gs.GenesisException, match="custom visual vertices"):
         unsupported_scene = gs.Scene()
         unsupported_scene.add_entity(
@@ -403,9 +426,13 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
         )
         unsupported_scene.build()
 
-    # A reset of one environment shows its initial variants again, and a reset of the scene those of every environment
+    # A reset of one environment shows its initial variants again and erases the pixels drawn in it, so that its
+    # batched variant shows the asset texture again, and a reset of the scene does so in every environment
     scene.reset(envs_idx=[1])
-    assert_equal(label_vgeom.get_texture(), [gs.DRAWN_VARIANT_IDX, 0])
+    assert_equal(label_vgeom.get_texture(), [1, 1])
+    colors = get_colors(camera.render(rgb=True)[0])
+    assert colors[0, 1, 1] > 100.0 and colors[0, 1, 0] < 30.0
+    assert_allclose(colors[1, 1], colors[1, 3], atol=5.0)
     scene.reset()
     colors = get_colors(camera.render(rgb=True)[0])
     assert (colors[:, 0, 2] > 150.0).all() and (colors[:, 0, :2] < 30.0).all()
@@ -430,7 +457,8 @@ def test_dynamic_texture_side_by_side_envs(show_viewer):
     )
     screen = scene.add_entity(
         morph=gs.morphs.Plane(
-            plane_size=(1.0, 1.0),
+            pos=(-0.45, 0.0, 0.0),
+            plane_size=(0.4, 1.0),
             fixed=True,
         ),
         surface=gs.surfaces.Emission(
@@ -443,8 +471,37 @@ def test_dynamic_texture_side_by_side_envs(show_viewer):
                     gs.textures.ColorTexture(
                         color=(0.0, 0.0, 1.0),
                     ),
+                    gs.textures.ColorTexture(
+                        color=(1.0, 0.0, 0.0),
+                        is_batched=True,
+                    ),
                 ),
-                enable_drawing=True,
+            ),
+        ),
+    )
+    tile = scene.add_entity(
+        morph=gs.morphs.Plane(
+            plane_size=(0.4, 1.0),
+            fixed=True,
+        ),
+        surface=gs.surfaces.Emission(
+            emissive_texture=gs.textures.ColorTexture(
+                color=((0.0, 1.0, 0.0), (1.0, 0.0, 1.0)),
+                is_batched=True,
+            ),
+        ),
+    )
+    lamp = scene.add_entity(
+        morph=gs.morphs.Plane(
+            pos=(0.45, 0.0, 0.0),
+            plane_size=(0.4, 1.0),
+            fixed=True,
+        ),
+        surface=gs.surfaces.Default(
+            color=(0.3, 0.0, 0.0),
+            emissive_texture=gs.textures.ColorTexture(
+                color=((0.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
+                is_batched=True,
             ),
         ),
     )
@@ -459,12 +516,26 @@ def test_dynamic_texture_side_by_side_envs(show_viewer):
 
     # One image holds both environments, environment 1 in the top half and environment 0 in the bottom half
     _, _, segmentation, _ = camera.render(rgb=False, segmentation=True)
-    masks = [segmentation[64:] == screen.idx + 1, segmentation[:64] == screen.idx + 1]
-    for mask in masks:
-        assert mask.sum() > 100
+    masks = [
+        [segmentation[64:] == entity.idx + 1, segmentation[:64] == entity.idx + 1] for entity in (screen, tile, lamp)
+    ]
+    for entity_masks in masks:
+        for mask in entity_masks:
+            assert mask.sum() > 100
 
-    def get_colors(rgb):
-        return np.stack([rgb[64:][masks[0]].mean(axis=0), rgb[:64][masks[1]].mean(axis=0)])
+    def get_colors(rgb, i_entity=0):
+        return np.stack([rgb[64:][masks[i_entity][0]].mean(axis=0), rgb[:64][masks[i_entity][1]].mean(axis=0)])
+
+    # A batched texture shows its own entry in each environment, as the color of the surface or as an emission added
+    # on top of the dark red base color. Each emission is one pixel wide, so its rows are no multiple of 4 bytes.
+    rgb = camera.render(rgb=True)[0]
+    colors = get_colors(rgb, i_entity=1)
+    assert colors[0, 1] > 150.0 and (colors[0, [0, 2]] < 30.0).all()
+    assert (colors[1, [0, 2]] > 150.0).all() and colors[1, 1] < 30.0
+    colors = get_colors(rgb, i_entity=2)
+    assert (colors[:, 0] > 40.0).all()
+    assert colors[0, 1] > 150.0 and colors[0, 2] < 30.0
+    assert colors[1, 2] > 150.0 and colors[1, 1] < 30.0
 
     # A variant per environment, then a drawing per environment, then a variant beside a drawing
     vgeom.set_texture([0, 1])

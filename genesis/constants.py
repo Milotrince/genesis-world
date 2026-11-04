@@ -207,10 +207,6 @@ class IMAGE_TYPE(IntEnum):
         return self.name
 
 
-# The active variant index of an environment showing the pixels drawn for it on a dynamic texture, in place of a variant
-DRAWN_VARIANT_IDX = -1
-
-
 # surface maps a dynamic texture binds to
 class TEXTURE_MAP_TYPE(IntEnum):
     DIFFUSE = 0
