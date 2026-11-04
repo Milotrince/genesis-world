@@ -202,6 +202,8 @@ class Texture(object):
             return
         glBindTexture(self.tex_type, self._texid)
         height, width = self.source.shape[1:3]
+        # The layers are tightly packed (see '_add_to_context')
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
         for layer, data in self._pending_layers.items():
             glTexSubImage3D(self.tex_type, 0, 0, 0, layer, width, height, 1, self._gl_format, self.data_format, data)
         self._pending_layers.clear()
@@ -235,6 +237,10 @@ class Texture(object):
         # An unsized format would let the driver store half floats at 8 bits per channel
         if self.data_format == GL_HALF_FLOAT:
             internal_fmt = GL_RGBA16F if fmt == GL_RGBA else GL_RGB16F
+
+        # The source rows are tightly packed, while OpenGL reads each row from a 4-byte boundary by default, which shifts
+        # every row after the first where a row is no multiple of 4 bytes, as one of an odd width in RGB half floats
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
 
         # Bind texture and generate mipmaps
         if is_array:
