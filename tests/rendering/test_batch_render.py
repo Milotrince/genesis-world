@@ -25,7 +25,12 @@ def _batch_render_scene(
 
     # entities
     surface = (
-        gs.surfaces.Default(diffuse_texture=gs.textures.BatchTexture.from_images(image_folder="textures"))
+        gs.surfaces.Default(
+            diffuse_texture=gs.textures.ImageTexture(
+                image_path=("textures/checker.png", "urdf/plane/checker_blue.png"),
+                is_batched=True,
+            )
+        )
         if use_batch_texture
         else None
     )

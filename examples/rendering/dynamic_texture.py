@@ -1,7 +1,8 @@
 """A duck switching between the variants of a dynamic texture, and a canvas painted on with the mouse, at runtime.
 
 In parallel environments, the duck of environment i starts on variant i. Without the viewer, the textures cycle on their
-own. With it, the keyboard sets them in every environment, and the mouse paints in the environment it points at:
+own. With it, the keyboard sets them in every environment, and the mouse paints in the environment it points at, into
+the batched variant of the texture, which holds one image per environment:
 Left mouse  - Paint on the canvas or the duck
 Right       - Next texture
 Left        - Previous texture
@@ -35,13 +36,15 @@ TEXTURE_RESOLUTION = (256, 256)
 
 
 class Canvas(NamedTuple):
-    """A dynamic texture taking paint, with the image each environment shows as the painter last saw it."""
+    """A dynamic texture taking paint, with the image of its batched variant in each environment as last seen."""
 
     texture: "Texture"
     # The visual mesh of the geom drawing the texture, in the frame of the geom
     mesh: trimesh.Trimesh
-    # The variants, then the image of each environment, as RGBA uint8 arrays of shape (height, width, 4)
-    variants: np.ndarray
+    # The entries of each variant, as RGBA uint8 arrays of shape (n_entries, height, width, 4)
+    variants: tuple[np.ndarray, ...]
+    # The position of the batched variant taking the paint, and its image in each environment
+    i_paint_variant: int
     images: np.ndarray
     # The center of each pixel, as (column, row) of shape (height, width, 2)
     pixels_pos: np.ndarray
@@ -53,9 +56,9 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
     """
     Paint with the left mouse button on the visual geoms drawing a dynamic texture in their diffuse map.
 
-    The paint goes to the entities whose options set use_visual_raycasting=True and whose dynamic texture sets
-    enable_drawing=True, in the environment under the cursor. It covers the image this environment shows, a variant or
-    the pixels drawn last, so showing a variant again erases it.
+    The paint goes to the entities whose options set use_visual_raycasting=True and whose dynamic texture holds one
+    batched variant, in the environment under the cursor. It covers the image this environment shows, then shows the
+    batched variant, so showing another variant hides it, and painting over that one starts afresh from it.
 
     Parameters
     ----------
@@ -88,24 +91,29 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
         super().build(viewer, camera, scene)
 
         for texture in scene.dynamic_textures:
-            if not texture.options.enable_drawing or texture.texture_map_type != gs.TEXTURE_MAP_TYPE.DIFFUSE:
+            variants_is_batched = texture.options.variants_is_batched
+            if variants_is_batched.count(True) != 1 or texture.texture_map_type != gs.TEXTURE_MAP_TYPE.DIFFUSE:
                 continue
             vgeom = texture.vgeom
             variants = texture.options.get_variants_image(texture.texture_map_type)
-            images = variants[texture.active_variants_idx]
+            i_paint_variant = variants_is_batched.index(True)
+            paint_entries = variants[i_paint_variant]
+            images = paint_entries[np.arange(max(scene.n_envs, 1)) % len(paint_entries)]
             width, height = texture.options.resolution
             pixels_pos = np.stack(np.meshgrid(np.arange(width) + 0.5, np.arange(height) + 0.5), axis=-1)
 
             # Genesis keeps no pixels, so the painter follows the pixels drawn by others, from any thread, to paint
             # over them
-            def copy_drawing(envs_idx: np.ndarray, image: torch.Tensor, images: np.ndarray = images) -> None:
+            def copy_drawing(
+                i_variant: int, envs_idx: np.ndarray, image: torch.Tensor, images: np.ndarray = images
+            ) -> None:
                 with self._lock:
                     images[envs_idx] = tensor_to_array(image)
 
             subscriber = Subscriber(to=frozenset())
             texture.subscribe(subscriber, copy_drawing)
             mesh = trimesh.Trimesh(vgeom.init_vverts, vgeom.init_vfaces, process=False)
-            self._canvases[vgeom.uid] = Canvas(texture, mesh, variants, images, pixels_pos, subscriber)
+            self._canvases[vgeom.uid] = Canvas(texture, mesh, variants, i_paint_variant, images, pixels_pos, subscriber)
 
     @with_lock
     @override
@@ -165,14 +173,15 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
             height, width = canvas.images.shape[1:3]
             pixel_pos = uv * (width, height)
 
-            # The first paint of a step over a variant starts from that variant, which the drawing then replaces
+            # The first paint of a step over another variant starts from that variant, which the paint then covers
             i_env = 0 if env_idx is None else env_idx
             envs_idx = canvases_envs_idx.setdefault(vgeom.uid, set())
             if i_env not in envs_idx:
                 envs_idx.add(i_env)
                 i_variant = canvas.texture.active_variants_idx[i_env]
-                if i_variant != gs.DRAWN_VARIANT_IDX:
-                    canvas.images[i_env] = canvas.variants[i_variant]
+                if i_variant != canvas.i_paint_variant:
+                    variant_entries = canvas.variants[i_variant]
+                    canvas.images[i_env] = variant_entries[i_env % len(variant_entries)]
 
             # A stroke joins its successive points, unless it crosses to another canvas or environment, or across a
             # seam of the texture coordinates, which moves it to a distant part of the image
@@ -222,7 +231,8 @@ def main():
         gs.morphs.Plane(),
     )
     # The variants to switch between, named and each the size of the dynamic texture: the texture of the asset, a flat
-    # color, vertical stripes and the texture of the asset wearing glasses, dark hair and a navy shirt
+    # color, vertical stripes and the texture of the asset with skin, lips, dark brown hair and eyes, glasses and a navy
+    # shirt, then the paint, one image per environment starting from the texture of the asset
     width, height = TEXTURE_RESOLUTION
     is_stripe = np.broadcast_to(np.arange(width) // 32 % 2 == 0, (height, width))
     variants = {
@@ -235,6 +245,9 @@ def main():
         ),
         "duckurcqa": gs.textures.ImageTexture(
             image_path="meshes/duck/duckurcqa.png",
+        ),
+        "paint": gs.textures.AssetTexture(
+            is_batched=True,
         ),
     }
     duck = scene.add_entity(
@@ -250,7 +263,6 @@ def main():
                 diffuse_texture=gs.textures.DynamicTexture(
                     resolution=TEXTURE_RESOLUTION,
                     variants=variants,
-                    enable_drawing=True,
                 ),
             ),
             use_visual_raycasting=True,
@@ -268,8 +280,10 @@ def main():
             surface=gs.surfaces.Default(
                 diffuse_texture=gs.textures.DynamicTexture(
                     resolution=(300, 200),
-                    variants={"white": gs.textures.ColorTexture(color=(1.0, 1.0, 1.0))},
-                    enable_drawing=True,
+                    variants={
+                        "white": gs.textures.ColorTexture(color=(1.0, 1.0, 1.0)),
+                        "paint": gs.textures.ColorTexture(color=(1.0, 1.0, 1.0), is_batched=True),
+                    },
                 ),
                 double_sided=True,
             ),
@@ -280,7 +294,8 @@ def main():
         scene.viewer.add_plugin(TexturePainterPlugin())
     scene.build(n_envs=args.n_envs, env_spacing=(0.5, 0.5))
 
-    variants_name = tuple(variants)
+    # The variants cycled through, the paint being shown by painting alone
+    variants_name = tuple(name for name, texture in variants.items() if not texture.is_batched)
 
     # The variant each environment shows is offset by the index of the environment
     envs_idx = np.arange(max(args.n_envs, 1))

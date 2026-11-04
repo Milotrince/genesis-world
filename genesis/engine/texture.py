@@ -7,7 +7,7 @@ import numpy as np
 import torch
 
 import genesis as gs
-from genesis.constants import DRAWN_VARIANT_IDX, TEXTURE_MAP_TYPE
+from genesis.constants import TEXTURE_MAP_TYPE
 from genesis.engine.state_change import StateChange, Subscriber
 from genesis.options.textures import ColorTexture, DynamicTexture, ImageTexture, texture_to_rgba
 from genesis.typing import IndexType
@@ -25,14 +25,15 @@ TextureValueType = int | str | Sequence[int | str] | np.ndarray | torch.Tensor |
 class Texture:
     """The variant each environment shows for the dynamic texture of one map of a visual geom, and its renderers.
 
-    Genesis holds the active variant indices alone: the position of the variant each environment shows, or
-    'DRAWN_VARIANT_IDX' for the pixels drawn for it. The renderers hold the pixels, each under the same contract:
+    Genesis holds the active variant indices alone: the position of the variant each environment shows. The renderers
+    hold the pixels, each under the same contract:
 
-    - at build, it allocates the variants ('options.get_variants_image(texture_map_type)'), then one drawn image per
-      environment it renders when 'options.enable_drawing', binds them to the map of type 'texture_map_type' of
-      'vgeom', and subscribes a ``Subscriber`` of ``StateChange.VISUAL`` with a drawing callback;
-    - on every drawing, the drawing callback receives the environments drawn and their pixels, as an RGBA tensor on
-      the device of shape (len(envs_idx), height, width, 4);
+    - at build, it allocates the entries of each variant ('options.get_variants_image(texture_map_type)'), a batched
+      variant taking one image per environment it renders, environment i holding entry i modulo the number of entries.
+      It binds them to the map of type 'texture_map_type' of 'vgeom', and subscribes a ``Subscriber`` of
+      ``StateChange.VISUAL`` with a drawing callback;
+    - on every drawing, the drawing callback receives the batched variant drawn in, the environments drawn and their
+      pixels, as an RGBA tensor on the device of shape (len(envs_idx), height, width, 4);
     - at sync, when its subscriber holds ``StateChange.VISUAL`` pending, it clears it, then reads 'active_variants_idx'.
 
     The images are uint8 sRGB values in the diffuse map, and float16 linear values in the emissive map.
@@ -47,8 +48,12 @@ class Texture:
         self._vgeom = vgeom
         (self._initial_variant_idx,) = options.get_variants_idx(options.initial_variant)
         self._active_variants_idx = np.full(scene._B, self._initial_variant_idx, dtype=gs.np_int)
+        # Whether pixels were drawn in each variant of each environment since its last reset
+        self._is_drawn = np.zeros((len(options.variants), scene._B), dtype=np.bool_)
+        # The entries of each batched variant on the device, which a reset draws again, built on the first reset
+        self._variants_seed: dict[int, torch.Tensor] = {}
         # The subscribers, each with the callback receiving the pixels of every drawing, if any
-        self._subscribers: dict[Subscriber, Callable[[np.ndarray, torch.Tensor], None] | None] = {}
+        self._subscribers: dict[Subscriber, Callable[[int, np.ndarray, torch.Tensor], None] | None] = {}
 
     @property
     def options(self) -> DynamicTexture:
@@ -67,7 +72,7 @@ class Texture:
 
     @property
     def active_variants_idx(self) -> np.ndarray:
-        """The position of the variant each environment shows, as a read-only array (see 'Texture')."""
+        """The position of the variant each environment shows, as a read-only array."""
         active_variants_idx = self._active_variants_idx.view()
         active_variants_idx.flags.writeable = False
         return active_variants_idx
@@ -75,15 +80,15 @@ class Texture:
     def subscribe(
         self,
         subscriber: Subscriber,
-        drawing_callback: Callable[[np.ndarray, torch.Tensor], None] | None = None,
+        drawing_callback: Callable[[int, np.ndarray, torch.Tensor], None] | None = None,
     ) -> None:
         """Notify a subscriber of every change of the active variants, and pass it the pixels of every drawing.
 
         'subscriber' is notified as ``StateChange.VISUAL`` (see 'Texture'). 'drawing_callback', if given, is called with
-        the environments drawn and their pixels. Genesis keeps no pixels, so a renderer giving one subscribes before any
-        environment shows a drawing.
+        the variant drawn in, the environments drawn and their pixels. Genesis keeps no pixels, so a renderer giving one
+        subscribes before any pixels are drawn.
         """
-        if drawing_callback is not None and (self._active_variants_idx == DRAWN_VARIANT_IDX).any():
+        if drawing_callback is not None and self._is_drawn.any():
             gs.raise_exception("A renderer cannot be added once pixels have been drawn on a dynamic texture.")
         self._subscribers[subscriber] = drawing_callback
 
@@ -92,7 +97,7 @@ class Texture:
         self._subscribers.pop(subscriber, None)
 
     def get_texture(self, envs_idx: IndexType | None = None) -> torch.Tensor:
-        """Return the position of the variant each selected environment shows, 'DRAWN_VARIANT_IDX' for drawn pixels."""
+        """Return the position of the variant each selected environment shows."""
         active_variants_idx = self._active_variants_idx[tensor_to_array(self._scene._sanitize_envs_idx(envs_idx))]
         active_variants_idx = torch.as_tensor(active_variants_idx, dtype=gs.tc_int, device=gs.device)
         return active_variants_idx[0] if self._scene.n_envs == 0 else active_variants_idx
@@ -103,7 +108,9 @@ class Texture:
         'texture' is either variants or pixels. A variant is given by position or by name, one for all the selected
         environments, or a sequence of them, one per selected environment. Pixels are a ``ColorTexture``, an
         ``ImageTexture``, or an RGB or RGBA array of shape (height, width, channels) for all the selected environments
-        or (len(envs_idx), height, width, channels) for one each, and require 'enable_drawing' in the declaration.
+        or (len(envs_idx), height, width, channels) for one each. They are drawn in the batched variant each selected
+        environment shows, or in the only batched variant of the texture for an environment showing another one, which
+        the environment then shows.
 
         An array holds uint8 values, or floats on the scale where 1 stands for 255. In the diffuse map, they are sRGB
         values clamped between 0 and 1. In the emissive map, they are linear values clamped at 0 alone, so that an
@@ -130,6 +137,20 @@ class Texture:
                     f"array of {texture_ndim} dims."
                 )
 
+            # The batched variant each selected environment is drawn in
+            variants_is_batched = np.array(self._options.variants_is_batched)
+            batched_variants_idx = np.flatnonzero(variants_is_batched)
+            if len(batched_variants_idx) == 0:
+                gs.raise_exception("Pixels are drawn in a batched variant of a dynamic texture, which this one lacks.")
+            active_variants_idx = self._active_variants_idx[envs_idx]
+            is_active_batched = variants_is_batched[active_variants_idx]
+            if len(batched_variants_idx) > 1 and not is_active_batched.all():
+                gs.raise_exception(
+                    "A dynamic texture with several batched variants is drawn in environments showing one of them "
+                    "alone."
+                )
+            variants_idx = np.where(is_active_batched, active_variants_idx, batched_variants_idx[0])
+
             # Torch warns on wrapping a read-only array, such as an image read from a file, which the copy below
             # never writes
             if isinstance(texture, np.ndarray) and not texture.flags.writeable:
@@ -138,8 +159,6 @@ class Texture:
             n_channels = image.shape[-1]
             if n_channels not in (3, 4):
                 gs.raise_exception(f"Pixels are drawn as RGB or RGBA, got {n_channels} channels.")
-            if not self._options.enable_drawing:
-                gs.raise_exception("Pixels are drawn on a dynamic texture declared with 'enable_drawing=True' alone.")
             if self._texture_map_type == TEXTURE_MAP_TYPE.EMISSIVE:
                 dtype, alpha = torch.float16, 1.0
                 if image.is_floating_point():
@@ -157,17 +176,39 @@ class Texture:
             image = broadcast_tensor(image, dtype, (n_images, height, width, n_channels))
             if n_channels == 3:
                 image = torch.cat((image, image.new_full((n_images, height, width, 1), alpha)), dim=-1)
-            self._active_variants_idx[envs_idx] = DRAWN_VARIANT_IDX
-            for drawing_callback in self._subscribers.values():
-                if drawing_callback is not None:
-                    drawing_callback(envs_idx, image)
+            self._active_variants_idx[envs_idx] = variants_idx
+            self._is_drawn[variants_idx, envs_idx] = True
+            self._draw(variants_idx, envs_idx, image)
         for subscriber in self._subscribers:
             if StateChange.VISUAL in subscriber.to:
                 subscriber.notify(StateChange.VISUAL, envs_idx)
 
     def reset(self, envs_idx: IndexType | None = None) -> None:
-        """Show the initial variant again in the selected environments."""
+        """Show the initial variant again in the selected environments, and erase the pixels drawn in them."""
         self.set_texture(self._initial_variant_idx, envs_idx)
+        envs_idx = tensor_to_array(self._scene._sanitize_envs_idx(envs_idx))
+        for i_variant in np.flatnonzero(self._is_drawn[:, envs_idx].any(axis=1)):
+            drawn_envs_idx = envs_idx[self._is_drawn[i_variant, envs_idx]]
+            if i_variant not in self._variants_seed:
+                variant_image = texture_to_rgba(
+                    self._options.variants_texture[i_variant], self._options.resolution, self._texture_map_type
+                )
+                self._variants_seed[i_variant] = torch.as_tensor(variant_image, device=gs.device)
+            variant_seed = self._variants_seed[i_variant]
+            seed_idx = torch.as_tensor(drawn_envs_idx % len(variant_seed), device=gs.device)
+            self._draw(np.full(len(drawn_envs_idx), i_variant), drawn_envs_idx, variant_seed[seed_idx])
+            self._is_drawn[i_variant, drawn_envs_idx] = False
+
+    def _draw(self, variants_idx: np.ndarray, envs_idx: np.ndarray, image: torch.Tensor) -> None:
+        """Pass the pixels drawn in each environment to the drawing callbacks, grouped by the variant drawn in."""
+        for i_variant in np.unique(variants_idx):
+            is_drawn = variants_idx == i_variant
+            variant_envs_idx, variant_image = envs_idx, image
+            if not is_drawn.all():
+                variant_envs_idx, variant_image = envs_idx[is_drawn], image[torch.as_tensor(is_drawn, device=gs.device)]
+            for drawing_callback in self._subscribers.values():
+                if drawing_callback is not None:
+                    drawing_callback(int(i_variant), variant_envs_idx, variant_image)
 
 
 def get_dynamic_texture(textures: list[Texture], texture_map_type: TEXTURE_MAP_TYPE | None) -> Texture:
