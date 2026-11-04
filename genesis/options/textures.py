@@ -10,7 +10,6 @@ from typing_extensions import Self
 
 import genesis as gs
 import genesis.utils.mesh as mu
-from genesis.constants import TEXTURE_MAP_TYPE
 from genesis.typing import (
     FGridType,
     LaxFArrayType,
@@ -141,7 +140,7 @@ class ImageTexture(Texture, SerializationMixin):
         entry, or an array of shape (n_entries, height, width, channels).
     image_color : float or list of float, optional
         The factor that will be multiplied with the base color, stored as tuple. Default is None.
-    encoding : str, optional
+    encoding : gs.texture_encoding, optional
         The encoding way of the image. Possible values are ['srgb', 'linear']. Default is 'srgb'.
 
         - 'srgb': Encoding of some RGB images.
@@ -156,7 +155,7 @@ class ImageTexture(Texture, SerializationMixin):
     image_path: str | StrArrayType | None = None
     image_array: NDArrayType | None
     image_color: UnitIntervalArrayType
-    encoding: Annotated[Literal["srgb", "linear"], BeforeValidator(lambda e: str(e).lower())] = "srgb"
+    encoding: Annotated[gs.texture_encoding, BeforeValidator(lambda e: str(e).lower())] = gs.texture_encoding.srgb
     is_batched: StrictBool = False
 
     def __init__(
@@ -165,7 +164,7 @@ class ImageTexture(Texture, SerializationMixin):
         image_path: str | Sequence[str] | None = None,
         image_array: np.ndarray | Sequence[np.ndarray] | None = None,
         image_color: LaxUnitIntervalArrayType | float | None = None,
-        encoding: str = "srgb",
+        encoding: gs.texture_encoding = gs.texture_encoding.srgb,
         is_batched: bool = False,
         **data,
     ) -> None:
@@ -208,8 +207,8 @@ class ImageTexture(Texture, SerializationMixin):
                 if path.endswith(HDR_EXTENSIONS):
                     if is_batched:
                         gs.raise_exception(f"A batched image texture takes no HDR image, got '{path}'.")
-                    data.setdefault("encoding", "linear")
-                    if data["encoding"] != "linear":
+                    data.setdefault("encoding", gs.texture_encoding.linear)
+                    if data["encoding"] != gs.texture_encoding.linear:
                         gs.raise_exception("HDR images requires linear encoding.")
                     if path.endswith((".exr")):
                         images_path[i] = mu.check_exr_compression(path)
@@ -324,7 +323,10 @@ class ImageTexture(Texture, SerializationMixin):
                     self.image_array, res_array = self.image_array[:, :, :dim], self.image_array[:, :, dim]
                 self.image_color, res_color = self.image_color[:dim], self.image_color[dim:]
                 return ImageTexture(
-                    image_array=res_array, image_color=res_color, encoding="linear", is_batched=self.is_batched
+                    image_array=res_array,
+                    image_color=res_color,
+                    encoding=gs.texture_encoding.linear,
+                    is_batched=self.is_batched,
                 ).check_simplify()
         return None
 
@@ -419,7 +421,7 @@ class AssetTexture(_ImagelessTexture):
 def texture_to_rgba(
     texture: "ColorTexture | ImageTexture | AssetTexture | None",
     resolution: tuple[int, int] | None = None,
-    texture_map_type: TEXTURE_MAP_TYPE = TEXTURE_MAP_TYPE.DIFFUSE,
+    texture_map_type: gs.texture_map_type = gs.texture_map_type.diffuse,
 ) -> np.ndarray:
     """Return the entries of a texture as an RGBA array, in the format of a dynamic texture in a map.
 
@@ -447,15 +449,19 @@ def texture_to_rgba(
                 if resolution is not None:
                     image = image.resize(resolution, Image.Resampling.BILINEAR)
                 rgba.append(np.asarray(image) / 255.0)
-            rgba, colors, is_srgb = np.stack(rgba), np.array([texture.image_color]), texture.encoding == "srgb"
+            rgba, colors, is_srgb = (
+                np.stack(rgba),
+                np.array([texture.image_color]),
+                texture.encoding == gs.texture_encoding.srgb,
+            )
         else:
             colors = np.atleast_2d(texture.color)
-            rgba, is_srgb = np.ones((len(colors), height, width, 4)), texture_map_type == TEXTURE_MAP_TYPE.DIFFUSE
+            rgba, is_srgb = np.ones((len(colors), height, width, 4)), texture_map_type == gs.texture_map_type.diffuse
         # sRGB transfer function of IEC 61966-2-1, between the encoded values and the linear ones
-        if texture_map_type == TEXTURE_MAP_TYPE.EMISSIVE and is_srgb:
+        if texture_map_type == gs.texture_map_type.emissive and is_srgb:
             color = rgba[..., :3]
             rgba[..., :3] = np.where(color <= 0.04045, color / 12.92, ((color + 0.055) / 1.055) ** 2.4)
-        elif texture_map_type == TEXTURE_MAP_TYPE.DIFFUSE and not is_srgb:
+        elif texture_map_type == gs.texture_map_type.diffuse and not is_srgb:
             color = rgba[..., :3]
             rgba[..., :3] = np.where(color <= 0.0031308, color * 12.92, 1.055 * color ** (1.0 / 2.4) - 0.055)
         factor = np.ones((len(colors), 4))
@@ -463,7 +469,7 @@ def texture_to_rgba(
         if colors.shape[-1] in (2, 4):
             factor[:, 3] = colors[:, -1]
         rgba = rgba * factor[:, None, None]
-    if texture_map_type == TEXTURE_MAP_TYPE.EMISSIVE:
+    if texture_map_type == gs.texture_map_type.emissive:
         return rgba.astype(np.float16)
     return (rgba * 255.0).round().astype(np.uint8)
 
@@ -582,7 +588,7 @@ class DynamicTexture(_ImagelessTexture):
             variants_idx.append(variant)
         return np.array(variants_idx, dtype=gs.np_int)
 
-    def get_variants_image(self, texture_map_type: TEXTURE_MAP_TYPE) -> tuple[np.ndarray, ...]:
+    def get_variants_image(self, texture_map_type: gs.texture_map_type) -> tuple[np.ndarray, ...]:
         """Return the entries of each variant as an RGBA array, in the format of a map (see 'texture_to_rgba')."""
         return tuple(texture_to_rgba(texture, self.resolution, texture_map_type) for texture in self.variants_texture)
 

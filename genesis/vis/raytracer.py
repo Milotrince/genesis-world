@@ -18,9 +18,9 @@ except ImportError as e:
     gs.raise_exception_from("Failed to import LuisaRenderer.", e)
 
 logging_class = {
-    "debug": LuisaRenderPy.LogLevel.DEBUG,
-    "info": LuisaRenderPy.LogLevel.INFO,
-    "warning": LuisaRenderPy.LogLevel.WARNING,
+    gs.raytracer_logging_level.debug: LuisaRenderPy.LogLevel.DEBUG,
+    gs.raytracer_logging_level.info: LuisaRenderPy.LogLevel.INFO,
+    gs.raytracer_logging_level.warning: LuisaRenderPy.LogLevel.WARNING,
 }
 rigid_as_deformable = True
 sphere_light_as_mesh = True
@@ -166,7 +166,7 @@ class Raytracer:
         if device_index is None:
             # If no device index has been specified, use Torch GPU device ID if any, 0 otherwise
             device_index = 0 if gs.device.type == "cpu" else (gs.device.index or 0)
-        if backend == "amdgpu":
+        if gs.backend == gs.amdgpu:
             # Luisa does not support HIP for AMD GPU: using DirectX on Windows, falling back to CPU otherwise
             if sys.platform == "win32":
                 backend = "dx"
@@ -264,7 +264,7 @@ class Raytracer:
         # rigid entities
         if self.sim.rigid_solver.is_active:
             for rigid_entity in self.sim.rigid_solver.entities:
-                if rigid_entity.surface.vis_mode == "visual":
+                if rigid_entity.surface.vis_mode == gs.vis_mode.visual:
                     geoms = rigid_entity.vgeoms
                 else:
                     geoms = rigid_entity.geoms
@@ -285,7 +285,7 @@ class Raytracer:
         # kinematic entities
         if self.sim.kinematic_solver.is_active:
             for kinematic_entity in self.sim.kinematic_solver.entities:
-                assert kinematic_entity.surface.vis_mode == "visual"
+                assert kinematic_entity.surface.vis_mode == gs.vis_mode.visual
                 for geom in kinematic_entity.vgeoms:
                     mesh = geom.trimesh
                     self.add_rigid_batch(
@@ -299,7 +299,7 @@ class Raytracer:
         # MPM particles
         if self.sim.mpm_solver.is_active:
             for mpm_entity in self.sim.mpm_solver.entities:
-                if mpm_entity.surface.vis_mode == "visual":
+                if mpm_entity.surface.vis_mode == gs.vis_mode.visual:
                     self.add_deformable(str(mpm_entity.uid))
                 else:
                     self.add_particles(
@@ -322,12 +322,12 @@ class Raytracer:
         # PBD entities
         if self.sim.pbd_solver.is_active:
             for pbd_entity in self.sim.pbd_solver.entities:
-                if pbd_entity.surface.vis_mode == "visual":
+                if pbd_entity.surface.vis_mode == gs.vis_mode.visual:
                     self.add_deformable(str(pbd_entity.uid))
                 else:
-                    if self.render_particle_as == "sphere":
+                    if self.render_particle_as == gs.render_particle_as.sphere:
                         self.add_particles(str(pbd_entity.uid), self.sim.pbd_solver)
-                    elif self.render_particle_as == "tet":
+                    elif self.render_particle_as == gs.render_particle_as.tet:
                         mesh = mu.create_tets_mesh(pbd_entity.n_particles, self.sim.pbd_solver.particle_radius)
                         pbd_entity._tets_mesh = mesh
                         self.add_deformable(str(pbd_entity.uid))
@@ -335,7 +335,7 @@ class Raytracer:
         # FEM entities
         if self.sim.fem_solver.is_active:
             for fem_entity in self.sim.fem_solver.entities:
-                if fem_entity.surface.vis_mode == "visual":
+                if fem_entity.surface.vis_mode == gs.vis_mode.visual:
                     for vgeom in fem_entity.vgeoms:
                         self.add_deformable(str(vgeom.uid))
 
@@ -465,13 +465,13 @@ class Raytracer:
         )
 
         # surface reconstruction
-        if surface.vis_mode == "recon":
+        if surface.vis_mode == gs.vis_mode.recon:
             self.shape_reconstructs[shape_name] = [surface.recon_backend]
         else:
             self.shape_reconstructs[shape_name] = None
 
         # skinning visual mesh
-        if surface.vis_mode == "visual":
+        if surface.vis_mode == gs.vis_mode.visual:
             self.shape_skin_visuals[shape_name] = True
         else:
             self.shape_skin_visuals[shape_name] = False
@@ -612,7 +612,7 @@ class Raytracer:
         camera_name = str(camera.uid)
         camera_model = camera.model
 
-        if camera_model == "pinhole":
+        if camera_model == gs.camera_model.pinhole:
             self._cameras[camera_name] = LuisaRenderPy.PinholeCamera(
                 name=camera_name,
                 pose=self.get_transform(np.eye(4)),
@@ -621,7 +621,7 @@ class Raytracer:
                 spp=camera.spp,
                 fov=camera.fov,
             )
-        elif camera_model == "thinlens":
+        elif camera_model == gs.camera_model.thinlens:
             self._cameras[camera_name] = LuisaRenderPy.ThinLensCamera(
                 name=camera_name,
                 pose=self.get_transform(np.eye(4)),
@@ -642,9 +642,9 @@ class Raytracer:
         camera_model = camera.model
         camera_transform = camera.transform
 
-        if camera_model == "pinhole":
+        if camera_model == gs.camera_model.pinhole:
             self._cameras[camera_name].update(pose=self.get_transform(camera_transform), fov=camera.fov)
-        elif camera_model == "thinlens":
+        elif camera_model == gs.camera_model.thinlens:
             self._cameras[camera_name].update(
                 pose=self.get_transform(camera_transform),
                 aperture=camera.aperture,
@@ -681,7 +681,7 @@ class Raytracer:
             # One conversion of the geom poses per visual mode in use
             geoms_T_by_mode = {}
             for entity in solver.entities:
-                is_visual = entity.surface.vis_mode == "visual"
+                is_visual = entity.surface.vis_mode == gs.vis_mode.visual
                 geoms = entity.vgeoms if is_visual else entity.geoms
                 if is_visual not in geoms_T_by_mode:
                     geoms_T_by_mode[is_visual] = self.visualizer.context.rigid_geoms_T(solver, is_visual)
@@ -700,7 +700,7 @@ class Raytracer:
             vverts_all = self.sim.mpm_solver.vverts_render.pos.to_numpy()[:, self.rendered_envs_idx[0]]
 
             for mpm_entity in self.sim.mpm_solver.entities:
-                if mpm_entity.surface.vis_mode == "visual":
+                if mpm_entity.surface.vis_mode == gs.vis_mode.visual:
                     vverts = vverts_all[mpm_entity.vvert_start : mpm_entity.vvert_end]
 
                     self.update_deformable(
@@ -749,7 +749,7 @@ class Raytracer:
             vverts_all = self.sim.pbd_solver.vverts_render.pos.to_numpy()[:, idx]
 
             for pbd_entity in self.sim.pbd_solver.entities:
-                if pbd_entity.surface.vis_mode == "visual":
+                if pbd_entity.surface.vis_mode == gs.vis_mode.visual:
                     vverts = vverts_all[pbd_entity.vvert_start : pbd_entity.vvert_end]
 
                     self.update_deformable(
@@ -762,13 +762,13 @@ class Raytracer:
                         np.array([]) if pbd_entity.vmesh.uvs is None else pbd_entity.vmesh.uvs,
                     )
                 else:
-                    if self.render_particle_as == "sphere":
+                    if self.render_particle_as == gs.render_particle_as.sphere:
                         particles = particles_all[pbd_entity.particle_start : pbd_entity.particle_end][
                             active_all[pbd_entity.particle_start : pbd_entity.particle_end]
                         ]
 
                         self.update_particles(str(pbd_entity.uid), particles, self.sim.pbd_solver.particle_radius, None)
-                    elif self.render_particle_as == "tet":
+                    elif self.render_particle_as == gs.render_particle_as.tet:
                         self.update_deformable(
                             str(pbd_entity.uid),
                             mu.transform_tets_mesh_verts(
@@ -787,7 +787,7 @@ class Raytracer:
             vverts_all = miscu.qd_to_numpy(vverts_pos, self.rendered_envs_idx[0], keepdim=False, transpose=True)
 
             for fem_entity in self.sim.fem_solver.entities:
-                if fem_entity.surface.vis_mode != "visual":
+                if fem_entity.surface.vis_mode != gs.vis_mode.visual:
                     continue
 
                 for vgeom in fem_entity.vgeoms:

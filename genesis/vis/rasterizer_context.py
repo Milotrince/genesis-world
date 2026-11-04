@@ -13,7 +13,6 @@ import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
 import genesis.utils.particle as pu
-from genesis.constants import TEXTURE_MAP_TYPE
 from genesis.engine.state_change import StateChange, Subscriber
 from genesis.engine.texture import Texture
 from genesis.ext import pyrender
@@ -368,7 +367,7 @@ class RasterizerContext:
         rigid_node = self.add_node(obj, **kwargs)
         self.rigid_nodes[geom.uid] = rigid_node
         if track_pose:
-            is_visual = geom.entity.surface.vis_mode == "visual"
+            is_visual = geom.entity.surface.vis_mode == gs.vis_mode.visual
             batch_key = (geom.solver, is_visual)
             if batch_key not in self._rigid_batches:
                 self._rigid_batches[batch_key] = RigidNodeBatch(geom.solver, is_visual, [], [], [])
@@ -378,11 +377,11 @@ class RasterizerContext:
             batch.is_plane.append(isinstance(geom.entity._morph, gs.morphs.Plane))
 
         # create segemtation id
-        if self.segmentation_level == "geom":
+        if self.segmentation_level == gs.segmentation_level.geom:
             seg_key = (geom.entity.idx, geom.link.idx, geom.idx)
-        elif self.segmentation_level == "link":
+        elif self.segmentation_level == gs.segmentation_level.link:
             seg_key = (geom.entity.idx, geom.link.idx)
-        elif self.segmentation_level == "entity":
+        elif self.segmentation_level == gs.segmentation_level.entity:
             seg_key = geom.entity.idx
         else:
             gs.raise_exception(f"Unsupported segmentation level: {self.segmentation_level}")
@@ -403,7 +402,7 @@ class RasterizerContext:
 
         entity = geom.entity
         vis_mode = entity.surface.vis_mode
-        mesh = geom.sdf_trimesh if "sdf" in vis_mode else geom.trimesh
+        mesh = geom.sdf_trimesh if vis_mode == gs.vis_mode.sdf else geom.trimesh
         geom_T = geoms_T[:, geom.idx]
         envs = np.isin(self.rendered_envs_idx, geom_envs_idx)
         is_shared_floor = False
@@ -418,7 +417,7 @@ class RasterizerContext:
         if is_shared_floor:
             geom_T = geom_T[:1]
             envs = None
-        is_collision = "collision" in vis_mode
+        is_collision = vis_mode == gs.vis_mode.collision
         mesh_node = pyrender.Mesh.from_trimesh(
             mesh=mesh,
             poses=geom_T,
@@ -627,7 +626,7 @@ class RasterizerContext:
             # One conversion of the geom poses per visual mode in use
             geoms_T_by_mode = {}
             for entity in solver.entities:
-                is_visual = entity.surface.vis_mode == "visual"
+                is_visual = entity.surface.vis_mode == gs.vis_mode.visual
                 geoms = entity.vgeoms if is_visual else entity.geoms
                 if is_visual not in geoms_T_by_mode:
                     geoms_T_by_mode[is_visual] = self.rigid_geoms_T(solver, is_visual)
@@ -672,7 +671,9 @@ class RasterizerContext:
                             variants_image = options.get_variants_image(texture_map_type)
                             variants_is_drawn = options.variants_is_batched
                         else:
-                            texture_map_type = TEXTURE_MAP_TYPE.DIFFUSE if is_base_color else TEXTURE_MAP_TYPE.EMISSIVE
+                            texture_map_type = (
+                                gs.texture_map_type.diffuse if is_base_color else gs.texture_map_type.emissive
+                            )
                             variants_image = (texture_to_rgba(options, texture_map_type=texture_map_type),)
                             variants_is_drawn = (False,)
                         variants_envs_layer = np.full((len(variants_image), self.sim._B), -1, dtype=gs.np_int)
@@ -693,7 +694,7 @@ class RasterizerContext:
                                 source_channels="RGBA" if is_base_color else "RGB",
                                 tex_type=GL_TEXTURE_2D_ARRAY,
                                 data_format=GL_HALF_FLOAT
-                                if texture_map_type == TEXTURE_MAP_TYPE.EMISSIVE
+                                if texture_map_type == gs.texture_map_type.emissive
                                 else GL_UNSIGNED_BYTE,
                             )
                             textures_array[(id(material), is_base_color)] = texture_array
@@ -735,7 +736,7 @@ class RasterizerContext:
     def update_rigid(self):
         for solver in self._rigid_solvers():
             for entity in solver.entities:
-                if entity.surface.vis_mode == "visual" and entity._morph.enable_custom_vverts:
+                if entity.surface.vis_mode == gs.vis_mode.visual and entity._morph.enable_custom_vverts:
                     if entity.uid not in self._per_env_vverts_entity_uids:
                         # Seed primitive.positions with the current vverts: buffer updates bypass primitive.positions,
                         # which seeds the bounds of the geometry (shadow map extents)
@@ -766,11 +767,11 @@ class RasterizerContext:
                                     node, geom_vverts.astype(np.float32)
                                 )
                                 self.vverts_nodes[(i_b, geom.uid)] = node
-                                if self.segmentation_level == "geom":
+                                if self.segmentation_level == gs.segmentation_level.geom:
                                     seg_key = (geom.entity.idx, geom.link.idx, geom.idx)
-                                elif self.segmentation_level == "link":
+                                elif self.segmentation_level == gs.segmentation_level.link:
                                     seg_key = (geom.entity.idx, geom.link.idx)
-                                elif self.segmentation_level == "entity":
+                                elif self.segmentation_level == gs.segmentation_level.entity:
                                     seg_key = geom.entity.idx
                                 else:
                                     gs.raise_exception(f"Unsupported segmentation level: {self.segmentation_level}")
@@ -862,9 +863,9 @@ class RasterizerContext:
     def on_mpm(self):
         if self.sim.mpm_solver.is_active:
             for mpm_entity in self.sim.mpm_solver.entities:
-                if mpm_entity.surface.vis_mode in ("recon", "visual"):
+                if mpm_entity.surface.vis_mode in (gs.vis_mode.recon, gs.vis_mode.visual):
                     self.add_dynamic_node(mpm_entity, None)
-                elif mpm_entity.surface.vis_mode == "particle":
+                elif mpm_entity.surface.vis_mode == gs.vis_mode.particle:
                     for env_i, idx in enumerate(self.rendered_envs_idx):
                         mesh = mu.create_sphere(
                             self.sim.mpm_solver.particle_radius * self.particle_size_scale, subdivisions=1
@@ -876,7 +877,10 @@ class RasterizerContext:
                         self.add_static_node(
                             mpm_entity, pyrender.Mesh.from_trimesh(mesh, smooth=True, poses=tfs, envs=env_i), i_b=idx
                         )
-            if any(mpm_entity.surface.vis_mode in ("recon", "visual") for mpm_entity in self.sim.mpm_solver.entities):
+            if any(
+                mpm_entity.surface.vis_mode in (gs.vis_mode.recon, gs.vis_mode.visual)
+                for mpm_entity in self.sim.mpm_solver.entities
+            ):
                 self.tracked_nodes[self.sim.mpm_solver] = TrackedNodeList(self, self.draw_mpm)
 
             # boundary
@@ -899,10 +903,10 @@ class RasterizerContext:
 
     def update_mpm(self):
         if self.sim.mpm_solver.is_active:
-            if any(mpm_entity.surface.vis_mode == "particle" for mpm_entity in self.sim.mpm_solver.entities):
+            if any(mpm_entity.surface.vis_mode == gs.vis_mode.particle for mpm_entity in self.sim.mpm_solver.entities):
                 particles_all = qd_to_numpy(self.sim.mpm_solver.particles_render.pos)
                 for mpm_entity in self.sim.mpm_solver.entities:
-                    if mpm_entity.surface.vis_mode == "particle":
+                    if mpm_entity.surface.vis_mode == gs.vis_mode.particle:
                         for idx in self.rendered_envs_idx:
                             tfs = np.tile(np.eye(4), (mpm_entity.n_particles, 1, 1))
                             tfs[:, :3, 3] = particles_all[mpm_entity.particle_start : mpm_entity.particle_end, idx]
@@ -924,7 +928,7 @@ class RasterizerContext:
         for mpm_entity in self.sim.mpm_solver.entities:
             for env_i in envs_idx:
                 idx = self.rendered_envs_idx[env_i]
-                if mpm_entity.surface.vis_mode == "recon":
+                if mpm_entity.surface.vis_mode == gs.vis_mode.recon:
                     mesh = pu.particles_to_mesh(
                         positions=particles_all[mpm_entity.particle_start : mpm_entity.particle_end, idx][
                             active_all[mpm_entity.particle_start : mpm_entity.particle_end, idx]
@@ -934,7 +938,7 @@ class RasterizerContext:
                     )
                     mesh.visual = mu.surface_uvs_to_trimesh_visual(mpm_entity.surface, n_verts=len(mesh.vertices))
                     meshes.append((env_i, pyrender.Mesh.from_trimesh(mesh, smooth=True, envs=env_i), mpm_entity.idx))
-                elif mpm_entity.surface.vis_mode == "visual":
+                elif mpm_entity.surface.vis_mode == gs.vis_mode.visual:
                     mpm_entity._vmesh.trimesh.vertices = vverts_all[mpm_entity.vvert_start : mpm_entity.vvert_end, idx]
                     mesh = pyrender.Mesh.from_trimesh(
                         mpm_entity.vmesh.trimesh, smooth=mpm_entity.surface.smooth, envs=env_i
@@ -945,9 +949,9 @@ class RasterizerContext:
     def on_sph(self):
         if self.sim.sph_solver.is_active:
             for sph_entity in self.sim.sph_solver.entities:
-                if sph_entity.surface.vis_mode == "recon":
+                if sph_entity.surface.vis_mode == gs.vis_mode.recon:
                     self.add_dynamic_node(sph_entity, None)
-                elif sph_entity.surface.vis_mode == "particle":
+                elif sph_entity.surface.vis_mode == gs.vis_mode.particle:
                     for env_i, idx in enumerate(self.rendered_envs_idx):
                         mesh = mu.create_sphere(
                             self.sim.sph_solver.particle_radius * self.particle_size_scale, subdivisions=1
@@ -959,7 +963,7 @@ class RasterizerContext:
                         self.add_static_node(
                             sph_entity, pyrender.Mesh.from_trimesh(mesh, smooth=True, poses=tfs, envs=env_i), i_b=idx
                         )
-            if any(sph_entity.surface.vis_mode == "recon" for sph_entity in self.sim.sph_solver.entities):
+            if any(sph_entity.surface.vis_mode == gs.vis_mode.recon for sph_entity in self.sim.sph_solver.entities):
                 self.tracked_nodes[self.sim.sph_solver] = TrackedNodeList(self, self.draw_sph)
 
             # boundary
@@ -982,10 +986,10 @@ class RasterizerContext:
 
     def update_sph(self):
         if self.sim.sph_solver.is_active:
-            if any(sph_entity.surface.vis_mode == "particle" for sph_entity in self.sim.sph_solver.entities):
+            if any(sph_entity.surface.vis_mode == gs.vis_mode.particle for sph_entity in self.sim.sph_solver.entities):
                 particles_all = qd_to_numpy(self.sim.sph_solver.particles_render.pos)
                 for sph_entity in self.sim.sph_solver.entities:
-                    if sph_entity.surface.vis_mode == "particle":
+                    if sph_entity.surface.vis_mode == gs.vis_mode.particle:
                         for idx in self.rendered_envs_idx:
                             tfs = np.tile(np.eye(4), (sph_entity.n_particles, 1, 1))
                             tfs[:, :3, 3] = particles_all[sph_entity.particle_start : sph_entity.particle_end, idx]
@@ -1004,7 +1008,7 @@ class RasterizerContext:
         active_all = qd_to_numpy(self.sim.sph_solver.particles_render.active).astype(dtype=np.bool_, copy=False)
         meshes = []
         for sph_entity in self.sim.sph_solver.entities:
-            if sph_entity.surface.vis_mode != "recon":
+            if sph_entity.surface.vis_mode != gs.vis_mode.recon:
                 continue
             for env_i in envs_idx:
                 idx = self.rendered_envs_idx[env_i]
@@ -1022,16 +1026,16 @@ class RasterizerContext:
     def on_pbd(self):
         if self.sim.pbd_solver.is_active:
             for pbd_entity in self.sim.pbd_solver.entities:
-                if pbd_entity.surface.vis_mode == "visual":
+                if pbd_entity.surface.vis_mode == gs.vis_mode.visual:
                     # Apply surface visual with UVs to the trimesh
                     pbd_entity.vmesh.trimesh.visual = mu.surface_uvs_to_trimesh_visual(
                         pbd_entity.surface, uvs=pbd_entity.vmesh.uvs, n_verts=len(pbd_entity.vmesh.trimesh.vertices)
                     )
                 for env_i, idx in enumerate(self.rendered_envs_idx):
-                    if pbd_entity.surface.vis_mode == "recon":
+                    if pbd_entity.surface.vis_mode == gs.vis_mode.recon:
                         self.add_dynamic_node(pbd_entity, None)
-                    elif pbd_entity.surface.vis_mode == "particle":
-                        if self.render_particle_as == "sphere":
+                    elif pbd_entity.surface.vis_mode == gs.vis_mode.particle:
+                        if self.render_particle_as == gs.render_particle_as.sphere:
                             mesh = mu.create_sphere(
                                 self.sim.pbd_solver.particle_radius * self.particle_size_scale, subdivisions=1
                             )
@@ -1045,7 +1049,7 @@ class RasterizerContext:
                                 pyrender.Mesh.from_trimesh(mesh, smooth=True, poses=tfs, envs=env_i),
                                 i_b=idx,
                             )
-                        elif self.render_particle_as == "tet":
+                        elif self.render_particle_as == gs.render_particle_as.tet:
                             mesh = mu.create_tets_mesh(
                                 pbd_entity.n_particles, self.sim.pbd_solver.particle_radius * self.particle_size_scale
                             )
@@ -1056,7 +1060,7 @@ class RasterizerContext:
                             self.add_static_node(
                                 pbd_entity, pyrender.Mesh.from_trimesh(mesh, smooth=False, envs=env_i), i_b=idx
                             )
-                    elif pbd_entity.surface.vis_mode == "visual":
+                    elif pbd_entity.surface.vis_mode == gs.vis_mode.visual:
                         self.add_static_node(
                             pbd_entity,
                             pyrender.Mesh.from_trimesh(
@@ -1067,7 +1071,7 @@ class RasterizerContext:
                             ),
                             i_b=idx,
                         )
-            if any(pbd_entity.surface.vis_mode == "recon" for pbd_entity in self.sim.pbd_solver.entities):
+            if any(pbd_entity.surface.vis_mode == gs.vis_mode.recon for pbd_entity in self.sim.pbd_solver.entities):
                 self.tracked_nodes[self.sim.pbd_solver] = TrackedNodeList(self, self.draw_pbd)
 
             # boundary
@@ -1098,15 +1102,15 @@ class RasterizerContext:
                     vverts_env = vverts_all[:, idx]
 
                     # TODO: need to support multi-env visulaization for tet mode (it's using static node)
-                    if pbd_entity.surface.vis_mode == "particle":
-                        if self.render_particle_as == "sphere":
+                    if pbd_entity.surface.vis_mode == gs.vis_mode.particle:
+                        if self.render_particle_as == gs.render_particle_as.sphere:
                             tfs = np.tile(np.eye(4), (pbd_entity.n_particles, 1, 1))
                             tfs[:, :3, 3] = particles_env[pbd_entity.particle_start : pbd_entity.particle_end]
 
                             node = self.static_nodes[(idx, pbd_entity.uid)]
                             self.jit.update_buffer(node, "model", tfs.transpose((0, 2, 1)))
 
-                        elif self.render_particle_as == "tet":
+                        elif self.render_particle_as == gs.render_particle_as.tet:
                             new_verts = mu.transform_tets_mesh_verts(
                                 pbd_entity._tets_mesh.vertices,
                                 positions=particles_env[pbd_entity.particle_start : pbd_entity.particle_end],
@@ -1118,7 +1122,7 @@ class RasterizerContext:
                             normal_data = self.jit.update_normal(node, update_data)
                             if normal_data is not None:
                                 self.jit.update_buffer(node, "normal", normal_data)
-                    elif pbd_entity.surface.vis_mode == "visual":
+                    elif pbd_entity.surface.vis_mode == gs.vis_mode.visual:
                         vverts = vverts_env[pbd_entity.vvert_start : pbd_entity.vvert_end]
                         node = self.static_nodes[(idx, pbd_entity.uid)]
                         update_data = self._scene.reorder_vertices(node, vverts.astype(np.float32))
@@ -1138,7 +1142,7 @@ class RasterizerContext:
         active_all = qd_to_numpy(self.sim.pbd_solver.particles_render.active).astype(dtype=np.bool_, copy=False)
         meshes = []
         for pbd_entity in self.sim.pbd_solver.entities:
-            if pbd_entity.surface.vis_mode != "recon":
+            if pbd_entity.surface.vis_mode != gs.vis_mode.recon:
                 continue
             for env_i in envs_idx:
                 idx = self.rendered_envs_idx[env_i]
@@ -1160,12 +1164,16 @@ class RasterizerContext:
             vverts_all = qd_to_numpy(vverts_pos, self.rendered_envs_idx, transpose=True)
 
             for fem_entity in self.sim.fem_solver.entities:
-                if fem_entity.surface.vis_mode != "visual":
+                if fem_entity.surface.vis_mode != gs.vis_mode.visual:
                     continue
 
                 for i_g, vgeom in enumerate(fem_entity.vgeoms):
                     visual = mu.surface_uvs_to_trimesh_visual(vgeom.surface, uvs=vgeom.uvs, n_verts=vgeom.n_vverts)
-                    seg_key = (fem_entity.idx, i_g) if self.segmentation_level == "geom" else fem_entity.idx
+                    seg_key = (
+                        (fem_entity.idx, i_g)
+                        if self.segmentation_level == gs.segmentation_level.geom
+                        else fem_entity.idx
+                    )
                     vverts = vverts_all[:, vgeom.vvert_start : vgeom.vvert_end]
                     for env_i, i_b in enumerate(self.rendered_envs_idx):
                         mesh = trimesh.Trimesh(vverts[env_i], vgeom.vmesh.faces, process=False)
@@ -1183,7 +1191,7 @@ class RasterizerContext:
             vverts_all = qd_to_numpy(vverts_pos, self.rendered_envs_idx, transpose=True)
 
             for fem_entity in self.sim.fem_solver.entities:
-                if fem_entity.surface.vis_mode != "visual":
+                if fem_entity.surface.vis_mode != gs.vis_mode.visual:
                     continue
 
                 for vgeom in fem_entity.vgeoms:

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Mapping, Sequence
+from typing import TYPE_CHECKING, Annotated, Any, Mapping, Sequence
 
 import numpy as np
 from pydantic import Field, StrictBool, StrictInt, model_validator
@@ -72,7 +72,7 @@ class RayTracer(RendererOptions):
     ----------
     device_index : int, optional
         Device ID used for the raytracer. None for Genesis' device. Defaults to None.
-    logging_level : str, optional
+    logging_level : gs.raytracer_logging_level, optional
         Logging level. Should be one of "debug", "info", "warning". Defaults to "warning".
     state_limit : int, optional
         State limit for raytracer integrator. Defaults to 2 ** 25.
@@ -100,7 +100,7 @@ class RayTracer(RendererOptions):
     """
 
     device_index: StrictInt | None = None
-    logging_level: Literal["debug", "info", "warning"] = "warning"
+    logging_level: gs.raytracer_logging_level = gs.raytracer_logging_level.warning
     state_limit: StrictInt = 2**25
     tracing_depth: StrictInt = 32
     rr_depth: StrictInt = 0

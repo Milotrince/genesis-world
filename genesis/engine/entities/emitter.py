@@ -69,7 +69,7 @@ class Emitter(RBC):
 
         Parameters
         ----------
-        droplet_shape : str
+        droplet_shape : gs.droplet_shape
             The shape of the emitted droplet. Options: "circle", "sphere", "square", "rectangle".
         droplet_size : float or tuple
             Size of the droplet. A single float for symmetric shapes, or a tuple of (width, height) for rectangles.
@@ -93,9 +93,9 @@ class Emitter(RBC):
         """
         assert self._entity is not None
 
-        if droplet_shape in ["circle", "sphere", "square"]:
+        if droplet_shape in (gs.droplet_shape.circle, gs.droplet_shape.sphere, gs.droplet_shape.square):
             assert isinstance(droplet_size, (int, float))
-        elif droplet_shape == "rectangle":
+        elif droplet_shape == gs.droplet_shape.rectangle:
             assert isinstance(droplet_size, (tuple, list)) and len(droplet_size) == 2
         else:
             gs.raise_exception(f"Unsupported nozzle shape: {droplet_shape}.")
@@ -118,26 +118,26 @@ class Emitter(RBC):
                 self._acc_droplet_len = 0.0
 
         if droplet_length > 0.0:
-            if droplet_shape == "circle":
+            if droplet_shape == gs.droplet_shape.circle:
                 positions = pu.cylinder_to_particles(
                     p_size=p_size,
                     radius=droplet_size / 2,
                     height=droplet_length,
                     sampler=self._entity.sampler,
                 )
-            elif droplet_shape == "sphere":  # sphere droplet ignores droplet_length
+            elif droplet_shape == gs.droplet_shape.sphere:  # sphere droplet ignores droplet_length
                 positions = pu.sphere_to_particles(
                     p_size=p_size,
                     radius=droplet_size / 2,
                     sampler=self._entity.sampler,
                 )
-            elif droplet_shape == "square":
+            elif droplet_shape == gs.droplet_shape.square:
                 positions = pu.box_to_particles(
                     p_size=p_size,
                     size=np.array([droplet_size, droplet_size, droplet_length]),
                     sampler=self._entity.sampler,
                 )
-            elif droplet_shape == "rectangle":
+            elif droplet_shape == gs.droplet_shape.rectangle:
                 positions = pu.box_to_particles(
                     p_size=p_size,
                     size=np.array([droplet_size[0], droplet_size[1], droplet_length]),

@@ -1,4 +1,4 @@
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 import av
 from pydantic import BeforeValidator, Field, StrictBool
@@ -151,7 +151,7 @@ class TrajectoryFile(BaseFileWriterOptions):
     ----------
     filename : str
         The '.gstraj' file to write.
-    mode : str, optional
+    mode : gs.trajectory_mode | None, optional
         What each frame records: 'exact' or 'minimal'. If None, exact if its frame stays within 4 MiB, minimal
         otherwise. Defaults to None.
     chunk_size : int, optional
@@ -163,7 +163,7 @@ class TrajectoryFile(BaseFileWriterOptions):
     """
 
     filename: PathType = Field(pattern=r"(?i).*\.gstraj$")
-    mode: Literal["exact", "minimal"] | None = None
+    mode: gs.trajectory_mode | None = None
     chunk_size: PositiveInt = 64
     max_size: PositiveInt | None = 2**31
 

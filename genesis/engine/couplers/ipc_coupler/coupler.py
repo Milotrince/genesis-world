@@ -240,9 +240,13 @@ class IPCCoupler(RBC):
             coup_type = entity._options.solver_options.coup_type
             if coup_type is None:
                 # Only the two-way coupling couples some links of an entity alone (see 'RigidLinkSolverOptions')
-                coup_type = "two_way_soft_constraint" if len(coup_links) < entity.n_links else default_coup_type(entity)
+                coup_type = (
+                    gs.coup_type.two_way_soft_constraint
+                    if len(coup_links) < entity.n_links
+                    else default_coup_type(entity)
+                )
 
-            self._coup_type_by_entity[entity] = coup_type = getattr(COUPLING_TYPE, coup_type.upper())
+            self._coup_type_by_entity[entity] = coup_type = COUPLING_TYPE[coup_type.name.upper()]
             if coup_type == COUPLING_TYPE.EXTERNAL_ARTICULATION:
                 if not entity.base_link.is_fixed:
                     gs.raise_exception(

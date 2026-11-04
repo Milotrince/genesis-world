@@ -1252,7 +1252,7 @@ class Drone(FileMorph):
         Sometimes a geom in a urdf file will be assigned a color or a texture, and the geom asset file also contains its
         own visual material. This parameter controls whether to prioritize the URDF-defined material over the asset's
         own material. Defaults to False.
-    model : str, optional
+    model : gs.drone_model, optional
         The model of the drone. Defaults to 'CF2X'. Supported models are 'CF2X', 'CF2P', and 'RACE'.
     COM_link_name : str, optional
         This option is deprecated. The true Center of Mass (CoM) will be used instead of requesting the user to manually
@@ -1279,7 +1279,7 @@ class Drone(FileMorph):
         None to disable. Default to 1e-5.
     """
 
-    model: Literal["CF2X", "CF2P", "RACE"] = "CF2X"
+    model: gs.drone_model = gs.drone_model.CF2X
     prioritize_urdf_material: StrictBool = False
     propellers_link_name: StrArrayType = ("prop0_link", "prop1_link", "prop2_link", "prop3_link")
     propellers_spin: tuple[int, ...] = Field(default=(-1, 1, -1, 1), strict=False)  # 1: CCW, -1: CW
@@ -1372,7 +1372,7 @@ class Terrain(Morph):
         The height of each step in the subterrain in meters. Defaults to 0.005.
     uv_scale : float, optional
         The scale of the UV mapping for the terrain. Defaults to 1.0.
-    subterrain_types : str or 2D list of str, optional
+    subterrain_types : gs.subterrain_type or 2D list of gs.subterrain_type, optional
         The types of subterrains to generate. If a string, it will be repeated for all subterrains.
         If a 2D list, it should have the same shape as `n_subterrains`.
     height_field : array-like or torch.Tensor, optional
@@ -1399,26 +1399,25 @@ class Terrain(Morph):
     vertical_scale: PositiveFloat = 0.005
     uv_scale: PositiveFloat = 1.0
     subterrain_types: Any = [
-        ["flat_terrain", "random_uniform_terrain", "stepping_stones_terrain"],
-        ["pyramid_sloped_terrain", "discrete_obstacles_terrain", "wave_terrain"],
-        ["random_uniform_terrain", "pyramid_stairs_terrain", "sloped_terrain"],
+        [
+            gs.subterrain_type.flat_terrain,
+            gs.subterrain_type.random_uniform_terrain,
+            gs.subterrain_type.stepping_stones_terrain,
+        ],
+        [
+            gs.subterrain_type.pyramid_sloped_terrain,
+            gs.subterrain_type.discrete_obstacles_terrain,
+            gs.subterrain_type.wave_terrain,
+        ],
+        [
+            gs.subterrain_type.random_uniform_terrain,
+            gs.subterrain_type.pyramid_stairs_terrain,
+            gs.subterrain_type.sloped_terrain,
+        ],
     ]
     height_field: FGridArrayType | None = None
     name: str | None = None
     subterrain_parameters: dict[str, dict] | None = None
-
-    _SUPPORTED_SUBTERRAIN_TYPES: ClassVar[tuple[str, ...]] = (
-        "flat_terrain",
-        "fractal_terrain",
-        "random_uniform_terrain",
-        "sloped_terrain",
-        "pyramid_sloped_terrain",
-        "discrete_obstacles_terrain",
-        "wave_terrain",
-        "stairs_terrain",
-        "pyramid_stairs_terrain",
-        "stepping_stones_terrain",
-    )
 
     def __init__(self, *, from_stored: str | None = None, **data):
         if from_stored is not None:
@@ -1458,10 +1457,9 @@ class Terrain(Morph):
 
         for row in self.subterrain_types:
             for subterrain_type in row:
-                if subterrain_type not in self._SUPPORTED_SUBTERRAIN_TYPES:
-                    gs.raise_exception(
-                        f"Unsupported subterrain type: {subterrain_type}, should be one of {list(self._SUPPORTED_SUBTERRAIN_TYPES)}"
-                    )
+                if subterrain_type not in tuple(gs.subterrain_type):
+                    choices = ", ".join(f"'{choice}'" for choice in gs.subterrain_type)
+                    gs.raise_exception(f"Unsupported subterrain type: {subterrain_type}, should be one of {choices}")
 
         if not mu.is_approx_multiple(self.subterrain_size[0], self.horizontal_scale) or not mu.is_approx_multiple(
             self.subterrain_size[1], self.horizontal_scale
@@ -1474,42 +1472,42 @@ class Terrain(Morph):
     @property
     def default_params(self):
         return {
-            "flat_terrain": {},
-            "fractal_terrain": {
+            gs.subterrain_type.flat_terrain: {},
+            gs.subterrain_type.fractal_terrain: {
                 "levels": 8,
                 "scale": 5.0,
             },
-            "random_uniform_terrain": {
+            gs.subterrain_type.random_uniform_terrain: {
                 "min_height": -0.1,
                 "max_height": 0.1,
                 "step": 0.1,
                 "downsampled_scale": 0.5,
             },
-            "sloped_terrain": {
+            gs.subterrain_type.sloped_terrain: {
                 "slope": -0.5,
             },
-            "pyramid_sloped_terrain": {
+            gs.subterrain_type.pyramid_sloped_terrain: {
                 "slope": -0.1,
             },
-            "discrete_obstacles_terrain": {
+            gs.subterrain_type.discrete_obstacles_terrain: {
                 "max_height": 0.05,
                 "min_size": 1.0,
                 "max_size": 5.0,
                 "num_rects": 20,
             },
-            "wave_terrain": {
+            gs.subterrain_type.wave_terrain: {
                 "num_waves": 2.0,
                 "amplitude": 0.1,
             },
-            "stairs_terrain": {
+            gs.subterrain_type.stairs_terrain: {
                 "step_width": 0.75,
                 "step_height": -0.1,
             },
-            "pyramid_stairs_terrain": {
+            gs.subterrain_type.pyramid_stairs_terrain: {
                 "step_width": 0.75,
                 "step_height": -0.1,
             },
-            "stepping_stones_terrain": {
+            gs.subterrain_type.stepping_stones_terrain: {
                 "stone_size": 1.0,
                 "stone_distance": 0.25,
                 "max_height": 0.2,

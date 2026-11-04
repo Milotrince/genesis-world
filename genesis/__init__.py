@@ -28,6 +28,7 @@ except ImportError as e:
 import numpy as np
 
 from .constants import backend as _gs_backend
+from .constants import float_precision as _gs_float_precision
 from .logging import Logger
 from .utils import ZeroCopyMode, get_device, redirect_libc_stderr, set_environ, set_random_seed
 from .version import __version__
@@ -59,7 +60,7 @@ EPS: float | None = None
 def init(
     *,
     backend=None,
-    precision="32",
+    precision=_gs_float_precision.fp32,
     logging_level=None,
     debug=False,
     seed=None,
@@ -77,7 +78,7 @@ def init(
     destroy()
 
     # Make sure that specified arch and precision are supported
-    if precision not in ("32", "64"):
+    if precision not in tuple(_gs_float_precision):
         raise_exception(f"Unsupported precision type: ~<{precision}>~")
 
     # Initialize the logger
@@ -154,11 +155,11 @@ def init(
 
     # Define the right dtypes in accordance with selected backend and precision
     global qd_float, np_float, tc_float
-    if precision == "32":
+    if precision == _gs_float_precision.fp32:
         qd_float = qd.f32
         np_float = np.float32
         tc_float = torch.float32
-    else:  # precision == "64":
+    else:
         if backend == _gs_backend.metal:
             raise_exception("64bits precision is not supported on Apple Metal GPU.")
         qd_float = qd.f64
@@ -489,6 +490,7 @@ with open(os.devnull, "w") as stderr, redirect_libc_stderr(stderr):
 
 from .constants import (
     IntEnum,
+    StrEnum,
     JOINT_TYPE,
     GEOM_TYPE,
     EQUALITY_TYPE,
@@ -502,7 +504,35 @@ from .constants import (
     contact_resolution,
     broadphase_traversal,
     link_ref_frame,
-    TEXTURE_MAP_TYPE,
+    float_precision,
+    texture_map_type,
+    texture_encoding,
+    vis_mode,
+    recon_backend,
+    metal_type,
+    light_type,
+    segmentation_level,
+    render_particle_as,
+    camera_model,
+    contact_depth_query,
+    particle_sampler,
+    droplet_shape,
+    subterrain_type,
+    drone_model,
+    fem_model,
+    mpm_model,
+    yield_criterion,
+    pressure_solver,
+    coup_type,
+    sap_contact_type,
+    linear_system_solver,
+    contact_constitution,
+    collision_detection_method,
+    preprocess_mode,
+    apx_mode,
+    trajectory_mode,
+    raytracer_logging_level,
+    polar_side,
 )
 
 from .utils.uid import UID

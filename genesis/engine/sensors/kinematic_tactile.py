@@ -1021,7 +1021,7 @@ class ContactDepthProbeSensor(
         measured, measured_cols_b = get_measured_bufs(
             shared_metadata, current_ground_truth_data_T, measured_data_timeline
         )
-        if (shared_metadata.contact_depth_query or "sdf") == "sdf":
+        if (shared_metadata.contact_depth_query or gs.contact_depth_query.sdf) == gs.contact_depth_query.sdf:
             _kernel_build_sensor_geom_idx(
                 shared_metadata.links_idx,
                 shared_metadata.filter_links_idx,
@@ -1296,7 +1296,7 @@ class KinematicTaxelSensor(
         measured_equals_gt = int(
             not shared_metadata.has_any_probe_radius_noise and not shared_metadata.has_any_probe_gain
         )
-        if (shared_metadata.contact_depth_query or "sdf") == "sdf":
+        if (shared_metadata.contact_depth_query or gs.contact_depth_query.sdf) == gs.contact_depth_query.sdf:
             _kernel_build_sensor_geom_idx(
                 shared_metadata.links_idx,
                 shared_metadata.filter_links_idx,

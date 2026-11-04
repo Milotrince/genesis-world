@@ -9,7 +9,6 @@ import trimesh
 
 import genesis as gs
 import genesis.utils.geom as gu
-from genesis.constants import TEXTURE_MAP_TYPE
 from genesis.engine.mesh import Mesh
 from genesis.engine.texture import Texture, TextureValueType, get_dynamic_texture
 from genesis.repr_base import RBC
@@ -731,7 +730,7 @@ class RigidVisGeom(RBC):
 
     @gs.assert_built
     def get_texture(
-        self, envs_idx: IndexType | None = None, *, texture_map_type: TEXTURE_MAP_TYPE | None = None
+        self, envs_idx: IndexType | None = None, *, texture_map_type: gs.texture_map_type | None = None
     ) -> torch.Tensor:
         """Return the variant each environment shows on a dynamic texture of this visual geom.
 
@@ -746,7 +745,7 @@ class RigidVisGeom(RBC):
         texture: TextureValueType,
         envs_idx: IndexType | None = None,
         *,
-        texture_map_type: TEXTURE_MAP_TYPE | None = None,
+        texture_map_type: gs.texture_map_type | None = None,
     ) -> None:
         """Show a variant, or draw pixels, on a dynamic texture of this visual geom.
 

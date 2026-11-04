@@ -40,11 +40,11 @@ class MPMModel:
 class MPMElasticModel(MPMModel):
     """The stress of an Elastic material, under the stress model its entity solver options choose."""
 
-    def __init__(self, youngs_modulus: float, poisson_ratio: float, model: str) -> None:
+    def __init__(self, youngs_modulus: float, poisson_ratio: float, model: gs.mpm_model) -> None:
         super().__init__(youngs_modulus, poisson_ratio)
         self.update_F_S_Jp = self._update_F_S_Jp_elastic
         # The 'corotation' model keeps the stress of the base model, which reads U @ V.T from the decomposition of F_tmp
-        if model == "neohooken":
+        if model == gs.mpm_model.neohooken:
             self.update_stress = self._update_stress_neohooken
             # The Neo-Hookean stress only reads F_tmp and J = det(F_tmp)
             self.needs_svd = False
@@ -71,7 +71,7 @@ class MPMMuscleModel(MPMElasticModel):
     The active stress scales with the Young's modulus of the material.
     """
 
-    def __init__(self, youngs_modulus: float, poisson_ratio: float, model: str) -> None:
+    def __init__(self, youngs_modulus: float, poisson_ratio: float, model: gs.mpm_model) -> None:
         super().__init__(youngs_modulus, poisson_ratio, model)
         self.stiffness = youngs_modulus
         self._update_stress_without_actuation = self.update_stress
@@ -101,7 +101,7 @@ class MPMElastoPlasticModel(MPMModel):
         critical_stretch: float,
     ) -> None:
         super().__init__(youngs_modulus, poisson_ratio)
-        self.use_von_mises = yield_criterion == "von_mises"
+        self.use_von_mises = yield_criterion == gs.yield_criterion.von_mises
         self.yield_stress = yield_stress
         self.critical_compression = critical_compression
         self.critical_stretch = critical_stretch
@@ -276,13 +276,13 @@ class MPMModelKey:
 @dataclass(frozen=True)
 class MPMElasticModelKey(MPMModelKey):
     model_cls: ClassVar[type[MPMModel]] = MPMElasticModel
-    model: str
+    model: gs.mpm_model
 
 
 @dataclass(frozen=True)
 class MPMMuscleModelKey(MPMModelKey):
     model_cls: ClassVar[type[MPMModel]] = MPMMuscleModel
-    model: str
+    model: gs.mpm_model
 
 
 @dataclass(frozen=True)
