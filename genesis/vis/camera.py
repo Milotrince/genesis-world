@@ -27,7 +27,7 @@ class Camera(RBC):
         The visualizer object that the camera is associated with.
     idx : int
         The index of the camera.
-    model : str
+    model : gs.camera_model
         Specifies the camera model. Options are 'pinhole' or 'thinlens'.
     res : tuple of int, shape (2,)
         The resolution of the camera, specified as a tuple (width, height).
@@ -73,7 +73,7 @@ class Camera(RBC):
         self,
         visualizer,
         idx=0,
-        model="pinhole",  # pinhole or thinlens
+        model=gs.camera_model.pinhole,
         res=(320, 320),
         pos=(0.5, 2.5, 3.5),
         lookat=(0.5, 0.5, 0.5),
@@ -92,7 +92,9 @@ class Camera(RBC):
     ):
         self._idx = idx
         self._uid = gs.UID()
-        self._model = model
+        if model not in tuple(gs.camera_model):
+            gs.raise_exception(f"Invalid camera model: {model}")
+        self._model = gs.camera_model(model)
         self._res = res
         self._fov = fov
         self._aperture = aperture
@@ -138,9 +140,6 @@ class Camera(RBC):
         self._follow_fixed_axis = None
         self._follow_smoothing = None
         self._follow_fix_orientation = None
-
-        if self._model not in ("pinhole", "thinlens", "fisheye"):
-            gs.raise_exception(f"Invalid camera model: {self._model}")
 
         if self._focus_dist is None:
             self._focus_dist = np.linalg.norm(np.asarray(lookat) - np.asarray(pos))
@@ -493,8 +492,8 @@ class Camera(RBC):
             if self._is_batched:
                 rendered_envs_idx = self._visualizer._context.rendered_envs_idx
                 title += f" - Environments {rendered_envs_idx}"
-            for img_type, (flag, buffer) in enumerate(
-                ((rgb, rgb_arr), (depth, depth_arr), (segmentation, seg_color_arr), (normal, normal_arr))
+            for img_type, (flag, buffer) in zip(
+                IMAGE_TYPE, ((rgb, rgb_arr), (depth, depth_arr), (segmentation, seg_color_arr), (normal, normal_arr))
             ):
                 if flag:
                     buffer = tensor_to_array(buffer)
@@ -504,7 +503,7 @@ class Camera(RBC):
                         buffer = np.flip(buffer, axis=-1)
                     if self._is_batched:
                         buffer = np.concatenate(list(buffer), axis=1)
-                    cv2.imshow(f"{title} [{IMAGE_TYPE(img_type)}]", buffer)
+                    cv2.imshow(f"{title} [{img_type}]", buffer)
             cv2.waitKey(1)
 
         return rgb_arr if rgb else None, depth_arr, seg_arr, normal_arr
@@ -922,14 +921,14 @@ class Camera(RBC):
     def focal_len(self):
         """The focal length for thinlens camera. Returns -1 for pinhole camera."""
         tan_half_fov = np.tan(np.deg2rad(self._fov / 2))
-        if self.model == "thinlens":
+        if self.model == gs.camera_model.thinlens:
             if self._res[0] > self._res[1]:
                 projected_pixel_size = min(0.036 / self._res[0], 0.024 / self._res[1])
             else:
                 projected_pixel_size = min(0.036 / self._res[1], 0.024 / self._res[0])
             image_dist = self._res[1] * projected_pixel_size / (2 * tan_half_fov)
             return 1.0 / (1.0 / image_dist + 1.0 / self._focus_dist)
-        elif self.model in ("pinhole", "fisheye"):
+        elif self.model in (gs.camera_model.pinhole, gs.camera_model.fisheye):
             return self._res[0] / (2.0 * tan_half_fov)
 
     @property

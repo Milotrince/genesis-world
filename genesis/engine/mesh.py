@@ -564,13 +564,13 @@ class Mesh(RBC, serialization.SerializationMixin):
                 color_textures_key = get_hashkey(color_image, color_factor)
                 color_textures = _COLOR_TEXTURES_CACHE.find(color_textures_key)
             if color_textures is None:
-                color_texture = mu.create_texture(color_image, color_factor, "srgb")
+                color_texture = mu.create_texture(color_image, color_factor, gs.texture_encoding.srgb)
                 color_textures = (color_texture, None if color_texture is None else color_texture.check_dim(3))
                 for texture in color_textures:
                     if isinstance(texture, gs.textures.ImageTexture):
                         texture.image_array.flags.writeable = False
             color_texture, opacity_texture = color_textures
-            roughness_texture = mu.create_texture(None, roughness_factor, "linear")
+            roughness_texture = mu.create_texture(None, roughness_factor, gs.texture_encoding.linear)
 
             surface.update_texture(
                 color_texture=color_texture,

@@ -7,7 +7,6 @@ import numpy as np
 import torch
 
 import genesis as gs
-from genesis.constants import TEXTURE_MAP_TYPE
 from genesis.engine.state_change import StateChange, Subscriber
 from genesis.options.textures import ColorTexture, DynamicTexture, ImageTexture, texture_to_rgba
 from genesis.typing import IndexType
@@ -40,7 +39,7 @@ class Texture:
     """
 
     def __init__(
-        self, scene: "Scene", options: DynamicTexture, texture_map_type: TEXTURE_MAP_TYPE, vgeom: "RigidVisGeom"
+        self, scene: "Scene", options: DynamicTexture, texture_map_type: gs.texture_map_type, vgeom: "RigidVisGeom"
     ):
         self._scene = scene
         self._options = options
@@ -61,7 +60,7 @@ class Texture:
         return self._options
 
     @property
-    def texture_map_type(self) -> TEXTURE_MAP_TYPE:
+    def texture_map_type(self) -> gs.texture_map_type:
         """The map of the surface that the texture fills, which sets the format of its images."""
         return self._texture_map_type
 
@@ -159,7 +158,7 @@ class Texture:
             n_channels = image.shape[-1]
             if n_channels not in (3, 4):
                 gs.raise_exception(f"Pixels are drawn as RGB or RGBA, got {n_channels} channels.")
-            if self._texture_map_type == TEXTURE_MAP_TYPE.EMISSIVE:
+            if self._texture_map_type == gs.texture_map_type.emissive:
                 dtype, alpha = torch.float16, 1.0
                 if image.is_floating_point():
                     image = image.clamp(0.0, torch.finfo(dtype).max)
@@ -211,7 +210,7 @@ class Texture:
                     drawing_callback(int(i_variant), variant_envs_idx, variant_image)
 
 
-def get_dynamic_texture(textures: list[Texture], texture_map_type: TEXTURE_MAP_TYPE | None) -> Texture:
+def get_dynamic_texture(textures: list[Texture], texture_map_type: gs.texture_map_type | None) -> Texture:
     """Return the dynamic texture filling the map of type 'texture_map_type', or the only one of 'textures' if None.
 
     'textures' are the dynamic textures of one visual geom, one per map at most.

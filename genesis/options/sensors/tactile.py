@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from pydantic import Field, StrictBool
@@ -178,7 +178,7 @@ class TactileProbeSensorOptionsMixin(ProbeSensorOptionsMixin[SensorT]):
         probe) at the hardware-imperfections stage; the GT branch is untouched.
     dead_taxel_value_range : (float, float), optional
         Uniform range for the dead value sampled per probe on reset. Default ``(0.0, 0.0)``.
-    contact_depth_query : {"sdf", "raycast"} or None, optional
+    contact_depth_query : gs.contact_depth_query | None, optional
         Per-probe contact-depth backend. ``"sdf"`` queries the per-geom analytic SDF grid (fast, exact for primitives).
         ``"raycast"`` walks the rigid solver's per-frame collision-mesh BVH and takes the
         signed distance to the nearest candidate triangle (sign from the triangle's face normal, negative inside),
@@ -193,7 +193,7 @@ class TactileProbeSensorOptionsMixin(ProbeSensorOptionsMixin[SensorT]):
     probe_gain_resample_range: PositiveVec2FType | None = None
     dead_taxel_probability: NonNegativeFloat = 0.0
     dead_taxel_value_range: Vec2FType = (0.0, 0.0)
-    contact_depth_query: Literal["sdf", "raycast"] | None = None
+    contact_depth_query: gs.contact_depth_query | None = None
 
     def model_post_init(self, context: Any) -> None:
         super().model_post_init(context)

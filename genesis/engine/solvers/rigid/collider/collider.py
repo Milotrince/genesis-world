@@ -468,9 +468,9 @@ class Collider:
                     mode = "two_way_soft_constraint"
                 if mode is None:
                     continue
-                if mode == "ipc_only":
+                if mode == gs.coup_type.ipc_only:
                     ipc_only_link_idxs.update(l.idx for l in entity.links)
-                if mode == "two_way_soft_constraint":
+                if mode == gs.coup_type.two_way_soft_constraint:
                     ipc_delegated_link_idxs.update(l.idx for l in coup_links)
                 else:
                     ipc_delegated_link_idxs.update(l.idx for l in entity.links)

@@ -235,7 +235,7 @@ def usd_primvar_array_to_numpy(
 
 
 def extract_scale(T: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    R, S = gu.polar(T[:3, :3], pure_rotation=True, side="right")
+    R, S = gu.polar(T[:3, :3], pure_rotation=True)
     det_R = np.linalg.det(R)
     if det_R < 0:
         # Absorb reflection into scale so R remains a proper rotation (det=+1).

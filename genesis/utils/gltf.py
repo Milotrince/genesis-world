@@ -156,7 +156,7 @@ def parse_glb_material(glb, material_index, surface, images=None):
             uvs_used = material.normalTexture.texCoord
         normal_image = get_glb_image(glb, texture.source, images)
         if normal_image is not None:
-            normal_texture = mu.create_texture(normal_image, None, "linear")
+            normal_texture = mu.create_texture(normal_image, None, gs.texture_encoding.linear)
 
     # TODO: Parse occlusion
     if material.occlusionTexture is not None:
@@ -165,7 +165,7 @@ def parse_glb_material(glb, material_index, surface, images=None):
             uvs_used = material.occlusionTexture.texCoord
         occlusion_image = get_glb_image(glb, texture.source, images)
         if occlusion_image is not None:
-            occlusion_texture = mu.create_texture(occlusion_image, None, "linear")
+            occlusion_texture = mu.create_texture(occlusion_image, None, gs.texture_encoding.linear)
 
     # parse alpha mode
     alpha_cutoff = mu.adjust_alpha_cutoff(material.alphaCutoff, alpha_modes[material.alphaMode])
@@ -199,8 +199,8 @@ def parse_glb_material(glb, material_index, surface, images=None):
         if pbr_texture.roughnessFactor is not None:
             roughness_factor = pbr_texture.roughnessFactor
 
-        metallic_texture = mu.create_texture(metallic_image, metallic_factor, "linear")
-        roughness_texture = mu.create_texture(roughness_image, roughness_factor, "linear")
+        metallic_texture = mu.create_texture(metallic_image, metallic_factor, gs.texture_encoding.linear)
+        roughness_texture = mu.create_texture(roughness_image, roughness_factor, gs.texture_encoding.linear)
 
         # Check if material has a base color texture
         color_image = None
@@ -220,7 +220,7 @@ def parse_glb_material(glb, material_index, surface, images=None):
         if pbr_texture.baseColorFactor is not None:
             color_factor = np.array(pbr_texture.baseColorFactor, dtype=np.float32)
 
-        color_texture = mu.create_texture(color_image, color_factor, "srgb")
+        color_texture = mu.create_texture(color_image, color_factor, gs.texture_encoding.srgb)
 
     elif "KHR_materials_pbrSpecularGlossiness" in material.extensions:
         extension_material = material.extensions["KHR_materials_pbrSpecularGlossiness"]
@@ -235,7 +235,7 @@ def parse_glb_material(glb, material_index, surface, images=None):
         if "diffuseFactor" in extension_material:
             color_factor = np.array(extension_material["diffuseFactor"], dtype=np.float32)
 
-        color_texture = mu.create_texture(color_image, color_factor, "srgb")
+        color_texture = mu.create_texture(color_image, color_factor, gs.texture_encoding.srgb)
         material.extensions.pop("KHR_materials_pbrSpecularGlossiness")
 
     if color_texture is not None:
@@ -268,7 +268,7 @@ def parse_glb_material(glb, material_index, surface, images=None):
         if material.emissiveFactor is not None:
             emissive_factor = np.array(material.emissiveFactor, dtype=np.float32)
 
-        emissive_texture = mu.create_texture(emissive_image, emissive_factor, "srgb")
+        emissive_texture = mu.create_texture(emissive_image, emissive_factor, gs.texture_encoding.srgb)
         if emissive_texture.is_black:  # Make sure to check emissive
             emissive_texture = None
 

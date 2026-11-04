@@ -39,12 +39,12 @@ def trimesh_to_particles_simple(mesh, p_size, sampler):
     """
     Mesh to particles via `random` or `regular` sampler.
     """
-    assert sampler in ("random", "regular")
+    assert sampler in (gs.particle_sampler.random, gs.particle_sampler.regular)
 
     # The particles the random sampler draws follow the state of the global generator, which 'gs.init' seeds and the
     # sampling advances. An entry is therefore keyed on the state the sampling starts from and holds the state it ends
     # at, which a hit restores, so that a run draws exactly what it would draw without the cache.
-    random_state = np.random.get_state() if sampler == "random" else None
+    random_state = np.random.get_state() if sampler == gs.particle_sampler.random else None
     cache = get_ptc_cache(mesh.vertices, mesh.faces, p_size, sampler, random_state)
 
     entry = cache.load()
@@ -67,7 +67,7 @@ def trimesh_to_particles_simple(mesh, p_size, sampler):
         )
         positions = positions[sd < 0.0]
 
-        cache.save((positions, np.random.get_state() if sampler == "random" else None))
+        cache.save((positions, np.random.get_state() if sampler == gs.particle_sampler.random else None))
 
     return positions
 
@@ -280,13 +280,13 @@ def _box_to_particles(p_size, pos, size, sampler):
     lower = pos - size / 2
     upper = pos + size / 2
 
-    if sampler == "random":
+    if sampler == gs.particle_sampler.random:
         n_particles = n_particles_3D(p_size, size)
         # The draws are scaled by separate numpy operations, each rounded exactly, so that every platform samples the
         # same positions. The compiled scaling of 'np.random.uniform' rounds differently from one platform to another.
         positions = lower + np.random.random((n_particles, 3)) * (upper - lower)
 
-    elif sampler == "regular":
+    elif sampler == gs.particle_sampler.regular:
         n_x = n_particles_1D(p_size, size[0])
         n_y = n_particles_1D(p_size, size[1])
         n_z = n_particles_1D(p_size, size[2])
@@ -312,7 +312,7 @@ def box_to_particles(p_size=0.01, pos=(0, 0, 0), size=(1, 1, 1), sampler="random
         except gs.GenesisException:
             sampler = "random"
 
-    if sampler in ("random", "regular"):
+    if sampler in (gs.particle_sampler.random, gs.particle_sampler.regular):
         positions = _box_to_particles(
             p_size=p_size,
             pos=pos,
@@ -331,7 +331,7 @@ def cylinder_to_particles(p_size=0.01, pos=(0, 0, 0), radius=0.5, height=1.0, sa
         except gs.GenesisException:
             sampler = "random"
 
-    if sampler in ("random", "regular"):
+    if sampler in (gs.particle_sampler.random, gs.particle_sampler.regular):
         # sample a cube first
         size = np.array([2 * radius, 2 * radius, height])
         positions = _box_to_particles(
@@ -355,7 +355,7 @@ def sphere_to_particles(p_size=0.01, pos=(0, 0, 0), radius=0.5, sampler="random"
         except gs.GenesisException:
             sampler = "random"
 
-    if sampler in ("random", "regular"):
+    if sampler in (gs.particle_sampler.random, gs.particle_sampler.regular):
         # sample a cube first
         size = np.array([2 * radius, 2 * radius, 2 * radius])
         positions = _box_to_particles(
@@ -379,7 +379,7 @@ def shell_to_particles(p_size=0.01, pos=(0, 0, 0), inner_radius=0.5, outer_radiu
         except gs.GenesisException:
             sampler = "random"
 
-    if sampler in ("random", "regular"):
+    if sampler in (gs.particle_sampler.random, gs.particle_sampler.regular):
         # sample a cube first
         size = np.array([2 * outer_radius, 2 * outer_radius, 2 * outer_radius])
         positions = _box_to_particles(
@@ -442,18 +442,18 @@ def particles_to_mesh(positions, radius, backend):
     if isinstance(radius, np.ndarray):
         radii = radius
         radius = np.min(radius)
-        if "splashsurf" in backend:
+        if backend == gs.recon_backend.splashsurf:
             gs.logger.warning(
                 "Backend 'splashsurf' does not support specifying individual radius for each particle. Switching to "
                 "backend 'levelset' as a fallback."
             )
-            backend = "levelset"
+            backend = gs.recon_backend.levelset
     else:
         radii = np.array([])
 
     args_dict = parse_args(backend)
 
-    if "levelset" in backend:
+    if backend == gs.recon_backend.levelset:
         radius_scale = args_dict.get("rscale", 2.0)
         if radii.size == 0:
             radii = np.full(len(positions), radius, dtype=positions.dtype)
@@ -471,7 +471,7 @@ def particles_to_mesh(positions, radius, backend):
             mask=np.abs(sdf - isovalue) < 2.0 * voxel_size,
         )
         return trimesh.Trimesh(origin + vertices, faces, process=False)
-    elif "splashsurf" in backend:
+    elif backend == gs.recon_backend.splashsurf:
         # FIXME: Running in subprocess or manually reclaiming free-ed head memory is necessary to avoid unbounded growth
         result_queue = Queue()
         if malloc_trim is not None:

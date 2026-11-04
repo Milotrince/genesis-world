@@ -708,12 +708,12 @@ class SPHSolver(ParticleSolver):
     def substep_pre_coupling(self, f):
         if self.is_active:
             self._kernel_reorder_particles(f)
-            if self._pressure_solver == "WCSPH":
+            if self._pressure_solver == gs.pressure_solver.WCSPH:
                 self._kernel_compute_rho(f)
                 self._kernel_compute_non_pressure_forces(f, self._sim.cur_t)
                 self._kernel_compute_pressure_forces(f)
                 self._kernel_advect_velocity(f)
-            elif self._pressure_solver == "DFSPH":
+            elif self._pressure_solver == gs.pressure_solver.DFSPH:
                 self._kernel_compute_rho(f)
                 self._kernel_compute_DFSPH_factor(f)
                 self._divergence_solve(f)

@@ -1,5 +1,7 @@
 import enum
 
+from pydantic_core import core_schema
+
 URDF_FORMAT = ".urdf"
 XACRO_FORMAT = ".xacro"
 MJCF_FORMAT = ".xml"
@@ -20,6 +22,23 @@ class IntEnum(enum.IntEnum):
 
     def __format__(self, format_spec):
         return f"<{self.name}: {self.value}>"
+
+
+class StrEnum(enum.StrEnum):
+    """Named choice that options and public functions also accept spelled as its value."""
+
+    def __repr__(self):
+        return f"<gs.{self.__class__.__name__}.{self.name}: '{self.value}'>"
+
+    @classmethod
+    def _missing_(cls, value):
+        choices = ", ".join(f"'{member.value}'" for member in cls)
+        raise ValueError(f"Input should be one of {choices}")
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source, handler):
+        # Options validate in strict mode, which accepts members alone. Converting first also accepts their values.
+        return core_schema.no_info_before_validator_function(cls, handler(source))
 
 
 # geom type in rigid solver
@@ -186,20 +205,14 @@ class backend(IntEnum):
 
 
 # image types for visualization
-class IMAGE_TYPE(IntEnum):
-    RGB = 0
-    DEPTH = 1
-    SEGMENTATION = 2
-    NORMAL = 3
+class IMAGE_TYPE(StrEnum):
+    RGB = "rgb"
+    DEPTH = "depth"
+    SEGMENTATION = "segmentation"
+    NORMAL = "normal"
 
     def __format__(self, format_spec):
         return self.name
-
-
-# surface maps a dynamic texture binds to
-class TEXTURE_MAP_TYPE(IntEnum):
-    DIFFUSE = 0
-    EMISSIVE = 1
 
 
 # parallelize
@@ -207,3 +220,193 @@ class PARA_LEVEL(IntEnum):
     NEVER = 0  # when using cpu
     PARTIAL = 1  # when using gpu for non-batched scene
     ALL = 2  # when using gpu for batched scene
+
+
+# floating-point precision of the simulation
+class float_precision(StrEnum):
+    fp32 = "32"
+    fp64 = "64"
+
+
+# surface maps a dynamic texture binds to
+class texture_map_type(StrEnum):
+    diffuse = enum.auto()
+    emissive = enum.auto()
+
+
+# color encoding of a texture
+class texture_encoding(StrEnum):
+    srgb = enum.auto()
+    linear = enum.auto()
+
+
+# how a surface draws its entity
+class vis_mode(StrEnum):
+    visual = enum.auto()
+    collision = enum.auto()
+    particle = enum.auto()
+    sdf = enum.auto()
+    recon = enum.auto()
+
+
+# surface reconstruction of particles
+class recon_backend(StrEnum):
+    splashsurf = enum.auto()
+    levelset = enum.auto()
+
+
+class metal_type(StrEnum):
+    aluminium = enum.auto()
+    gold = enum.auto()
+    copper = enum.auto()
+    brass = enum.auto()
+    iron = enum.auto()
+    titanium = enum.auto()
+    vanadium = enum.auto()
+    lithium = enum.auto()
+
+
+class light_type(StrEnum):
+    directional = enum.auto()
+    point = enum.auto()
+    ambient = enum.auto()
+
+
+# what one segmentation index labels
+class segmentation_level(StrEnum):
+    entity = enum.auto()
+    link = enum.auto()
+    geom = enum.auto()
+
+
+class render_particle_as(StrEnum):
+    sphere = enum.auto()
+    tet = enum.auto()
+
+
+class camera_model(StrEnum):
+    pinhole = enum.auto()
+    thinlens = enum.auto()
+    fisheye = enum.auto()
+
+
+# how a tactile sensor measures the depth of a contact
+class contact_depth_query(StrEnum):
+    sdf = enum.auto()
+    raycast = enum.auto()
+
+
+# how particles fill the volume of a morph
+class particle_sampler(StrEnum):
+    pbs = enum.auto()
+    random = enum.auto()
+    regular = enum.auto()
+
+
+# shape of the droplets an emitter emits
+class droplet_shape(StrEnum):
+    circle = enum.auto()
+    sphere = enum.auto()
+    square = enum.auto()
+    rectangle = enum.auto()
+
+
+class subterrain_type(StrEnum):
+    flat_terrain = enum.auto()
+    fractal_terrain = enum.auto()
+    random_uniform_terrain = enum.auto()
+    sloped_terrain = enum.auto()
+    pyramid_sloped_terrain = enum.auto()
+    discrete_obstacles_terrain = enum.auto()
+    wave_terrain = enum.auto()
+    stairs_terrain = enum.auto()
+    pyramid_stairs_terrain = enum.auto()
+    stepping_stones_terrain = enum.auto()
+
+
+class drone_model(StrEnum):
+    CF2X = "CF2X"
+    CF2P = "CF2P"
+    RACE = "RACE"
+
+
+# stress model of an FEM material
+class fem_model(StrEnum):
+    linear = enum.auto()
+    stable_neohookean = enum.auto()
+    linear_corotated = enum.auto()
+
+
+# stress model of an MPM material
+class mpm_model(StrEnum):
+    corotation = enum.auto()
+    neohooken = enum.auto()
+
+
+class yield_criterion(StrEnum):
+    von_mises = enum.auto()
+    stretch_clamp = enum.auto()
+
+
+class pressure_solver(StrEnum):
+    WCSPH = "WCSPH"
+    DFSPH = "DFSPH"
+
+
+# how the IPC coupler couples a rigid entity
+class coup_type(StrEnum):
+    two_way_soft_constraint = enum.auto()
+    external_articulation = enum.auto()
+    ipc_only = enum.auto()
+
+
+# contact model of a pair of SAP coupler surfaces
+class sap_contact_type(StrEnum):
+    tet = enum.auto()
+    vert = enum.auto()
+    none = enum.auto()
+
+
+class linear_system_solver(StrEnum):
+    linear_pcg = enum.auto()
+    direct = enum.auto()
+
+
+class contact_constitution(StrEnum):
+    ipc = enum.auto()
+    isometric = enum.auto()
+
+
+class collision_detection_method(StrEnum):
+    linear_bvh = enum.auto()
+    spatial_hash = enum.auto()
+
+
+# CoACD convex decomposition
+class preprocess_mode(StrEnum):
+    on = enum.auto()
+    off = enum.auto()
+    auto = enum.auto()
+
+
+class apx_mode(StrEnum):
+    ch = enum.auto()
+    box = enum.auto()
+
+
+# what a trajectory recorder stores of each frame
+class trajectory_mode(StrEnum):
+    exact = enum.auto()
+    minimal = enum.auto()
+
+
+class raytracer_logging_level(StrEnum):
+    debug = enum.auto()
+    info = enum.auto()
+    warning = enum.auto()
+
+
+# side of the polar decomposition the rotation multiplies
+class polar_side(StrEnum):
+    right = enum.auto()
+    left = enum.auto()

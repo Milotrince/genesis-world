@@ -147,7 +147,7 @@ class Logger:
             The seed of the random number generators, if any.
         debug : bool
             Whether Genesis runs in debug mode.
-        precision : str
+        precision : gs.float_precision
             The floating point precision, either '32' or '64'.
         performance_mode : bool
             Whether Genesis runs in performance mode.

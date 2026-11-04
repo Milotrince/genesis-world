@@ -9,8 +9,8 @@ from genesis.utils import mesh as mu
 
 
 CS_ENCODE = {
-    "raw": "linear",
-    "sRGB": "srgb",
+    "raw": gs.texture_encoding.linear,
+    "sRGB": gs.texture_encoding.srgb,
     "auto": None,
     "": None,
 }
@@ -29,7 +29,7 @@ def get_input_attribute_value(shader: UsdShade.Shader, input_name, input_type=No
     return None, None
 
 
-def parse_component(shader: UsdShade.Shader, component_name: str, component_encode: str):
+def parse_component(shader: UsdShade.Shader, component_name: str, component_encode: gs.texture_encoding):
     component, component_output = get_input_attribute_value(shader, component_name)
     if component_output is None:  # constant value
         component_factor = component
@@ -62,12 +62,12 @@ def parse_preview_surface(prim: Usd.Prim, output_name):
         uvname = None
 
         # parse color
-        color_texture, color_uvname = parse_component(shader, "diffuseColor", "srgb")
+        color_texture, color_uvname = parse_component(shader, "diffuseColor", gs.texture_encoding.srgb)
         if color_uvname is not None:
             uvname = color_uvname
 
         # parse opacity
-        opacity_texture, opacity_uvname = parse_component(shader, "opacity", "linear")
+        opacity_texture, opacity_uvname = parse_component(shader, "opacity", gs.texture_encoding.linear)
         if opacity_uvname is not None and uvname is None:
             uvname = opacity_uvname
         if opacity_texture is not None:
@@ -75,7 +75,7 @@ def parse_preview_surface(prim: Usd.Prim, output_name):
             opacity_texture.apply_cutoff(alpha_cutoff)
 
         # parse emissive
-        emissive_texture, emissive_uvname = parse_component(shader, "emissiveColor", "srgb")
+        emissive_texture, emissive_uvname = parse_component(shader, "emissiveColor", gs.texture_encoding.srgb)
         if emissive_texture is not None and emissive_texture.is_black:
             emissive_texture = None
         if emissive_uvname is not None and uvname is None:
@@ -84,19 +84,19 @@ def parse_preview_surface(prim: Usd.Prim, output_name):
         # parse metallic
         use_specular = get_input_attribute_value(shader, "useSpecularWorkflow", "value")[0]
         if not use_specular:
-            metallic_texture, metallic_uvname = parse_component(shader, "metallic", "linear")
+            metallic_texture, metallic_uvname = parse_component(shader, "metallic", gs.texture_encoding.linear)
             if metallic_uvname is not None and uvname is None:
                 uvname = metallic_uvname
         else:
             metallic_texture = None
 
         # parse roughness
-        roughness_texture, roughness_uvname = parse_component(shader, "roughness", "linear")
+        roughness_texture, roughness_uvname = parse_component(shader, "roughness", gs.texture_encoding.linear)
         if roughness_uvname is not None and uvname is None:
             uvname = roughness_uvname
 
         # parse normal
-        normal_texture, normal_uvname = parse_component(shader, "normal", "linear")
+        normal_texture, normal_uvname = parse_component(shader, "normal", gs.texture_encoding.linear)
         if normal_uvname is not None and uvname is None:
             uvname = normal_uvname
 
