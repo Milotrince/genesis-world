@@ -933,23 +933,24 @@ def test_surface_reconstruction(show_viewer):
     )
     # The liquids of each backend are placed symmetrically with respect to the camera, so that they look the same
     liquids = []
-    for material, recon_backend, pos_y in (
-        (gs.materials.SPH.Liquid(), "splashsurf", -0.2),
-        (gs.materials.PBD.Liquid(), "splashsurf", 0.2),
-        (gs.materials.SPH.Liquid(), "levelset", -0.6),
-        (gs.materials.PBD.Liquid(), "levelset", 0.6),
+    for options_cls, recon_backend, pos_y in (
+        (gs.entities.SPH, "splashsurf", -0.2),
+        (gs.entities.PBDLiquid, "splashsurf", 0.2),
+        (gs.entities.SPH, "levelset", -0.6),
+        (gs.entities.PBDLiquid, "levelset", 0.6),
     ):
         liquids.append(
             scene.add_entity(
-                material=material,
-                morph=gs.morphs.Box(
-                    pos=(0.0, pos_y, 0.2),
-                    size=(0.25, 0.25, 0.4),
-                ),
-                surface=gs.surfaces.Default(
-                    color=(0.2, 0.6, 1.0, 1.0),
-                    vis_mode="recon",
-                    recon_backend=recon_backend,
+                options=options_cls(
+                    morph=gs.morphs.Box(
+                        pos=(0.0, pos_y, 0.2),
+                        size=(0.25, 0.25, 0.4),
+                    ),
+                    surface=gs.surfaces.Default(
+                        color=(0.2, 0.6, 1.0, 1.0),
+                        vis_mode="recon",
+                        recon_backend=recon_backend,
+                    ),
                 ),
             )
         )
