@@ -41,8 +41,6 @@ class Texture(object):
         Either GL_TEXTURE_2D, GL_TEXTURE_2D_ARRAY or GL_TEXTURE_CUBE.
     data_format : int
         GL_UNSIGNED_BYTE, GL_HALF_FLOAT or GL_FLOAT.
-    n_layers : int, optional
-        For a texture array, the number of its layers, at least that of 'source'.
     """
 
     def __init__(
@@ -55,7 +53,6 @@ class Texture(object):
         height=None,
         tex_type=GL_TEXTURE_2D,
         data_format=GL_UNSIGNED_BYTE,
-        n_layers=None,
     ):
         self.source_channels = source_channels
         self.name = name
@@ -65,7 +62,6 @@ class Texture(object):
         self.height = height
         self.tex_type = tex_type
         self.data_format = data_format
-        self.n_layers = n_layers
 
         self._texid = None
         self._is_transparent = False
@@ -244,13 +240,9 @@ class Texture(object):
 
         # Bind texture and generate mipmaps
         if is_array:
-            # The layers past those of the source start black, then take the images written to them
-            glTexImage3D(self.tex_type, 0, internal_fmt, width, height, self.n_layers, 0, fmt, self.data_format, None)
-            glTexSubImage3D(self.tex_type, 0, 0, 0, 0, width, height, len(self.source), fmt, self.data_format, data)
-            if self.n_layers > len(self.source):
-                black = np.zeros_like(self.source[:1])
-                for layer in range(len(self.source), self.n_layers):
-                    glTexSubImage3D(self.tex_type, 0, 0, 0, layer, width, height, 1, fmt, self.data_format, black)
+            glTexImage3D(
+                self.tex_type, 0, internal_fmt, width, height, len(self.source), 0, fmt, self.data_format, data
+            )
             for layer, layer_data in self._pending_layers.items():
                 glTexSubImage3D(self.tex_type, 0, 0, 0, layer, width, height, 1, fmt, self.data_format, layer_data)
             self._pending_layers.clear()
