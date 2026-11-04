@@ -152,18 +152,22 @@ def main():
             x = (i + 1.7) * grid_spacing
             y = (j - 1.5) * grid_spacing
             scene.add_entity(
-                morph=gs.morphs.Box(
-                    pos=(x, y, cube_height),
-                    size=(cube_size, cube_size, cube_size),
-                    fixed=True,
-                ),
-                material=gs.materials.Rigid(
-                    rho=500,
-                    coup_friction=0.5,
-                    coup_type="ipc_only",
-                ),
-                surface=gs.surfaces.Plastic(
-                    color=(0.8, 0.3, 0.2, 0.8),
+                options=gs.entities.Rigid(
+                    morph=gs.morphs.Box(
+                        pos=(x, y, cube_height),
+                        size=(cube_size, cube_size, cube_size),
+                        fixed=True,
+                    ),
+                    surface=gs.surfaces.Plastic(
+                        color=(0.8, 0.3, 0.2, 0.8),
+                    ),
+                    material=gs.materials.Material(
+                        density=500,
+                    ),
+                    solver_options=gs.options.RigidEntitySolverOptions(
+                        coup_friction=0.5,
+                        coup_type="ipc_only",
+                    ),
                 ),
             )
 
