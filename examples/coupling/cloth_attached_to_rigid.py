@@ -57,10 +57,12 @@ def main():
         ),
     )
 
-    box_morph = gs.morphs.Box(pos=[0.25, 0.25, 0.25], size=[0.25, 0.25, 0.25])
     box = scene.add_entity(
         options=gs.entities.Rigid(
-            morph=box_morph,
+            morph=gs.morphs.Box(
+                pos=(0.25, 0.25, 0.25),
+                size=(0.25, 0.25, 0.25),
+            ),
             solver_options=rigid_solver_options,
         ),
     )
