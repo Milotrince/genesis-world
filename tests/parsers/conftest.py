@@ -420,8 +420,8 @@ def build_mjcf_scene(xml_path: str, scale: float):
             decimate=False,
             align=False,
         ),
-        material=gs.materials.Rigid(
-            rho=1000.0,
+        material=gs.materials.Material(
+            density=1000.0,
         ),
     )
 
@@ -456,8 +456,8 @@ def build_usd_scene(
             watertighten=None,
             align=False,
         ),
-        material=gs.materials.Rigid(
-            rho=1000.0,
+        material=gs.materials.Material(
+            density=1000.0,
         ),
         vis_mode=vis_mode,
     )
@@ -497,8 +497,8 @@ def build_mesh_scene(mesh_file: str, scale: float):
     )
     mesh_scene.add_entity(
         mesh_morph,
-        material=gs.materials.Rigid(
-            rho=1000.0,
+        material=gs.materials.Material(
+            density=1000.0,
         ),
     )
     mesh_scene.build()

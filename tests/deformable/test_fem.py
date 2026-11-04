@@ -429,7 +429,6 @@ def test_hard_constraint(use_implicit_solver, show_viewer):
             size=(BOX_SIZE, BOX_SIZE, BOX_SIZE),
             fixed=True,
         ),
-        material=gs.materials.Rigid(),
     )
     scene.build(n_envs=2)
 
@@ -826,7 +825,6 @@ def test_implicit_sap_coupler_hard_constraint_and_collision(tol, show_viewer):
             size=(BOX_SIZE, BOX_SIZE, BOX_SIZE),
             fixed=True,
         ),
-        material=gs.materials.Rigid(),
     )
     scene.build()
 

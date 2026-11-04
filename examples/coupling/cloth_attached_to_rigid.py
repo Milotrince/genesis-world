@@ -45,13 +45,25 @@ def main():
         show_viewer=args.vis,
     )
 
-    rigid_material = gs.materials.Rigid(needs_coup=True, coup_friction=0.0)
+    rigid_solver_options = gs.options.RigidEntitySolverOptions(
+        coup_friction=0.0,
+    )
 
     # create ground plane
-    scene.add_entity(gs.morphs.Plane(), rigid_material)
+    scene.add_entity(
+        options=gs.entities.Rigid(
+            morph=gs.morphs.Plane(),
+            solver_options=rigid_solver_options,
+        ),
+    )
 
     box_morph = gs.morphs.Box(pos=[0.25, 0.25, 0.25], size=[0.25, 0.25, 0.25])
-    box = scene.add_entity(box_morph, rigid_material)
+    box = scene.add_entity(
+        options=gs.entities.Rigid(
+            morph=box_morph,
+            solver_options=rigid_solver_options,
+        ),
+    )
 
     cloth_pos = (0.25, 0.25, 0.25 + 0.125 + particle_size)
     cloth_scale = 0.5
