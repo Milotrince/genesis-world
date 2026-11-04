@@ -227,11 +227,11 @@ def main():
     is_stripe = np.broadcast_to(np.arange(width) // 32 % 2 == 0, (height, width))
     variants = {
         "duck": gs.textures.AssetTexture(),
-        "orange": gs.textures.ColorTexture(
-            color=(0.94, 0.55, 0.12),
+        "purple": gs.textures.ColorTexture(
+            color=(0.71, 0.62, 0.86),
         ),
         "stripes": gs.textures.ImageTexture(
-            image_array=np.where(is_stripe[..., None], [230, 60, 60], [250, 240, 230]).astype(np.uint8),
+            image_array=np.where(is_stripe[..., None], [135, 206, 235], [189, 224, 254]).astype(np.uint8),
         ),
         "duckurcqa": gs.textures.ImageTexture(
             image_path="meshes/duck/duckurcqa.png",
