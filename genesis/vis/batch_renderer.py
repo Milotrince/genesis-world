@@ -53,11 +53,11 @@ class GenesisGeomRetriever:
         self.seg_color_map.generate_seg_colors()
 
     def get_seg_key(self, vgeom):
-        if self.seg_level == "geom":
+        if self.seg_level == gs.segmentation_level.geom:
             return (vgeom.entity.idx, vgeom.link.idx, vgeom.idx)
-        elif self.seg_level == "link":
+        elif self.seg_level == gs.segmentation_level.link:
             return (vgeom.entity.idx, vgeom.link.idx)
-        elif self.seg_level == "entity":
+        elif self.seg_level == gs.segmentation_level.entity:
             return vgeom.entity.idx
         else:
             gs.raise_exception(f"Unsupported segmentation level: {self.seg_level}")
@@ -317,7 +317,7 @@ class BatchRenderer(RBC):
             cam_znears_tensor=_make_tensor([camera.near for camera in self._cameras]),
             cam_zfars_tensor=_make_tensor([camera.far for camera in self.cameras]),
             cam_proj_types_tensor=_make_tensor(
-                [camera.model == "fisheye" for camera in self._cameras], dtype=torch.uint32
+                [camera.model == gs.camera_model.fisheye for camera in self._cameras], dtype=torch.uint32
             ),
             batch_render_view_width=camera_width,
             batch_render_view_height=camera_height,
@@ -378,16 +378,16 @@ class BatchRenderer(RBC):
             self._data_cache.clear()
 
         # Fetch available cached data
-        request = (rgb, depth, segmentation, normal)
+        request = dict(zip(IMAGE_TYPE, (rgb, depth, segmentation, normal)))
         cache_key = (antialiasing,)
-        cached = [self._data_cache.get((img_type, cache_key), None) for img_type in IMAGE_TYPE]
+        cached = {img_type: self._data_cache.get((img_type, cache_key), None) for img_type in IMAGE_TYPE}
 
         # Force disabling rendering whenever cached data is already available
-        needed = tuple(req and arr is None for req, arr in zip(request, cached))
+        needed = {img_type: request[img_type] and cached[img_type] is None for img_type in IMAGE_TYPE}
 
         # Early return if everything requested is already cached
-        if not any(needed):
-            return tuple(arr if req else None for req, arr in zip(request, cached))
+        if not any(needed.values()):
+            return tuple(cached[img_type] if request[img_type] else None for img_type in IMAGE_TYPE)
 
         # Update scene
         self.update_scene(force_render)
@@ -406,7 +406,7 @@ class BatchRenderer(RBC):
             ),
             dtype=np.uint32,
         )
-        rendered = list(self._renderer.render(cameras_pos, cameras_quat, render_flags))
+        rendered = dict(zip(IMAGE_TYPE, self._renderer.render(cameras_pos, cameras_quat, render_flags)))
 
         # convert seg geom idx to seg_idxc
         if needed[IMAGE_TYPE.SEGMENTATION]:
@@ -419,7 +419,7 @@ class BatchRenderer(RBC):
         # * Remove alpha channel from RGBA
         # * Squeeze env and channel dims if necessary
         # * Split along camera dim
-        for img_type, data in enumerate(rendered):
+        for img_type, data in rendered.items():
             if needed[img_type]:
                 data = data.swapaxes(0, 1)
                 if self._visualizer.scene.n_envs == 0:
@@ -435,7 +435,7 @@ class BatchRenderer(RBC):
 
         # Update cache
         self._t = self._visualizer.scene.sim.cur_step_global
-        for img_type, data in enumerate(rendered):
+        for img_type, data in rendered.items():
             if needed[img_type]:
                 self._data_cache[(img_type, cache_key)] = rendered[img_type]
 

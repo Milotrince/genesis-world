@@ -2113,7 +2113,7 @@ class ElastomerTaxelSensor(
         # Build the (B, n_sensors, n_geoms) candidate-geom masks scattered from track_geom_idx (probe-depth) and
         # elastomer_geom_idx (surface-anchor). Only needed in raycast mode but allocated cheaply (bool, total
         # scene-geom count) so we tolerate the small idle cost in sdf mode.
-        if self._shared_metadata.contact_depth_query == "raycast":
+        if self._shared_metadata.contact_depth_query == gs.contact_depth_query.raycast:
             n_geoms = solver.n_geoms
             self._shared_metadata.sensor_candidate_geom_mask = _build_candidate_geom_mask(
                 B,
@@ -2241,7 +2241,7 @@ class ElastomerTaxelSensor(
         # which is set in lockstep with that same depth write; measured is .copy_'d at the end.
         measured = measured_data_timeline.at(0, copy=False)
 
-        if (shared_metadata.contact_depth_query or "sdf") == "sdf":
+        if (shared_metadata.contact_depth_query or gs.contact_depth_query.sdf) == gs.contact_depth_query.sdf:
             _kernel_elastomer_probe_depth(
                 shared_metadata.probe_sensor_idx,
                 shared_metadata.links_idx,
@@ -2311,7 +2311,7 @@ class ElastomerTaxelSensor(
         if shared_metadata.any_shear:
             bvh = shared_metadata.pc_bvh
             shared_metadata.surface_candidate_buf.zero_()
-            if (shared_metadata.contact_depth_query or "sdf") == "sdf":
+            if (shared_metadata.contact_depth_query or gs.contact_depth_query.sdf) == gs.contact_depth_query.sdf:
                 _kernel_elastomer_surface_state_bvh(
                     shared_metadata.links_idx,
                     shared_metadata.sensor_elastomer_geom_start,

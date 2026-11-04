@@ -224,39 +224,12 @@ class SAPCoupler(RBC):
             gs.raise_exception(
                 "SAPCoupler does not support 32bits precision. Please specify precision='64' when initializing Genesis."
             )
-        if options.fem_floor_contact_type == "tet":
-            self._fem_floor_contact_type = FEMFloorContactType.TET
-        elif options.fem_floor_contact_type == "vert":
-            self._fem_floor_contact_type = FEMFloorContactType.VERT
-        elif options.fem_floor_contact_type == "none":
-            self._fem_floor_contact_type = FEMFloorContactType.NONE
-        else:
-            gs.raise_exception(
-                f"Invalid FEM floor contact type: {options.fem_floor_contact_type}. "
-                "Must be one of 'tet', 'vert', or 'none'."
-            )
+        # The kernel enums name their members after the contact types the options take.
+        self._fem_floor_contact_type = FEMFloorContactType[options.fem_floor_contact_type.name.upper()]
         self._enable_fem_self_tet_contact = options.enable_fem_self_tet_contact
-        if options.rigid_floor_contact_type == "vert":
-            self._rigid_floor_contact_type = RigidFloorContactType.VERT
-        elif options.rigid_floor_contact_type == "tet":
-            self._rigid_floor_contact_type = RigidFloorContactType.TET
-        elif options.rigid_floor_contact_type == "none":
-            self._rigid_floor_contact_type = RigidFloorContactType.NONE
-        else:
-            gs.raise_exception(
-                f"Invalid rigid floor contact type: {options.rigid_floor_contact_type}. "
-                "Must be one of 'vert' or 'none'."
-            )
+        self._rigid_floor_contact_type = RigidFloorContactType[options.rigid_floor_contact_type.name.upper()]
         self._enable_rigid_fem_contact = options.enable_rigid_fem_contact
-
-        if options.rigid_rigid_contact_type == "tet":
-            self._rigid_rigid_contact_type = RigidRigidContactType.TET
-        elif options.rigid_rigid_contact_type == "none":
-            self._rigid_rigid_contact_type = RigidRigidContactType.NONE
-        else:
-            gs.raise_exception(
-                f"Invalid rigid-rigid contact type: {options.rigid_rigid_contact_type}. Must be one of 'tet' or 'none'."
-            )
+        self._rigid_rigid_contact_type = RigidRigidContactType[options.rigid_rigid_contact_type.name.upper()]
 
         self._rigid_compliant = False
 

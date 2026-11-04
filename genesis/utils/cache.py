@@ -11,6 +11,7 @@ import sys
 import types
 import weakref
 from collections import OrderedDict
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
@@ -359,7 +360,8 @@ def get_hashkey(*args):
             nodes.append((node, True))
             nodes.extend((item, False) for item in (node.items() if isinstance(node, dict) else node))
         else:
-            values.append(node)
+            # marshal refuses the subclasses of builtin types, enum members among them.
+            values.append(node.value if isinstance(node, Enum) else node)
 
     hasher = hashlib.sha256()
     for arg in (*values[0], gs.__version__.encode()):

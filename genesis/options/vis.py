@@ -110,21 +110,21 @@ class ViewerOptions(Options):
 
 
 class DirectionalLight(Options):
-    type: Literal["directional"] = "directional"
+    type: Literal[gs.light_type.directional] = gs.light_type.directional
     dir: Vec3FType
     color: UnitIntervalVec3Type
     intensity: float
 
 
 class PointLight(Options):
-    type: Literal["point"] = "point"
+    type: Literal[gs.light_type.point] = gs.light_type.point
     pos: Vec3FType
     color: UnitIntervalVec3Type
     intensity: float
 
 
 class AmbientLight(Options):
-    type: Literal["ambient"] = "ambient"
+    type: Literal[gs.light_type.ambient] = gs.light_type.ambient
     color: UnitIntervalVec3Type
     intensity: float
 
@@ -168,10 +168,10 @@ class VisOptions(Options):
         Whether to visualize the boundary of the SPH Solver.
     visualize_pbd_boundary : bool
         Whether to visualize the boundary of the PBD Solver.
-    segmentation_level : str
+    segmentation_level : gs.segmentation_level
         The segmentation level used for segmentation mask rendering. Should be one of ['entity', 'link', 'geom'].
         Defaults to 'link'.
-    render_particle_as : str
+    render_particle_as : gs.render_particle_as
         How particles in the scene should be rendered. Should be one of ['sphere', 'tet']. Defaults to 'sphere'.
     particle_size_scale : float
         Scale applied to actual particle size for rendering. Defaults to 1.0.
@@ -203,8 +203,8 @@ class VisOptions(Options):
     visualize_mpm_boundary: StrictBool = False
     visualize_sph_boundary: StrictBool = False
     visualize_pbd_boundary: StrictBool = False
-    segmentation_level: Literal["entity", "link", "geom"] = "link"
-    render_particle_as: Literal["sphere", "tet"] = "sphere"
+    segmentation_level: gs.segmentation_level = gs.segmentation_level.link
+    render_particle_as: gs.render_particle_as = gs.render_particle_as.sphere
     particle_size_scale: PositiveFloat = 1.0
     contact_force_scale: PositiveFloat = 0.01
     n_support_neighbors: StrictInt = 12

@@ -132,15 +132,15 @@ class SAPCouplerOptions(BaseCouplerOptions):
         Stiffness for hydroelastic contact. Defaults to 1e8.
     point_contact_stiffness : float, optional
         Stiffness for point contact. Defaults to 1e8.
-    fem_floor_contact_type : str, optional
+    fem_floor_contact_type : gs.sap_contact_type, optional
         Type of contact against the floor. Defaults to "tet". Can be "tet", "vert", or "none".
         TET would be the default choice for most cases.
         VERT would be preferable when the mesh is very coarse, such as a single cube or a tetrahedron.
     enable_fem_self_tet_contact : bool, optional
         Whether to use tetrahedral based self-contact. Defaults to True.
-    rigid_rigid_type : str, optional
-        Type of contact between rigid bodies. Defaults to "tet". Can be "tet", "vert", or "none".
-    rigid_floor_contact_type : str, optional
+    rigid_rigid_contact_type : gs.sap_contact_type, optional
+        Type of contact between rigid bodies. Defaults to "tet". Can be "tet" or "none".
+    rigid_floor_contact_type : gs.sap_contact_type, optional
         Type of contact against the floor. Defaults to "tet". Can be "tet", "vert", or "none".
         Tet would be the default choice for most cases.
         Vert would be preferable when the mesh is very coarse, such as a single cube or a tetrahedron.
@@ -161,11 +161,11 @@ class SAPCouplerOptions(BaseCouplerOptions):
     linesearch_max_step_size: PositiveFloat = 1.5
     hydroelastic_stiffness: PositiveFloat = 1e8
     point_contact_stiffness: PositiveFloat = 1e8
-    fem_floor_contact_type: Literal["tet", "vert", "none"] = "tet"
+    fem_floor_contact_type: gs.sap_contact_type = gs.sap_contact_type.tet
     enable_fem_self_tet_contact: StrictBool = True
-    rigid_floor_contact_type: Literal["tet", "vert", "none"] = "tet"
+    rigid_floor_contact_type: gs.sap_contact_type = gs.sap_contact_type.tet
     enable_rigid_fem_contact: StrictBool = True
-    rigid_rigid_contact_type: Literal["tet", "vert", "none"] = "tet"
+    rigid_rigid_contact_type: Literal[gs.sap_contact_type.tet, gs.sap_contact_type.none] = gs.sap_contact_type.tet
 
 
 class IPCCouplerOptions(BaseCouplerOptions):
@@ -205,7 +205,7 @@ class IPCCouplerOptions(BaseCouplerOptions):
 
     Linear System Options
     ---------------------
-    linear_system_solver : str, optional
+    linear_system_solver : gs.linear_system_solver | None, optional
         Linear system solver type. Options: 'linear_pcg', 'direct', etc. Defaults to None (use libuipc default: 'linear_pcg').
     linear_system_tolerance : float, optional
         Tolerance for linear system solver. Defaults to None (use libuipc default: 1e-3).
@@ -225,12 +225,12 @@ class IPCCouplerOptions(BaseCouplerOptions):
         harmonic mean. Defaults to 1e9.
     contact_eps_velocity : float, optional
         Epsilon velocity for contact. Defaults to None (use libuipc default: 0.01).
-    contact_constitution : str, optional
+    contact_constitution : gs.contact_constitution | None, optional
         Contact constitution model. Options: 'ipc', 'isometric'. Defaults to None (use libuipc default: 'ipc').
 
     Collision Detection Options
     ---------------------------
-    collision_detection_method : str, optional
+    collision_detection_method : gs.collision_detection_method | None, optional
         Collision detection method. Options: 'linear_bvh', 'spatial_hash', etc. Defaults to None (use libuipc default: 'linear_bvh').
 
     CFL Options
@@ -291,7 +291,7 @@ class IPCCouplerOptions(BaseCouplerOptions):
     linesearch_report_energy: StrictBool | None = None
 
     # Linear system options (None = use libuipc default)
-    linear_system_solver: Literal["linear_pcg", "direct"] | None = None
+    linear_system_solver: gs.linear_system_solver | None = None
     linear_system_tolerance: PositiveFloat | None = None
 
     # Contact options
@@ -300,10 +300,10 @@ class IPCCouplerOptions(BaseCouplerOptions):
     contact_friction_enable: StrictBool | None = None
     contact_resistance: PositiveFloat = 1e9
     contact_eps_velocity: PositiveFloat | None = None
-    contact_constitution: Literal["ipc", "isometric"] | None = None
+    contact_constitution: gs.contact_constitution | None = None
 
     # Collision detection options
-    collision_detection_method: Literal["linear_bvh", "spatial_hash"] | None = None
+    collision_detection_method: gs.collision_detection_method | None = None
 
     # CFL options
     cfl_enable: StrictBool | None = None
@@ -696,7 +696,7 @@ class SPHOptions(GravityMixin, TimeBasedMixin):
     ----------
     particle_size : float, optional
         Particle diameter in meters. Defaults to 0.02.
-    pressure_solver : str, optional
+    pressure_solver : gs.pressure_solver, optional
         Pressure solver type. Current supported pressure solvers are 'WCSPH' and 'DFSPH'. Defaults to 'WCSPH'.
     lower_bound : tuple, shape (3,), optional
         Lower bound of the simulation domain. Defaults to (-100.0, -100.0, 0.0).
@@ -717,7 +717,7 @@ class SPHOptions(GravityMixin, TimeBasedMixin):
     """
 
     particle_size: PositiveFloat = 0.02
-    pressure_solver: Literal["WCSPH", "DFSPH"] = "WCSPH"
+    pressure_solver: gs.pressure_solver = gs.pressure_solver.WCSPH
 
     lower_bound: Vec3FType = (-100.0, -100.0, 0.0)
     upper_bound: Vec3FType = (100.0, 100.0, 100.0)

@@ -556,13 +556,13 @@ class ContactDepthQuerySensorMixin:
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Queried through signed distance fields unless raycast
-        if self._options.contact_depth_query != "raycast":
+        if self._options.contact_depth_query != gs.contact_depth_query.raycast:
             opt_in(SDFInfo)
 
     def build(self):
         super().build()
         resolve_contact_depth_query(self._shared_metadata, self._options.contact_depth_query, type(self).__name__)
-        if self._shared_metadata.contact_depth_query == "raycast":
+        if self._shared_metadata.contact_depth_query == gs.contact_depth_query.raycast:
             self._shared_context.activate()  # builds the BVH lazily, only on raycast opt-in
 
 

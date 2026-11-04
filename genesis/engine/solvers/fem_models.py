@@ -56,22 +56,22 @@ class FEMElasticModel(FEMModel):
     it once and reuse it at every step.
     """
 
-    def __init__(self, model: str) -> None:
+    def __init__(self, model: gs.fem_model) -> None:
         super().__init__()
-        self.hessian_invariant = model == "linear"
+        self.hessian_invariant = model == gs.fem_model.linear
         # The rotation of each element under the linear corotated model, allocated once the element count is known
         self._R = None
-        if model == "linear":
+        if model == gs.fem_model.linear:
             self.update_stress = self._update_stress_linear
             self.compute_energy_gradient_hessian = self._compute_energy_gradient_hessian_linear
             self.compute_energy_gradient = self._compute_energy_gradient_linear
             self.compute_energy = self._compute_energy_linear
-        elif model == "stable_neohookean":
+        elif model == gs.fem_model.stable_neohookean:
             self.update_stress = self._update_stress_stable_neohookean
             self.compute_energy_gradient_hessian = self._compute_energy_gradient_hessian_stable_neohookean
             self.compute_energy_gradient = self._compute_energy_gradient_stable_neohookean
             self.compute_energy = self._compute_energy_stable_neohookean
-        elif model == "linear_corotated":
+        elif model == gs.fem_model.linear_corotated:
             self.build = self._build_linear_corotated
             self.pre_compute = self._pre_compute_linear_corotated
             self.update_stress = self._update_stress_linear_corotated
@@ -227,7 +227,7 @@ class FEMMuscleModel(FEMElasticModel):
     The active stress scales with the Young's modulus of the material.
     """
 
-    def __init__(self, model: str, stiffness: float) -> None:
+    def __init__(self, model: gs.fem_model, stiffness: float) -> None:
         super().__init__(model)
         self.stiffness = stiffness
         self._update_stress_without_actuation = self.update_stress
@@ -262,13 +262,13 @@ class FEMClothModelKey(FEMModelKey):
 @dataclass(frozen=True)
 class FEMElasticModelKey(FEMModelKey):
     model_cls: ClassVar[type[FEMModel]] = FEMElasticModel
-    model: str
+    model: gs.fem_model
 
 
 @dataclass(frozen=True)
 class FEMMuscleModelKey(FEMModelKey):
     model_cls: ClassVar[type[FEMModel]] = FEMMuscleModel
-    model: str
+    model: gs.fem_model
     stiffness: float
 
 

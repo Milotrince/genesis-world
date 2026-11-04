@@ -95,7 +95,7 @@ class RaytracerCameraOptions(BaseCameraOptions["RaytracerCameraSensor"]):
 
     Parameters
     ----------
-    model : str
+    model : gs.camera_model
         Camera model: "pinhole" or "thinlens". Default is "pinhole".
     spp : int
         Samples per pixel for path tracing. Default is 256.
@@ -117,7 +117,7 @@ class RaytracerCameraOptions(BaseCameraOptions["RaytracerCameraSensor"]):
         Environment sphere quaternion (w, x, y, z). Default is (1, 0, 0, 0).
     """
 
-    model: Literal["pinhole", "thinlens"] = "pinhole"
+    model: Literal[gs.camera_model.pinhole, gs.camera_model.thinlens] = gs.camera_model.pinhole
     spp: PositiveInt = 256
     denoise: StrictBool = False
     aperture: PositiveFloat = 2.8
@@ -141,7 +141,7 @@ class BatchRendererCameraOptions(BaseCameraOptions["BatchRendererCameraSensor"])
         Whether to use rasterizer mode. Default is True.
     """
 
-    model: Literal["pinhole", "thinlens", "fisheye"] = "pinhole"
+    model: gs.camera_model = gs.camera_model.pinhole
     near: PositiveFloat = 0.01
     far: PositiveFloat = 100.0
     use_rasterizer: StrictBool = True

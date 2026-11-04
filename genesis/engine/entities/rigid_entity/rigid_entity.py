@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 import genesis as gs
-from genesis.constants import TEXTURE_MAP_TYPE, link_ref_frame
+from genesis.constants import link_ref_frame
 from genesis.engine.states.entities import RigidEntityState
 from genesis.engine.texture import TextureValueType
 from genesis.options.indices import VGeomIndex, get_links_path
@@ -1123,7 +1123,7 @@ class KinematicEntity(Entity):
         vgeoms_idx: VGeomIndex | IndexType | None = None,
         envs_idx: IndexType | None = None,
         *,
-        texture_map_type: TEXTURE_MAP_TYPE | None = None,
+        texture_map_type: gs.texture_map_type | None = None,
     ) -> None:
         """Show a variant, or draw pixels, on the dynamic texture of every selected visual geom of the entity.
 
@@ -1651,7 +1651,7 @@ class RigidEntity(KinematicEntity):
         # Make sure that the entity is not object
         if (
             isinstance(self.sim.coupler, IPCCoupler)
-            and self._coup_type == "ipc_only"
+            and self._coup_type == gs.coup_type.ipc_only
             and any(l_desc.is_robot for l_desc in self._desc.links)
         ):
             gs.raise_exception("coup_type='ipc_only' is only supported by rigid non-articulated entities.")
@@ -2335,7 +2335,7 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == "external_articulation":
+        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == gs.coup_type.external_articulation:
             gs.raise_exception("This method is not supported by coup_type='external_articulation'.")
         super().set_qpos(qpos, qs_idx_local, envs_idx, zero_velocity=zero_velocity, skip_forward=skip_forward)
 
@@ -2513,7 +2513,7 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == "external_articulation":
+        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == gs.coup_type.external_articulation:
             gs.raise_exception("This method is not supported by coup_type='external_articulation'.")
         super().set_dofs_position(position, dofs_idx_local, envs_idx, zero_velocity=zero_velocity)
 
@@ -2537,7 +2537,7 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == "ipc_only":
+        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == gs.coup_type.ipc_only:
             gs.raise_exception("This method is not supported for `coup_type='ipc_only'` entities.")
 
         dofs_idx = self._get_global_idx(dofs_idx_local, self.n_dofs, self._dof_start, unsafe=True)
@@ -2559,7 +2559,7 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == "ipc_only":
+        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == gs.coup_type.ipc_only:
             gs.raise_exception("This method is not supported for `coup_type='ipc_only'` entities.")
 
         dofs_idx = self._get_global_idx(dofs_idx_local, self.n_dofs, self._dof_start, unsafe=True)
@@ -2582,7 +2582,7 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == "ipc_only":
+        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == gs.coup_type.ipc_only:
             gs.raise_exception("This method is not supported for `coup_type='ipc_only'` entities.")
 
         dofs_idx = self._get_global_idx(dofs_idx_local, self.n_dofs, self._dof_start, unsafe=True)
@@ -2606,7 +2606,7 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == "ipc_only":
+        if isinstance(self.sim.coupler, IPCCoupler) and self._coup_type == gs.coup_type.ipc_only:
             gs.raise_exception("This method is not supported for `coup_type='ipc_only'` entities.")
 
         dofs_idx = self._get_global_idx(dofs_idx_local, self.n_dofs, self._dof_start, unsafe=True)

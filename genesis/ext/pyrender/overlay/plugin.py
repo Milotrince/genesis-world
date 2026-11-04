@@ -1045,8 +1045,8 @@ class ImGuiOverlayPlugin(ViewerPlugin):
             has_collision = is_rigid and len(entity.geoms) > 0
             current_mode = entity.surface.vis_mode
             if imgui.begin_combo(f"Vis Mode##vis_{entity_idx}", current_mode):
-                for mode in ("visual", "collision"):
-                    disabled = mode == "collision" and not has_collision
+                for mode in (gs.vis_mode.visual, gs.vis_mode.collision):
+                    disabled = mode == gs.vis_mode.collision and not has_collision
                     imgui.begin_disabled(disabled)
                     clicked = imgui.selectable(mode, current_mode == mode)[0]
                     imgui.end_disabled()
@@ -1063,7 +1063,7 @@ class ImGuiOverlayPlugin(ViewerPlugin):
             if changed_wf:
                 self._wireframe_state[entity_idx] = new_wf
                 ctx = self.viewer.gs_context
-                geoms = entity.vgeoms if entity.surface.vis_mode == "visual" else entity.geoms
+                geoms = entity.vgeoms if entity.surface.vis_mode == gs.vis_mode.visual else entity.geoms
                 for geom in geoms:
                     node = ctx.rigid_nodes.get(geom.uid)
                     if node is None:

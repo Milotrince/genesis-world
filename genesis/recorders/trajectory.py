@@ -100,8 +100,8 @@ LENGTH = struct.Struct("<Q")
 # analysis of a failure, and a failure may depend on the platform and never reproduce once shared. What the last step
 # computed is therefore kept whole.
 MODES_KINDS = {
-    "exact": frozenset((DataKind.STATE, DataKind.DERIVED)),
-    "minimal": frozenset((DataKind.STATE,)),
+    gs.trajectory_mode.exact: frozenset((DataKind.STATE, DataKind.DERIVED)),
+    gs.trajectory_mode.minimal: frozenset((DataKind.STATE,)),
 }
 INFO_KINDS = frozenset((DataKind.INFO,))
 CHECKPOINT_FILE_KINDS = frozenset(DataKind) - {DataKind.CONSTANT}
@@ -490,7 +490,7 @@ def save_checkpoint(path: str | os.PathLike, source: "TrajectorySource") -> None
         file.write(
             _header(
                 source,
-                mode="exact",
+                mode=gs.trajectory_mode.exact,
                 chunk_size=1,
                 fields=fields,
                 frame_size=frame_size,
@@ -526,19 +526,21 @@ class TrajectoryFileWriter(BaseFileWriter):
         # The frames of the steps leave the unused arrays out, as they are read once per step. The last record holds
         # them, with the scratch.
         # The exact frame holds the kinds of every mode, so it sizes them all.
-        exact_fields, _ = _frame_fields(sim, MODES_KINDS["exact"], drop_unused=True)
+        exact_fields, _ = _frame_fields(sim, MODES_KINDS[gs.trajectory_mode.exact], drop_unused=True)
         modes_frame_size = {
             mode: sum(field.nbytes for field in exact_fields if field.kind in kinds)
             for mode, kinds in MODES_KINDS.items()
         }
+        exact_frame_size = modes_frame_size[gs.trajectory_mode.exact]
         self._mode = self._options.mode
         if self._mode is None:
-            self._mode = "exact" if modes_frame_size["exact"] <= MAX_FRAME_BYTES else "minimal"
-        elif self._mode == "exact" and modes_frame_size["exact"] > MAX_FRAME_BYTES:
+            is_exact_affordable = exact_frame_size <= MAX_FRAME_BYTES
+            self._mode = gs.trajectory_mode.exact if is_exact_affordable else gs.trajectory_mode.minimal
+        elif self._mode == gs.trajectory_mode.exact and exact_frame_size > MAX_FRAME_BYTES:
             gs.logger.warning(
-                f"[TrajectoryFileWriter] Recording in exact mode copies {modes_frame_size['exact'] / 1e6:.1f} MB at "
+                f"[TrajectoryFileWriter] Recording in exact mode copies {exact_frame_size / 1e6:.1f} MB at "
                 f"every recorded step, which slows the simulation down a lot. A minimal frame holds "
-                f"{modes_frame_size['minimal'] / 1e6:.1f} MB (see TrajectoryFile)."
+                f"{modes_frame_size[gs.trajectory_mode.minimal] / 1e6:.1f} MB (see TrajectoryFile)."
             )
         self._kinds = MODES_KINDS[self._mode]
         self._fields, self._frame_size = _frame_fields(sim, self._kinds, drop_unused=True)
@@ -1152,9 +1154,9 @@ class Trajectory:
         return self._scene
 
     @property
-    def mode(self) -> str:
-        """What the frames hold: 'exact' or 'minimal' (see TrajectoryFile)."""
-        return self._manifest["mode"]
+    def mode(self) -> gs.trajectory_mode:
+        """What the frames hold (see TrajectoryFile)."""
+        return gs.trajectory_mode(self._manifest["mode"])
 
     @property
     def n_envs(self) -> int:

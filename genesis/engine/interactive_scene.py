@@ -168,10 +168,11 @@ class InteractiveScene:
         self._reset_pending = True
 
     @with_lock
-    def set_entity_vis_mode(self, entity: "KinematicEntity", mode: str):
-        """Switch entity rendering between ``"visual"`` and ``"collision"``."""
+    def set_entity_vis_mode(self, entity: "KinematicEntity", mode: gs.vis_mode):
+        """Switch entity rendering between its visual and its collision geometry."""
         if not isinstance(entity.surface, gs.surfaces.Surface):
             return
+        mode = gs.vis_mode(mode)
         old_mode = entity.surface.vis_mode
         if old_mode == mode:
             return
@@ -179,14 +180,14 @@ class InteractiveScene:
         ctx = self._ctx
         solver = entity.solver
 
-        old_geoms = entity.vgeoms if old_mode == "visual" else entity.geoms
+        old_geoms = entity.vgeoms if old_mode == gs.vis_mode.visual else entity.geoms
         for geom in old_geoms:
             ctx.remove_rigid_node(geom)
 
         entity.surface.vis_mode = mode
         solver.update_vgeoms()
 
-        is_visual = mode == "visual"
+        is_visual = mode == gs.vis_mode.visual
         geoms = entity.vgeoms if is_visual else entity.geoms
         geoms_T = ctx.rigid_geoms_T(solver, is_visual)
         for geom in geoms:

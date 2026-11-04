@@ -553,11 +553,11 @@ class Mesh(RBC, serialization.SerializationMixin):
         if must_update_surface:
             metadata["is_visual_overwritten"] = isinstance(surface.texture, gs.textures.ColorTexture)
 
-            color_texture = mu.create_texture(color_image, color_factor, "srgb")
+            color_texture = mu.create_texture(color_image, color_factor, gs.texture_encoding.srgb)
             opacity_texture = None
             if color_texture is not None:
                 opacity_texture = color_texture.check_dim(3)
-            roughness_texture = mu.create_texture(None, roughness_factor, "linear")
+            roughness_texture = mu.create_texture(None, roughness_factor, gs.texture_encoding.linear)
 
             surface.update_texture(
                 color_texture=color_texture,

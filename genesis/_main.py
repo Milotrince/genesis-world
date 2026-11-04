@@ -46,7 +46,7 @@ def launch(
             material = gs.materials.Material()
             # Morphs load collision geometry by default, so the overlay's collision vis-mode has something to show; the
             # -c flag only selects which representation is displayed first.
-            surface = gs.surfaces.Default(vis_mode="visual" if not collision else "collision")
+            surface = gs.surfaces.Default(vis_mode=gs.vis_mode.collision if collision else gs.vis_mode.visual)
 
             if filename_lower.endswith(USD_FORMATS):
                 morph = gs.morphs.USD(file=filename, scale=scale)
@@ -120,7 +120,7 @@ def play(filename=None, collision=False, scale=1.0, backend=gs.cpu):
         scene.add_entity(gs.morphs.MJCF(file="xml/franka_emika_panda/panda.xml"))
     else:
         filename_lower = filename.lower()
-        surface = gs.surfaces.Default(vis_mode="visual" if not collision else "collision")
+        surface = gs.surfaces.Default(vis_mode=gs.vis_mode.collision if collision else gs.vis_mode.visual)
 
         if filename_lower.endswith(USD_FORMATS):
             scene.add_stage(

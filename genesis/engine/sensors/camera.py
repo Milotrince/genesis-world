@@ -501,11 +501,11 @@ class RasterizerCameraSensor(
         """Convert a light config dict to a typed light options object for the rasterizer."""
         from genesis.options.vis import DirectionalLight, PointLight
 
-        light_type = light_config.get("type", "directional")
+        light_type = light_config.get("type", gs.light_type.directional)
         color = light_config.get("color", (1.0, 1.0, 1.0))
         intensity = light_config.get("intensity", 1.0)
 
-        if light_type == "point":
+        if light_type == gs.light_type.point:
             pos = light_config.get("pos", (0.0, 0.0, 5.0))
             return PointLight(pos=pos, color=color, intensity=intensity)
         else:

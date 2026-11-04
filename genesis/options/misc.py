@@ -1,4 +1,4 @@
-from typing import Literal, Self
+from typing import Self
 
 from pydantic import Field, StrictBool, StrictInt, model_validator
 
@@ -32,7 +32,7 @@ class CoacdOptions(Options):
     threshold: float = 0.1
 
     max_convex_hull: StrictInt = Field(default=-1, ge=-1)
-    preprocess_mode: Literal["on", "off", "auto"] = "auto"
+    preprocess_mode: gs.preprocess_mode = gs.preprocess_mode.auto
     preprocess_resolution: PositiveInt = 30
     resolution: PositiveInt = 1000
     mcts_nodes: PositiveInt = 20
@@ -47,7 +47,7 @@ class CoacdOptions(Options):
     max_ch_vertex: PositiveInt = 256
     extrude: StrictBool = False
     extrude_margin: float = 0.1
-    apx_mode: Literal["ch", "box"] = "ch"
+    apx_mode: gs.apx_mode = gs.apx_mode.ch
     seed: NonNegativeInt = 0
 
     @model_validator(mode="after")

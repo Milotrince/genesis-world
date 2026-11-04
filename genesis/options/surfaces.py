@@ -14,8 +14,6 @@ from .misc import FoamOptions
 from .options import Options
 from .textures import ColorTexture, DynamicTexture, ImageTexture, Texture
 
-MetalType = Literal["aluminium", "gold", "copper", "brass", "iron", "titanium", "vanadium", "lithium"]
-
 
 ############################ Base ############################
 class Surface(Options):
@@ -52,7 +50,7 @@ class Surface(Options):
     default_roughness : float, optional
         Default roughness value when `roughness` is not set and the asset does not have a roughness texture. Defaults
         to 1.0.
-    vis_mode : str | None, optional
+    vis_mode : gs.vis_mode | None, optional
         How the entity should be visualized, e.g.
         - 'visual': Render the entity's visual geometry.
         - 'collision': Render the entity's collision geometry.
@@ -68,7 +66,7 @@ class Surface(Options):
         The cutoff angle of emission. Defaults to 180.0.
     normal_diff_clamp : float, optional
         Controls the threshold for computing surface normals by interpolating vertex normals.
-    recon_backend : str, optional
+    recon_backend : gs.recon_backend, optional
         Backend for surface reconstruction. 'splashsurf' extracts a smooth surface from the density of the particles,
         but requires all of them to share the same radius. 'levelset' wraps the union of the spheres of the particles,
         which supports a radius per particle at the cost of a bumpier surface. 'openvdb' is a deprecated alias of
@@ -90,12 +88,12 @@ class Surface(Options):
 
     ior: float | None = None
     default_roughness: UnitInterval = 1.0
-    vis_mode: Literal["visual", "collision", "particle", "sdf", "recon"] | None = None
+    vis_mode: gs.vis_mode | None = None
     smooth: StrictBool = True
     double_sided: StrictBool | None = None
     cutoff: float = 180.0
     normal_diff_clamp: float = 180.0
-    recon_backend: Literal["splashsurf", "levelset"] = "splashsurf"
+    recon_backend: gs.recon_backend = gs.recon_backend.splashsurf
     generate_foam: StrictBool = False
     foam_options: FoamOptions = Field(default_factory=FoamOptions)
 
@@ -104,7 +102,7 @@ class Surface(Options):
     def _rename_openvdb_backend(cls, value: Any) -> Any:
         if value == "openvdb":
             gs.logger.warning("Surface reconstruction backend 'openvdb' is deprecated. Use 'levelset' instead.")
-            return "levelset"
+            return gs.recon_backend.levelset
         return value
 
     @model_validator(mode="before")
@@ -475,7 +473,7 @@ class Metal(Surface):
     ----------
     color : tuple | None, optional
         Diffuse color of the surface. Shortcut for `diffuse_texture` with a single color.
-    metal_type : str, optional
+    metal_type : gs.metal_type, optional
         Type of metal, indicating a specific index of refraction (IOR). Possible values are ['aluminium', 'gold',
         'copper', 'brass', 'iron', 'titanium', 'vanadium', 'lithium']. Defaults to 'iron'.
     diffuse_texture : gs.textures.Texture | None, optional
@@ -492,7 +490,7 @@ class Metal(Surface):
 
     roughness: UnitInterval | None = Field(default=0.1, exclude=True, repr=False)
 
-    metal_type: MetalType = "iron"
+    metal_type: gs.metal_type = gs.metal_type.iron
     diffuse_texture: Texture | None = None
     opacity_texture: Texture | None = None
     roughness_texture: Texture | None = None
@@ -856,7 +854,7 @@ class Aluminium(Metal):
     Shortcut for a metallic surface with `metal_type = 'aluminium'`.
     """
 
-    metal_type: MetalType = "aluminium"
+    metal_type: gs.metal_type = gs.metal_type.aluminium
 
 
 class Copper(Metal):
@@ -864,7 +862,7 @@ class Copper(Metal):
     Shortcut for a metallic surface with `metal_type = 'copper'`.
     """
 
-    metal_type: MetalType = "copper"
+    metal_type: gs.metal_type = gs.metal_type.copper
 
 
 class Gold(Metal):
@@ -872,4 +870,4 @@ class Gold(Metal):
     Shortcut for a metallic surface with `metal_type = 'gold'`.
     """
 
-    metal_type: MetalType = "gold"
+    metal_type: gs.metal_type = gs.metal_type.gold

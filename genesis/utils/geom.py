@@ -1,5 +1,5 @@
 import math
-from typing import Literal, NamedTuple
+from typing import NamedTuple
 
 import numpy as np
 import torch
@@ -10,6 +10,7 @@ import numba as nb
 import quadrants as qd
 
 import genesis as gs
+from genesis.constants import polar_side
 from genesis.typing import Vec3FType
 from genesis.utils.cache import register_cache_clear
 
@@ -1533,7 +1534,7 @@ def inv_transform_by_T(pos, T):
     return transform_by_R(pos - trans, R_inv)
 
 
-def _tc_polar(A: torch.Tensor, pure_rotation: bool, side: Literal["right", "left"], eps: float):
+def _tc_polar(A: torch.Tensor, pure_rotation: bool, side: polar_side, eps: float):
     """Torch implementation of polar decomposition with batched support."""
     if A.ndim < 2:
         gs.raise_exception(f"Input must be at least 2D. got: {A.ndim=} dimensions")
@@ -1599,7 +1600,7 @@ def _tc_polar(A: torch.Tensor, pure_rotation: bool, side: Literal["right", "left
     # Use absolute value to ensure P is positive semi-definite
     Sigma_abs = torch.abs(Sigma)
 
-    if side == "right":
+    if side == polar_side.right:
         # P = Vt.T @ diag(|Sigma|) @ Vt
         # For batched: Vt is (*batch, N, M), need (*batch, M, N) -> transpose last two dims
         # Create diagonal matrix using torch.diag_embed for batched support
@@ -1744,13 +1745,13 @@ def _np_polar_core_batched(A, pure_rotation: bool, side_int: int, U_out, P_out):
         P_flat[i] = P_i
 
 
-def _np_polar(A: np.ndarray, pure_rotation: bool, side: Literal["right", "left"]):
+def _np_polar(A: np.ndarray, pure_rotation: bool, side: polar_side):
     """Numpy implementation of polar decomposition with numba acceleration and batched support."""
     if A.ndim < 2:
         gs.raise_exception(f"Input must be at least 2D. got: {A.ndim=} dimensions")
 
     # Convert side to int for numba compatibility
-    side_int = 0 if side == "right" else 1
+    side_int = 0 if side == polar_side.right else 1
 
     # Check if batched
     is_batched = A.ndim > 2
@@ -1760,7 +1761,7 @@ def _np_polar(A: np.ndarray, pure_rotation: bool, side: Literal["right", "left"]
         # Pre-allocate output arrays
         B = A.shape[:-2]
         U_out = np.empty((*B, M, N), dtype=A.dtype)
-        if side == "right":
+        if side == polar_side.right:
             P_out = np.empty((*B, N, N), dtype=A.dtype)
         else:
             P_out = np.empty((*B, M, M), dtype=A.dtype)
@@ -1773,7 +1774,7 @@ def _np_polar(A: np.ndarray, pure_rotation: bool, side: Literal["right", "left"]
         return _np_polar_core_single(A, pure_rotation, side_int)
 
 
-def polar(A, pure_rotation: bool = True, side: Literal["right", "left"] = "right"):
+def polar(A, pure_rotation: bool = True, side: polar_side = polar_side.right):
     """
     Compute the polar decomposition of a matrix or batch of matrices.
 
@@ -1786,8 +1787,8 @@ def polar(A, pure_rotation: bool = True, side: Literal["right", "left"] = "right
     pure_rotation : bool, optional
         If True, ensure the unitary matrix U has det(U) = 1 (pure rotation).
         If False, U may have det(U) = -1 (contains reflection). Default is True.
-    side : Literal['right', 'left'], optional
-        The side of the decomposition. Either 'right' or 'left'. Default is 'right'.
+    side : gs.polar_side, optional
+        The side of the decomposition. Default is 'gs.polar_side.right'.
 
     Returns
     -------
@@ -1797,6 +1798,7 @@ def polar(A, pure_rotation: bool = True, side: Literal["right", "left"] = "right
         - P : The positive semi-definite matrix (scaling part). For 'right' decomposition,
           P has shape (N, N) or (*batch, N, N). For 'left' decomposition, P has shape (M, M) or (*batch, M, M).
     """
+    side = polar_side(side)
     if isinstance(A, np.ndarray):
         return _np_polar(A, pure_rotation, side)
     if isinstance(A, torch.Tensor):

@@ -92,7 +92,7 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
 
         for texture in scene.dynamic_textures:
             variants_is_batched = texture.options.variants_is_batched
-            if variants_is_batched.count(True) != 1 or texture.texture_map_type != gs.TEXTURE_MAP_TYPE.DIFFUSE:
+            if variants_is_batched.count(True) != 1 or texture.texture_map_type != gs.texture_map_type.diffuse:
                 continue
             vgeom = texture.vgeom
             variants = texture.options.get_variants_image(texture.texture_map_type)

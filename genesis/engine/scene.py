@@ -21,7 +21,6 @@ import trimesh
 import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
-from genesis.constants import TEXTURE_MAP_TYPE
 from genesis.engine.entities.base_entity import Entity, EntityDescription
 from genesis.engine.entities.rigid_entity import KinematicEntity
 from genesis.engine.force_fields import ForceField
@@ -333,7 +332,7 @@ class Scene(RBC):
         material: Material | Rigid | None = ...,
         surface: Surface | None = ...,
         visualize_contact: bool = ...,
-        vis_mode: str | None = ...,
+        vis_mode: gs.vis_mode | None = ...,
         name: str | None = ...,
     ) -> "RigidEntity": ...
 
@@ -344,7 +343,7 @@ class Scene(RBC):
         material: Kinematic,
         surface: Surface | None = ...,
         visualize_contact: Literal[False] = ...,
-        vis_mode: str | None = ...,
+        vis_mode: gs.vis_mode | None = ...,
         name: str | None = ...,
     ) -> KinematicEntity: ...
 
@@ -355,7 +354,7 @@ class Scene(RBC):
         material: Material | Kinematic | None = None,
         surface: Surface | None = None,
         visualize_contact: bool | None = None,
-        vis_mode: str | None = None,
+        vis_mode: gs.vis_mode | None = None,
         name: str | None = None,
         *,
         options: EntityOptions | None = None,
@@ -389,7 +388,7 @@ class Scene(RBC):
         visualize_contact : bool | None, optional
             Whether to visualize contact forces applied to this entity as arrows in the viewer and rendered images.
             The `RayTracer` renderer draws no arrows. If None, defaults to False.
-        vis_mode : str | None, optional
+        vis_mode : gs.vis_mode | None, optional
             The visualization mode of the entity. This is a handy shortcut for setting `surface.vis_mode` without
             explicitly creating a surface object.
         name : str | None, optional
@@ -423,7 +422,7 @@ class Scene(RBC):
             if vis_mode is not None:
                 if surface is None:
                     surface = gs.surfaces.Default()
-                surface = surface.model_copy(update={"vis_mode": vis_mode})
+                surface = surface.model_copy(update={"vis_mode": gs.vis_mode(vis_mode)})
             if isinstance(material, Kinematic) and not isinstance(material, Rigid):
                 if visualize_contact:
                     gs.raise_exception("A kinematic entity has no contacts to visualize.")
@@ -472,24 +471,24 @@ class Scene(RBC):
 
         # validate and populate default surface.vis_mode considering the kind of entity
         if isinstance(options, (RigidEntityOptions, KinematicEntityOptions)):
-            vis_modes = ("visual", "collision", "sdf")
+            vis_modes = (gs.vis_mode.visual, gs.vis_mode.collision, gs.vis_mode.sdf)
         elif isinstance(options, (PBDLiquidEntityOptions, PBDParticleEntityOptions, SPHEntityOptions)) or (
             isinstance(options, MPMEntityOptions) and isinstance(material, (Liquid, Sand, Snow))
         ):
-            vis_modes = ("particle", "recon")
+            vis_modes = (gs.vis_mode.particle, gs.vis_mode.recon)
         elif isinstance(options, (PBDClothEntityOptions, PBDElasticEntityOptions, MPMEntityOptions)):
-            vis_modes = ("visual", "particle", "recon")
+            vis_modes = (gs.vis_mode.visual, gs.vis_mode.particle, gs.vis_mode.recon)
         elif isinstance(options, FEMEntityOptions):
-            vis_modes = ("visual",)
+            vis_modes = (gs.vis_mode.visual,)
         else:
             # The visual of a hybrid entity is the one of its outer soft part
-            vis_modes = ("particle", "visual")
+            vis_modes = (gs.vis_mode.particle, gs.vis_mode.visual)
         if surface.vis_mode is None:
             surface.vis_mode = vis_modes[0]
         if surface.vis_mode not in vis_modes:
             gs.raise_exception(
                 f"Unsupported `surface.vis_mode` for {type(options).__name__}: '{surface.vis_mode}'. Expected one of: "
-                f"{list(vis_modes)}."
+                f"{', '.join(f"'{mode}'" for mode in vis_modes)}."
             )
 
         entity = self._sim._add_entity(morph, material, surface, visualize_contact, name, options)
@@ -509,7 +508,7 @@ class Scene(RBC):
         material: Material | None = ...,
         surface: Surface | None = ...,
         visualize_contact: bool | None = ...,
-        vis_mode: Literal["visual", "collision"] | None = ...,
+        vis_mode: Literal[gs.vis_mode.visual, gs.vis_mode.collision] | None = ...,
     ) -> list["RigidEntity"]: ...
 
     @gs.assert_unbuilt
@@ -519,7 +518,7 @@ class Scene(RBC):
         material: Material | None = None,
         surface: Surface | None = None,
         visualize_contact: bool | None = None,
-        vis_mode: Literal["visual", "collision"] | None = None,
+        vis_mode: Literal[gs.vis_mode.visual, gs.vis_mode.collision] | None = None,
         *,
         options: RigidEntityOptions | KinematicEntityOptions | None = None,
     ) -> list["KinematicEntity | RigidEntity"]:
@@ -541,7 +540,7 @@ class Scene(RBC):
         visualize_contact : bool | None, optional
             Whether to visualize contact forces applied to this stage as arrows in the viewer and rendered images.
             The `RayTracer` renderer draws no arrows. If None, defaults to False.
-        vis_mode : str | None, optional
+        vis_mode : gs.vis_mode | None, optional
             The visualization mode of the stage. This is a handy shortcut for setting `surface.vis_mode` without
             explicitly creating a surface object.
         options : gs.options.RigidEntityOptions | gs.options.KinematicEntityOptions | None, optional
@@ -753,7 +752,7 @@ class Scene(RBC):
     @gs.assert_unbuilt
     def add_camera(
         self,
-        model="pinhole",
+        model=gs.camera_model.pinhole,
         res=(320, 320),
         pos=(0.5, 2.5, 3.5),
         lookat=(0.5, 0.5, 0.5),
@@ -785,7 +784,7 @@ class Scene(RBC):
 
         Parameters
         ----------
-        model : str
+        model : gs.camera_model
             Specifies the camera model. Options are 'pinhole' or 'thinlens'.
         res : tuple of int, shape (2,)
             The resolution of the camera, specified as a tuple (width, height).
@@ -882,8 +881,8 @@ class Scene(RBC):
         if surface is None:
             surface = gs.surfaces.Default(color=(0.6, 0.8, 1.0, 1.0))
         if surface.vis_mode is None:
-            surface = surface.model_copy(update={"vis_mode": "particle"})
-        if surface.vis_mode == "visual":
+            surface = surface.model_copy(update={"vis_mode": gs.vis_mode.particle})
+        if surface.vis_mode == gs.vis_mode.visual:
             gs.raise_exception("surface.vis_mode='visual' is not supported for fluid emitters.")
 
         emitter = Emitter(options.morph.n_particles)
@@ -957,8 +956,8 @@ class Scene(RBC):
                     for vgeom in entity.vgeoms:
                         surface_textures = dict(vgeom.surface)
                         for texture_map_type, field_name in (
-                            (TEXTURE_MAP_TYPE.DIFFUSE, "diffuse_texture"),
-                            (TEXTURE_MAP_TYPE.EMISSIVE, "emissive_texture"),
+                            (gs.texture_map_type.diffuse, "diffuse_texture"),
+                            (gs.texture_map_type.emissive, "emissive_texture"),
                         ):
                             options = surface_textures.get(field_name)
                             if isinstance(options, DynamicTexture):
