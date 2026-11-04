@@ -196,6 +196,12 @@ class IMAGE_TYPE(IntEnum):
         return self.name
 
 
+# surface maps a dynamic texture binds to
+class TEXTURE_MAP_TYPE(IntEnum):
+    DIFFUSE = 0
+    EMISSIVE = 1
+
+
 # parallelize
 class PARA_LEVEL(IntEnum):
     NEVER = 0  # when using cpu

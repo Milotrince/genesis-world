@@ -5,10 +5,11 @@ import numpy as np
 import torch
 
 import genesis as gs
-from genesis.constants import link_ref_frame
+from genesis.constants import TEXTURE_MAP_TYPE, link_ref_frame
 from genesis.engine.states.entities import RigidEntityState
-from genesis.options.indices import get_links_path
-from genesis.typing import UnitVec4FType, Vec3FType
+from genesis.engine.texture import TextureValueType
+from genesis.options.indices import VGeomIndex, get_links_path
+from genesis.typing import IndexType, UnitVec4FType, Vec3FType
 from genesis.utils import geom as gu
 from genesis.utils.misc import DeprecationError, broadcast_tensor, qd_to_torch
 
@@ -22,7 +23,7 @@ from .description import (
 )
 from .inertial import RHO_MUJOCO, RHO_OBJECT, RHO_ROBOT, compose_inertial_from_g_infos, finalize_inertial
 from .rigid_equality import RigidEquality
-from .rigid_geom import RigidGeom
+from .rigid_geom import RigidGeom, RigidVisGeom
 from .rigid_joint import RigidJoint
 from .rigid_link import KinematicLink, RigidLink
 
@@ -1090,6 +1091,62 @@ class KinematicEntity(Entity):
         if self.is_built:
             return self._vgeoms
         return gs.List(vgeom for link in self._links for vgeom in link.vgeoms)
+
+    def get_vgeoms(self, vgeom_index: VGeomIndex) -> gs.List[RigidVisGeom]:
+        """Return the visual geoms of the entity that a selection holds, link after link.
+
+        'vgeom_index' selects within every link, as the visual geom options of the entity do, so that the selection
+        giving a visual geom its surface finds it again (see ``gs.VGeomIndex``). A selection by ordinal counts within each
+        link, so that it requires a mesh or a primitive morph, whose single link holds every visual geom.
+        """
+        if vgeom_index.is_by_ordinal and not all(
+            isinstance(morph, (gs.morphs.Mesh, gs.morphs.Primitive))
+            for morph in (self.morph, *self._morph_heterogeneous)
+        ):
+            gs.raise_exception(
+                f"Entity '{self.name}' selects visual geoms by ordinal only if its morph is a mesh or a primitive. "
+                "Select them with 'gs.VGeomIndex.named' or 'with_material', or index 'entity.vgeoms' by position."
+            )
+        vgeoms = gs.List()
+        for link in self._links:
+            vgeoms_name = [vgeom.name for vgeom in link.vgeoms]
+            vgeoms_material_name = [vgeom.material_name for vgeom in link.vgeoms]
+            vgeoms.extend(link.vgeoms[i_vg] for i_vg in vgeom_index.resolve(vgeoms_name, vgeoms_material_name))
+        if not vgeoms:
+            gs.raise_exception(f"No visual geom of entity '{self.name}' matches {vgeom_index}.")
+        return vgeoms
+
+    @gs.assert_built
+    def set_texture(
+        self,
+        texture: TextureValueType,
+        vgeoms_idx: VGeomIndex | IndexType | None = None,
+        envs_idx: IndexType | None = None,
+        *,
+        texture_map_type: TEXTURE_MAP_TYPE | None = None,
+    ) -> None:
+        """Show a variant, or draw pixels, on the dynamic texture of every selected visual geom of the entity.
+
+        'vgeoms_idx' selects visual geoms by their position among ``vgeoms``, or by a ``gs.VGeomIndex`` as the visual
+        geom options do, whose ordinals count within each link. None selects every visual geom drawing a dynamic
+        texture, in 'texture_map_type' when given. See ``RigidVisGeom.set_texture`` for 'texture', 'envs_idx' and
+        'texture_map_type'.
+        """
+        if isinstance(vgeoms_idx, VGeomIndex):
+            vgeoms = self.get_vgeoms(vgeoms_idx)
+        elif vgeoms_idx is None:
+            vgeoms = dict.fromkeys(
+                dynamic_texture.vgeom
+                for dynamic_texture in self._scene.dynamic_textures
+                if dynamic_texture.vgeom.entity is self
+                and (texture_map_type is None or dynamic_texture.texture_map_type == texture_map_type)
+            )
+            if not vgeoms:
+                gs.raise_exception(f"No visual geom of entity '{self.name}' draws a dynamic texture.")
+        else:
+            vgeoms = [self.vgeoms[i_vg] for i_vg in self._get_global_idx(vgeoms_idx, self.n_vgeoms)]
+        for vgeom in vgeoms:
+            vgeom.set_texture(texture, envs_idx, texture_map_type=texture_map_type)
 
     @gs.assert_built
     def set_vverts(self, vverts, envs_idx=None):
