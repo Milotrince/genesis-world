@@ -508,6 +508,7 @@ from .constants import (
     mpm_model,
     yield_criterion,
     coup_type,
+    TEXTURE_MAP_TYPE,
 )
 
 from .utils.uid import UID
