@@ -42,8 +42,6 @@ class ParticleEntity(Entity):
         The scene object that this entity belongs to.
     solver : Solver
         The physics solver responsible for simulating the entity's particles.
-    material : gs.materials.BaseMaterial
-        The physical law of the entity and its parameters.
     morph : Morph
         Geometry or volumetric shape used for sampling particles (e.g., mesh, primitive).
     surface : Surface
@@ -66,7 +64,6 @@ class ParticleEntity(Entity):
         self,
         scene,
         solver,
-        material,
         morph,
         surface,
         particle_size,
@@ -79,7 +76,7 @@ class ParticleEntity(Entity):
         *,
         options,
     ):
-        super().__init__(idx, scene, morph, solver, material, surface, name=name, options=options)
+        super().__init__(idx, scene, morph, solver, surface, name=name, options=options)
 
         self._particle_size = particle_size
         self._particle_start = particle_start

@@ -104,8 +104,6 @@ class PBDTetEntity(PBDBaseEntity):
         The simulation scene this entity is part of.
     solver : Solver
         The PBD solver instance managing this entity.
-    material : Material
-        Material model defining physical properties such as density and compliance.
     morph : Morph
         Morph object specifying shape and initial transform (position and rotation).
     surface : Surface
@@ -128,7 +126,6 @@ class PBDTetEntity(PBDBaseEntity):
         self,
         scene,
         solver,
-        material,
         morph,
         surface,
         particle_size,
@@ -144,7 +141,6 @@ class PBDTetEntity(PBDBaseEntity):
         super().__init__(
             scene,
             solver,
-            material,
             morph,
             surface,
             particle_size,
@@ -237,8 +233,6 @@ class PBD2DEntity(PBDTetEntity):
         The simulation scene this entity is part of.
     solver : Solver
         The PBD solver instance managing this entity.
-    material : Material
-        Material model defining physical properties such as density and compliance.
     morph : Morph
         Morph object specifying shape and initial transform (position and rotation).
     surface : Surface
@@ -263,7 +257,6 @@ class PBD2DEntity(PBDTetEntity):
         self,
         scene,
         solver,
-        material,
         morph,
         surface,
         particle_size,
@@ -280,7 +273,6 @@ class PBD2DEntity(PBDTetEntity):
         super().__init__(
             scene,
             solver,
-            material,
             morph,
             surface,
             particle_size,
@@ -355,8 +347,6 @@ class PBD3DEntity(PBDTetEntity):
         The simulation scene this entity is part of.
     solver : Solver
         The PBD solver instance managing this entity.
-    material : Material
-        Material model defining physical properties such as density and compliance.
     morph : Morph
         Morph object specifying shape and initial transform (position and rotation).
     surface : Surface
@@ -381,7 +371,6 @@ class PBD3DEntity(PBDTetEntity):
         self,
         scene,
         solver,
-        material,
         morph,
         surface,
         particle_size,
@@ -398,7 +387,6 @@ class PBD3DEntity(PBDTetEntity):
         super().__init__(
             scene,
             solver,
-            material,
             morph,
             surface,
             particle_size,
@@ -489,8 +477,6 @@ class PBDParticleEntity(PBDBaseEntity):
         The simulation scene this entity is part of.
     solver : Solver
         The PBD solver instance managing this entity.
-    material : Material
-        Material model defining physical properties such as density and compliance.
     morph : Morph
         Morph object specifying shape and initial transform (position and rotation).
     surface : Surface
@@ -507,7 +493,6 @@ class PBDParticleEntity(PBDBaseEntity):
         self,
         scene,
         solver,
-        material,
         morph,
         surface,
         particle_size,
@@ -520,7 +505,6 @@ class PBDParticleEntity(PBDBaseEntity):
         super().__init__(
             scene,
             solver,
-            material,
             morph,
             surface,
             particle_size,
@@ -564,8 +548,6 @@ class PBDFreeParticleEntity(PBDBaseEntity):
         The simulation scene this entity is part of.
     solver : Solver
         The PBD solver instance managing this entity.
-    material : Material
-        Material model defining physical properties such as density and compliance.
     morph : Morph
         Morph object specifying shape and initial transform (position and rotation).
     surface : Surface
@@ -582,7 +564,6 @@ class PBDFreeParticleEntity(PBDBaseEntity):
         self,
         scene,
         solver,
-        material,
         morph,
         surface,
         particle_size,
@@ -595,7 +576,6 @@ class PBDFreeParticleEntity(PBDBaseEntity):
         super().__init__(
             scene,
             solver,
-            material,
             morph,
             surface,
             particle_size,

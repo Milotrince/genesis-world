@@ -380,14 +380,14 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
         return self.n_elements > 0
 
     def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
+        self, idx, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
     ) -> "FEMEntity":
         # Imported here to avoid a circular dependency (see 'substep_pre_coupling')
         from genesis.engine.couplers import IPCCoupler
 
         # The IPC coupler simulates the elements itself, otherwise each solver supports some of the models alone
         model = options.solver_options.model
-        if not isinstance(material, Cloth) and not isinstance(self._sim.coupler, IPCCoupler):
+        if not isinstance(options.material, Cloth) and not isinstance(self._sim.coupler, IPCCoupler):
             if self._use_implicit_solver and model == gs.fem_model.stable_neohookean:
                 gs.raise_exception(
                     "Model 'stable_neohookean' requires the explicit solver ('use_implicit_solver=False')."
@@ -405,7 +405,6 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
         entity = FEMEntity(
             scene=self._scene,
             solver=self,
-            material=material,
             morph=morph,
             surface=surface,
             idx=idx,

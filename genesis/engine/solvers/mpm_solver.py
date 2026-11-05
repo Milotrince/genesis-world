@@ -266,7 +266,7 @@ class MPMSolver(ParticleSolver):
         return self.n_particles > 0
 
     def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
+        self, idx, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
     ) -> "MPMEntity":
         # The key of a new model is registered once the entity is accepted (see 'FEMSolver.add_entity')
         model_key = get_mpm_model_key(options)
@@ -277,7 +277,6 @@ class MPMSolver(ParticleSolver):
         entity = MPMEntity(
             scene=self._scene,
             solver=self,
-            material=material,
             morph=morph,
             surface=surface,
             particle_size=self._particle_size,

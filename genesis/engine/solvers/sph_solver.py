@@ -163,12 +163,11 @@ class SPHSolver(ParticleSolver):
         return self.n_particles > 0
 
     def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
+        self, idx, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
     ) -> "SPHEntity":
         entity = SPHEntity(
             scene=self.scene,
             solver=self,
-            material=material,
             morph=morph,
             surface=surface,
             particle_size=self._particle_size,

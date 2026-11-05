@@ -17,8 +17,6 @@ class SPHEntity(ParticleEntity):
         The simulation scene.
     solver : Solver
         The solver handling the simulation logic.
-    material : gs.materials.Liquid
-        Material properties (e.g., density, stiffness).
     morph : Morph
         Morphological configuration.
     surface : Surface
@@ -35,7 +33,6 @@ class SPHEntity(ParticleEntity):
         self,
         scene,
         solver,
-        material,
         morph,
         surface,
         particle_size,
@@ -48,7 +45,6 @@ class SPHEntity(ParticleEntity):
         super().__init__(
             scene,
             solver,
-            material,
             morph,
             surface,
             particle_size,
