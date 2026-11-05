@@ -134,8 +134,6 @@ class FEMEntity(Entity):
         The simulation scene that this entity belongs to.
     solver : Solver
         The physics solver instance used for simulation.
-    material : gs.materials.Elastic | gs.materials.Cloth | gs.materials.Muscle
-        The physical model of the entity and its parameters, the defaults of which its options resolve.
     morph : Morph
         The morph specification that defines the entity's shape.
     surface : Surface
@@ -160,7 +158,6 @@ class FEMEntity(Entity):
         self,
         scene,
         solver,
-        material,
         morph,
         surface,
         idx,
@@ -174,7 +171,7 @@ class FEMEntity(Entity):
         *,
         options,
     ):
-        super().__init__(idx, scene, morph, solver, material, surface, name=name, options=options)
+        super().__init__(idx, scene, morph, solver, surface, name=name, options=options)
 
         self._model_idx = model_idx
         self._v_start = v_start  # offset for vertex index of elements

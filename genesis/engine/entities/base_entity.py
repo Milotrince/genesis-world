@@ -47,7 +47,6 @@ class Entity(RBC):
         scene,
         morph,
         solver,
-        material,
         surface,
         name: str | None = None,
         *,
@@ -63,7 +62,8 @@ class Entity(RBC):
         self._idx = idx
         self._scene: "Scene" = scene
         self._solver = solver
-        self._material = material
+        # A kinematic entity takes no part in physics, and each part of a hybrid entity holds a material of its own
+        self._material = None if isinstance(options, (gs.entities.Kinematic, gs.entities.Hybrid)) else options.material
         self._morph = morph
         self._surface = surface
         self._options = options

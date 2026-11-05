@@ -33,8 +33,6 @@ class MPMEntity(ParticleEntity):
         Scene object this entity belongs to.
     solver : Solver
         The solver responsible for simulating this entity.
-    material : Material
-        Material used to determine physical behavior (e.g., Snow, Sand, Muscle).
     morph : Morph
         Shape description used for particle sampling.
     surface : Surface
@@ -57,7 +55,6 @@ class MPMEntity(ParticleEntity):
         self,
         scene,
         solver,
-        material,
         morph,
         surface,
         particle_size,
@@ -70,11 +67,10 @@ class MPMEntity(ParticleEntity):
         *,
         options,
     ):
-        need_skinning = not isinstance(material, (Liquid, Sand, Snow))
+        need_skinning = not isinstance(options.material, (Liquid, Sand, Snow))
         super().__init__(
             scene,
             solver,
-            material,
             morph,
             surface,
             particle_size,

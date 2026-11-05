@@ -348,15 +348,15 @@ class PBDSolver(ParticleSolver):
         return self.n_particles > 0
 
     def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
+        self, idx, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
     ) -> "PBD2DEntity | PBD3DEntity | PBDParticleEntity | PBDFreeParticleEntity":
+        material = options.material
         if isinstance(material, Cloth):
             names_used = ("stretch_compliance", "bending_compliance", "stretch_relaxation", "bending_relaxation")
             names_used += ("air_resistance", "kinetic_friction")
             entity = PBD2DEntity(
                 scene=self.scene,
                 solver=self,
-                material=material,
                 morph=morph,
                 surface=surface,
                 particle_size=self._particle_size,
@@ -376,7 +376,6 @@ class PBDSolver(ParticleSolver):
             entity = PBD3DEntity(
                 scene=self.scene,
                 solver=self,
-                material=material,
                 morph=morph,
                 surface=surface,
                 particle_size=self._particle_size,
@@ -395,7 +394,6 @@ class PBDSolver(ParticleSolver):
             entity = PBDParticleEntity(
                 scene=self.scene,
                 solver=self,
-                material=material,
                 morph=morph,
                 surface=surface,
                 particle_size=self._particle_size,
@@ -410,7 +408,6 @@ class PBDSolver(ParticleSolver):
             entity = PBDFreeParticleEntity(
                 scene=self.scene,
                 solver=self,
-                material=material,
                 morph=morph,
                 surface=surface,
                 particle_size=self._particle_size,

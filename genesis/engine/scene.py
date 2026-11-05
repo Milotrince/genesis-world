@@ -453,7 +453,7 @@ class Scene(RBC):
                 f"Expected one of: {list(vis_modes)}."
             )
 
-        entity = self._sim._add_entity(morph, material, surface, visualize_contact, name, options)
+        entity = self._sim._add_entity(morph, surface, visualize_contact, name, options)
 
         return entity
 

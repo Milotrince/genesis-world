@@ -44,16 +44,14 @@ class HybridEntity(Entity):
         The index of the entity within the scene.
     scene : genesis.Scene
         The simulation scene where the entity is added.
-    material : None
-        A hybrid entity holds no material of its own, its options holding the material of each part.
     morph : genesis.morphs.Morph
         The shape/morphology of the entity. Must be either a `URDF` or `Mesh`.
     surface : genesis.surfaces.Surface
         The surface properties applied to the soft part of the entity.
     """
 
-    def __init__(self, idx, scene, material, morph, surface, name: str | None = None, *, options):
-        super().__init__(idx, scene, morph, None, material, surface, name=name, options=options)
+    def __init__(self, idx, scene, morph, surface, name: str | None = None, *, options):
+        super().__init__(idx, scene, morph, None, surface, name=name, options=options)
 
         surface_rigid = gs.surfaces.Smooth(roughness=0.4)  # HACK hardcoded
 
