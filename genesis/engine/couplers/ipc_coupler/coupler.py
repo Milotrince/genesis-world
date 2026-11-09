@@ -54,7 +54,6 @@ if TYPE_CHECKING or UIPC_AVAILABLE:
     from .utils import (
         build_ipc_scene_config,
         compute_link_to_link_transform,
-        default_coup_type,
         find_target_link_for_fixed_merge,
         has_articulation_dofs,
         read_ipc_geometry_metadata,
@@ -222,18 +221,16 @@ class IPCCoupler(RBC):
             self._init_ipc_gui()
 
     def _setup_coupling_config(self):
-        """Read coup_type, coup_links, and collision settings from entity materials."""
+        """Read the coupling type, the coupled links and the collision settings from the entity solver options."""
         assert gs.logger is not None
 
         entity: "RigidEntity"
         for i_e, entity in enumerate(cast(list["RigidEntity"], self.rigid_solver.entities)):
-            if not entity.material.needs_coup:
+            # An entity takes part in the coupling as soon as one of its links does (see 'RigidEntity.coup_type')
+            if entity.coup_type is None:
                 continue
-            coup_type = entity.material.coup_type
-            if coup_type is None:
-                coup_type = default_coup_type(entity)
-
-            self._coup_type_by_entity[entity] = coup_type = getattr(COUPLING_TYPE, coup_type.upper())
+            coup_links = set(entity.coup_links)
+            self._coup_type_by_entity[entity] = coup_type = COUPLING_TYPE[entity.coup_type.upper()]
             if coup_type == COUPLING_TYPE.EXTERNAL_ARTICULATION:
                 if not entity.base_link.is_fixed:
                     gs.raise_exception(
@@ -246,24 +243,18 @@ class IPCCoupler(RBC):
                     )
             gs.logger.debug(f"Rigid entity {i_e}: coupling type '{coup_type.name.lower()}'")
 
-            # Resolve link filter from material
-            link_filter_names = entity.material.coup_links
-            if link_filter_names is not None:
-                self._coup_links[entity] = set(map(entity.get_link, link_filter_names))
-                gs.logger.debug(f"Rigid entity {i_e}: IPC link filter set to {len(link_filter_names)} link(s)")
-
-            # Resolve collision settings from material
-            if not entity.material.enable_coup_collision:
-                # Disable collision for all links
-                self._coupling_collision_settings[entity] = {link: False for link in entity.links}
-                gs.logger.debug(f"Rigid entity {i_e}: IPC collision disabled for all links")
-            elif entity.material.coup_collision_links is not None:
-                # Positive filter: only named links get collision, others disabled
-                allowed = set(entity.material.coup_collision_links)
-                self._coupling_collision_settings[entity] = {
-                    link: False for link in entity.links if link.name not in allowed
-                }
-                gs.logger.debug(f"Rigid entity {i_e}: IPC collision limited to {allowed}")
+            # Resolve the link filter and the collision settings from the solver options of the links
+            if len(coup_links) < entity.n_links:
+                self._coup_links[entity] = coup_links
+                gs.logger.debug(f"Rigid entity {i_e}: IPC link filter set to {len(coup_links)} link(s)")
+            collision_settings = {
+                link: False
+                for link, link_solver_options in zip(entity.links, entity.links_solver_options)
+                if not link_solver_options.enable_coup_collision
+            }
+            if collision_settings:
+                self._coupling_collision_settings[entity] = collision_settings
+                gs.logger.debug(f"Rigid entity {i_e}: IPC collision disabled for {len(collision_settings)} link(s)")
 
         # Categorize entities by coupling type
         for entity, coup_type in self._coup_type_by_entity.items():
@@ -334,6 +325,7 @@ class IPCCoupler(RBC):
             for i_e, entity in enumerate(cast(list["FEMEntity"], self.fem_solver.entities)):
                 is_cloth = isinstance(entity.material, Cloth)
                 solver_type = "cloth" if is_cloth else "fem"
+                material_params = entity._options.material_params
 
                 # Create object in IPC
                 fem_obj = self._ipc_objects.create(f"{solver_type}_{i_e}_{env_idx}")
@@ -370,9 +362,11 @@ class IPCCoupler(RBC):
                         self._ipc_constitution_tabular.insert(self._ipc_nks)
 
                     # Apply shell material for cloth
-                    moduli = ElasticModuli2D.youngs_poisson(entity.material.E, entity.material.nu)
+                    moduli = ElasticModuli2D.youngs_poisson(
+                        material_params.youngs_modulus, material_params.poisson_ratio
+                    )
                     self._ipc_nks.apply_to(
-                        mesh, moduli=moduli, mass_density=entity.material.rho, thickness=entity.material.thickness
+                        mesh, moduli=moduli, mass_density=material_params.density, thickness=entity.material.thickness
                     )
 
                     # Apply bending stiffness if specified
@@ -388,8 +382,8 @@ class IPCCoupler(RBC):
                         self._ipc_constitution_tabular.insert(self._ipc_stk)
 
                     # Apply volumetric material for FEM
-                    moduli = ElasticModuli.youngs_poisson(entity.material.E, entity.material.nu)
-                    self._ipc_stk.apply_to(mesh, moduli, mass_density=entity.material.rho)
+                    moduli = ElasticModuli.youngs_poisson(material_params.youngs_modulus, material_params.poisson_ratio)
+                    self._ipc_stk.apply_to(mesh, moduli, mass_density=material_params.density)
 
                 # ---- Apply subscene and metadata ----
                 meta_attrs = mesh.meta()
@@ -519,8 +513,16 @@ class IPCCoupler(RBC):
                 if self.sim.n_envs > 0:
                     self._ipc_subscenes[env_idx].apply_to(rigid_link_geom)
 
-                # Apply per-entity contact element or no-collision marker
-                if self._coupling_collision_settings.get(entity, {}).get(target_link, True):
+                # Apply the contact element or the no-collision marker, which covers every link merged into the body
+                collision_settings = self._coupling_collision_settings.get(entity, {})
+                is_coup_collision = collision_settings.get(target_link, True)
+                for source_link in source_links:
+                    if collision_settings.get(source_link, True) != is_coup_collision:
+                        gs.raise_exception(
+                            f"The IPC coupler merges link '{source_link.name}' of entity '{entity.name}' into link "
+                            f"'{target_link.name}' through a fixed joint, so both take the same 'enable_coup_collision'."
+                        )
+                if is_coup_collision:
                     if entity not in self._ipc_abd_contacts:
                         abd_contact = self._ipc_contact_tabular.create(f"abd_contact_{i_e}")
                         self._ipc_abd_contacts[entity] = abd_contact
@@ -533,6 +535,13 @@ class IPCCoupler(RBC):
                     self._ipc_abd = AffineBodyConstitution()
                     self._ipc_constitution_tabular.insert(self._ipc_abd)
 
+                # An affine body holds the density of its entity alone, over every link merged into it
+                for source_link in source_links:
+                    if entity._options.has_link_density(entity._links_path[source_link.idx_local]):
+                        gs.raise_exception(
+                            f"The IPC coupler simulates link '{source_link.name}' of entity '{entity.name}' at the "
+                            "density of its material alone, so the link and geom options cannot give it a density."
+                        )
                 rho = entity.material.rho
                 if rho is None:
                     if entity.solver._enable_mujoco_compatibility:
@@ -691,19 +700,19 @@ class IPCCoupler(RBC):
         """Register pairwise contact models for all entity contact elements.
 
         Friction is combined by geometric mean, resistance by harmonic mean (series spring).
-        When an entity material does not define
+        When the solver options of an entity do not define
         ``contact_resistance``, ``options.contact_resistance`` is used as the per-entity fallback.
-        Ground pairs combine entity parameters with the plane entity's material friction.
+        Ground pairs combine entity parameters with the coupling friction of the plane entity.
         """
         # Collect (ContactElement, friction_mu, resistance, is_abd) for all entity contact elements
         contact_infos: list[tuple[ContactElement, float, float, bool]] = []
         for entity, elem in (*self._ipc_cloth_contacts.items(), *self._ipc_fem_contacts.items()):
-            friction = entity.material.friction_mu
-            resistance = entity.material.contact_resistance or self.options.contact_resistance
+            friction = entity._options.material_params.friction
+            resistance = entity._options.solver_options.contact_resistance or self.options.contact_resistance
             contact_infos.append((elem, friction, resistance, False))
         for entity, elem in self._ipc_abd_contacts.items():
-            friction = entity.material.coup_friction
-            resistance = entity.material.contact_resistance or self.options.contact_resistance
+            friction = entity._options.solver_options.coup_friction
+            resistance = entity._options.solver_options.contact_resistance or self.options.contact_resistance
             contact_infos.append((elem, friction, resistance, True))
 
         # Register entity-entity pairs (upper triangle including self-pairs)
@@ -716,8 +725,8 @@ class IPCCoupler(RBC):
 
         # Register per-plane ground contact pairs
         for entity, ground_elem in self._ipc_ground_contacts.items():
-            plane_friction = entity.material.coup_friction
-            plane_resistance = entity.material.contact_resistance or self.options.contact_resistance
+            plane_friction = entity._options.solver_options.coup_friction
+            plane_resistance = entity._options.solver_options.contact_resistance or self.options.contact_resistance
             for elem, friction, resistance, is_abd in contact_infos:
                 friction_ground = geometric_mean(friction, plane_friction)
                 resistance_ground = harmonic_mean(resistance, plane_resistance)

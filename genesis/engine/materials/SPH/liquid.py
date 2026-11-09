@@ -1,6 +1,9 @@
+from typing import ClassVar
+
+import genesis as gs
 from genesis.typing import NonNegativeFloat, PositiveFloat
 
-from .base import Base, SamplerType
+from .base import Base
 
 
 class Liquid(Base):
@@ -10,22 +13,22 @@ class Liquid(Base):
     Parameters
     ----------
     rho : float, optional
-        The rest density (kg/m³). Default is 1000.0.
+        The rest density (kg/m^3). Default is 1000.0.
     stiffness : float, optional
-        State stiffness (N/m²). Controls how pressure increases with compression. Default is 50000.0.
-    exponent : float, optional
-        State exponent. Controls how nonlinearly pressure scales with density. Default is 7.0.
+        State stiffness (N/m^2). Controls how pressure increases with compression. Default is 50000.0.
     mu : float, optional
         The viscosity of the liquid. Default is 0.005.
     gamma : float, optional
         The surface tension of the liquid. Default is 0.01.
-    sampler : str, optional
-        Particle sampler. Defaults to 'regular' for numerical stability with SPH.
+    exponent, sampler : optional
+        Deprecated, see ``gs.options.SPHEntitySolverOptions``.
     """
+
+    _solver_options_names: ClassVar[tuple[str, ...]] = (*Base._solver_options_names, "exponent")
 
     rho: PositiveFloat = 1000.0
     stiffness: PositiveFloat = 50000.0
     exponent: PositiveFloat = 7.0
     mu: NonNegativeFloat = 0.005
     gamma: NonNegativeFloat = 0.01
-    sampler: SamplerType = "regular"
+    sampler: gs.particle_sampler = gs.particle_sampler.regular

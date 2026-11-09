@@ -4,8 +4,6 @@ Cloth material for IPC-based cloth simulation.
 This material is used with FEMEntity and IPCCoupler for shell/membrane simulation.
 """
 
-from typing import Literal
-
 from genesis.typing import NonNegativeFloat, PositiveFloat
 
 from .base import Base
@@ -29,20 +27,16 @@ class Cloth(Base):
         Poisson's ratio, describing volume change under stress.
         Default is 0.49 (nearly incompressible).
     rho : float, optional
-        Material density (kg/m³). Default is 200 (typical fabric).
+        Material density (kg/m^3). Default is 200 (typical fabric).
     thickness : float, optional
         Shell thickness (m). Default is 0.001 (1mm).
     bending_stiffness : float, optional
         Bending resistance coefficient. If None, no bending resistance.
         Default is None.
-    model : str, optional
-        FEM material model (not used for cloth, kept for compatibility).
-        Default is "stable_neohookean".
     friction_mu : float, optional
         Friction coefficient. Default is 0.1.
-    contact_resistance : float | None, optional
-        IPC contact resistance/stiffness override. ``None`` uses the IPC coupler
-        global default. Default is None.
+    contact_resistance : optional
+        Deprecated, see ``gs.options.FEMEntitySolverOptions``.
 
     Notes
     -----
@@ -66,4 +60,3 @@ class Cloth(Base):
     rho: PositiveFloat = 200.0
     thickness: PositiveFloat = 0.001
     bending_stiffness: NonNegativeFloat | None = None
-    model: Literal["linear", "stable_neohookean", "linear_corotated"] = "stable_neohookean"

@@ -50,7 +50,6 @@ Entities are physical objects in the simulation:
 | `FEMEntity` | FEM | Finite element deformable bodies |
 | `PBD2DEntity`, `PBD3DEntity` | PBD | Cloth, soft bodies |
 | `DroneEntity` | Rigid | Quadcopters with aerodynamics |
-| `ToolEntity` | Tool | Cutting/interaction tools |
 
 Location: `genesis/engine/entities/`
 
@@ -61,7 +60,7 @@ An entity is created from a description: a dataclass holding everything its solv
 - the description class resolves the morphs, material and surface into a description (`RigidEntityDescription.resolve`), which is where assets are read and post-processed;
 - the entity class builds itself from the description alone (`RigidEntity.__init__`), so a description loaded from a file and one resolved from assets take the same path.
 
-`Scene.export` writes the description of every entity, obtained through `Entity.desc`, beside the scene options. `Scene.load` creates each entity from its description through the solver simulating its material (`Solver.add_entity` given `desc`), attachments included, since a description names only entities created before it. A kind of entity gains export support by defining its description class, returning it from `desc`, and having its solver's `add_entity` build from a given description, with no change to the scene. The serialization facility alone reduces every absolute path a value holds to the name of the asset, so no option or mesh redacts anything itself.
+`Scene.export` writes the description of every entity, obtained through `Entity.desc`, beside the scene options. `Scene.load` creates each entity from its description through the solver its entity options name (`Solver.add_entity` given `desc`), attachments included, since a description names only entities created before it. A kind of entity gains export support by defining its description class, returning it from `desc`, and having its solver's `add_entity` build from a given description, with no change to the scene. The serialization facility alone reduces every absolute path a value holds to the name of the asset, so no option or mesh redacts anything itself.
 
 ## Morphs
 
@@ -82,16 +81,40 @@ Location: `genesis/options/morphs.py`
 
 ## Materials
 
-Materials define physical properties and determine which solver handles the entity: each solver declares the material class it simulates (`Solver.material_cls`).
+Materials define physical properties, each material belonging to one solver. Each entity options class admits the materials of its solver, and the numerical choices of that solver for the entity go in its `solver_options`. A material field that the solver options state as well, such as the `model` of `gs.materials.FEM.Elastic`, is deprecated: given explicitly, it warns and sets the solver option it stands for (see `Material.split_entity_options_fields`).
 
 ```python
 gs.materials.Rigid(rho=1000)
 gs.materials.MPM.Elastic(E=1e5, nu=0.3)
-gs.materials.SPH.Liquid(sampler="pbs")
-gs.materials.PBD.Cloth(stretch_compliance=0.0)
+gs.materials.SPH.Liquid(mu=0.01)
+gs.materials.PBD.Cloth(rho=4.0)
 ```
 
 Location: `genesis/engine/materials/`
+
+## Entity options
+
+An entity is constructed from typed options, whose class decides the kind of entity and the solver simulating it: each class names the options class of its solver (`gs.entities.BaseEntity._solver_options_cls`), and holds the options of that solver specific to the entity (`solver_options`, such as `gs.options.MPMEntitySolverOptions`). `gs.entities.Hybrid` names no solver, since a hybrid entity adds a rigid entity and an MPM entity of their own. The flattened arguments of `Scene.add_entity` are a shorthand for the entity options its material is given to, `gs.entities.Rigid` when it is None.
+
+```python
+scene.add_entity(gs.morphs.Box(size=(0.1, 0.1, 0.1)))  # rigid
+scene.add_entity(options=gs.entities.Kinematic(morph=gs.morphs.Box(size=(0.1, 0.1, 0.1))))
+scene.add_entity(options=gs.entities.MPM(morph=gs.morphs.Box(size=(0.1, 0.1, 0.1)), material=gs.materials.MPM.Elastic()))
+scene.add_entity(options=gs.entities.SPH(morph=gs.morphs.Box(size=(0.1, 0.1, 0.1)), solver_options=gs.options.SPHEntitySolverOptions(sampler="regular")))
+```
+
+Rigid and kinematic entity options hold `links` and `vgeoms`, rigid ones `geoms` as well, and FEM entity options hold `vertices`: mappings from a selection (`gs.LinkIndex`, `gs.GeomIndex`, `gs.VGeomIndex`, `gs.VertexIndex`) to `gs.options.Link`, `gs.options.Geom`, `gs.options.VGeom` or `gs.options.Vertex`. They carry only the settings the solver or the visualizer already holds at that granularity: the density and friction of a collision geom, the coupling and the visual raycasting of a link, the surface of a link or a visual geom, and the fixed vertices of an FEM entity. A geom or visual geom option overrides a link option, which overrides the entity, and two selections of equal specificity giving one field of one target raise an error. A `GeomIndex` counts the collision geoms of a link as the asset states them, so the rigid description applies the options before post-processing splits or fuses the geoms. A `VGeomIndex` counts the visual geoms of a link as its asset splits them.
+
+```python
+scene.add_entity(
+    options=gs.entities.Rigid(
+        morph=gs.morphs.URDF(file="urdf/simple/two_link_arm.urdf"),
+        links={"arm2": gs.options.Link(material=gs.materials.Rigid(friction=1.2))},
+    )
+)
+```
+
+Location: `genesis/options/entities.py`, `genesis/options/indices.py`
 
 ## Solvers
 

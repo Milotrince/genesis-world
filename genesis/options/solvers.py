@@ -219,9 +219,9 @@ class IPCCouplerOptions(BaseCouplerOptions):
         Whether to enable friction in contact. Defaults to None (use libuipc default: True).
     contact_resistance : float, optional
         Ground/default contact resistance/stiffness. It is used for ground contact pairs and
-        as the per-entity fallback when a material does not define ``contact_resistance``.
-        For ground pairs, it is combined with entity ``material.contact_resistance`` via
-        geometric mean. Defaults to 1e9.
+        as the per-entity fallback when the solver options of an entity leave ``contact_resistance`` None.
+        For ground pairs, it is combined with the ``contact_resistance`` of the entity via
+        harmonic mean. Defaults to 1e9.
     contact_eps_velocity : float, optional
         Epsilon velocity for contact. Defaults to None (use libuipc default: 0.01).
     contact_constitution : str, optional
@@ -878,7 +878,8 @@ class FEMOptions(GravityMixin, TimeBasedMixin):
     damping_beta : float, optional
         Rayleigh Damping factor for the implicit solver. Defaults to 5e-4. Only used when `use_implicit_solver` is True.
     enable_vertex_constraints : bool, optional
-        Whether to enable vertex constraints. Defaults to False.
+        Whether to enable vertex constraints. The implicit solver enables them where the vertex options of an entity fix
+        vertices, unless given False explicitly. Defaults to False.
     """
 
     damping: NonNegativeFloat = 0.0

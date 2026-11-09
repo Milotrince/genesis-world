@@ -43,18 +43,30 @@ def main():
 
     scene.add_entity(gs.morphs.Plane())
 
-    franka_material_kwargs = dict(
-        coup_friction=0.8,
-        coup_type=args.coup_type,
-    )
-    if args.coup_type == "two_way_soft_constraint":
-        franka_material_kwargs["coup_links"] = ("left_finger", "right_finger")
-    franka_material = gs.materials.Rigid(**franka_material_kwargs) if not args.no_ipc else None
+    franka_solver_options = gs.options.RigidEntitySolverOptions()
+    franka_links_options = {}
+    if not args.no_ipc:
+        # The two-way coupling couples the fingers alone
+        franka_solver_options = gs.options.RigidEntitySolverOptions(
+            needs_coup=args.coup_type != "two_way_soft_constraint",
+            coup_friction=0.8,
+            coup_type=args.coup_type,
+        )
+        franka_links_options = {
+            gs.LinkIndex.named("left_finger", "right_finger"): gs.options.Link(
+                solver_options=gs.options.RigidLinkSolverOptions(
+                    needs_coup=True,
+                ),
+            ),
+        }
     franka = scene.add_entity(
-        gs.morphs.MJCF(
-            file="xml/franka_emika_panda/panda_non_overlap.xml",
+        options=gs.entities.Rigid(
+            morph=gs.morphs.MJCF(
+                file="xml/franka_emika_panda/panda_non_overlap.xml",
+            ),
+            solver_options=franka_solver_options,
+            links=franka_links_options,
         ),
-        material=franka_material,
     )
 
     if not args.no_ipc:

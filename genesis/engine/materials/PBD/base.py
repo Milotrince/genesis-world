@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from ..base import Material
 
@@ -14,3 +14,5 @@ class Base[EntityT: "Entity"](Material[EntityT]):
     ----
     This class should *not* be instantiated directly.
     """
+
+    _entity_options_name: ClassVar[str] = "gs.entities.PBD"

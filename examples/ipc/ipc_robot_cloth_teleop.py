@@ -71,17 +71,25 @@ def main():
     scene.add_entity(gs.morphs.Plane())
 
     # Add Franka robot
-    franka_material_kwargs = dict(
-        coup_type=args.coup_type,
-    )
-    if args.coup_type == "two_way_soft_constraint":
-        franka_material_kwargs["coup_links"] = ("left_finger", "right_finger")
     franka = scene.add_entity(
-        gs.morphs.MJCF(
-            file="xml/franka_emika_panda/panda_non_overlap.xml",
-            pos=(0.0, 0.0, 0.005),
+        options=gs.entities.Rigid(
+            morph=gs.morphs.MJCF(
+                file="xml/franka_emika_panda/panda_non_overlap.xml",
+                pos=(0.0, 0.0, 0.005),
+            ),
+            solver_options=gs.options.RigidEntitySolverOptions(
+                needs_coup=args.coup_type != "two_way_soft_constraint",
+                coup_type=args.coup_type,
+            ),
+            # The two-way coupling couples the fingers alone
+            links={
+                gs.LinkIndex.named("left_finger", "right_finger"): gs.options.Link(
+                    solver_options=gs.options.RigidLinkSolverOptions(
+                        needs_coup=True,
+                    ),
+                ),
+            },
         ),
-        material=gs.materials.Rigid(**franka_material_kwargs),
     )
 
     # Add cloths
