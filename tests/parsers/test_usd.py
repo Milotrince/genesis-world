@@ -560,6 +560,11 @@ def test_collision_filtering(collision_filtering_usd, show_viewer, caplog):
                 pos=(0.0, 0.0, 0.05),
             ),
         )
+    # The link pairs whose colliders are filtered in part alone are reported together, once
+    partial_records = [record.getMessage() for record in caplog.records if "but not all of them" in record.getMessage()]
+    assert len(partial_records) == 1
+    assert "col_e" in partial_records[0] and "col_f" in partial_records[0]
+
     ghosts = scene.add_stage(
         options=gs.entities.Kinematic(
             morph=gs.morphs.USD(
@@ -582,11 +587,6 @@ def test_collision_filtering(collision_filtering_usd, show_viewer, caplog):
         )
     scene.build()
     ghosts_pos = [tensor_to_array(ghost.get_pos()) for ghost in ghosts]
-
-    # The link pairs whose colliders are filtered in part alone are reported together, once
-    partial_records = [record.getMessage() for record in caplog.records if "but not all of them" in record.getMessage()]
-    assert len(partial_records) == 1
-    assert "col_e" in partial_records[0] and "col_f" in partial_records[0]
 
     for _ in range(50):
         scene.step()
