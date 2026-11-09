@@ -85,15 +85,18 @@ def _merge_material_fields(data: dict[str, Any], material_name: str, solver_opti
 
     The material under 'material_name' hands over the fields of the entity options it states (see
     'Material.split_entity_options_fields'), those of the solver options to the solver options under
-    'solver_options_name'. Giving a field both ways raises an error.
+    'solver_options_name'. The material stays as given, so it still reads the values of those fields. Giving a field
+    two different values, one on each side, raises an error. A field given the same value twice is accepted, as entity
+    options rebuilt from their own fields (a scene file, a hybrid part) hold the value of the material in their solver
+    options as well, copied verbatim.
     """
     material = data.get(material_name)
     if not isinstance(material, Material):
         return data
-    material, fields = material.split_entity_options_fields()
+    _, fields = material.split_entity_options_fields()
     if not fields:
         return data
-    data = {**data, material_name: material}
+    data = dict(data)
     for name, value in fields.items():
         if name == "solver_options":
             solver_options = data.get(solver_options_name)
@@ -101,9 +104,19 @@ def _merge_material_fields(data: dict[str, Any], material_name: str, solver_opti
                 solver_options = {n: v for n, v in solver_options if n in solver_options.model_fields_set}
             solver_fields = dict(solver_options or {})
             for solver_name in value.keys() & solver_fields.keys():
-                gs.raise_exception(f"'{solver_name}' is given both to the solver options and to the material.")
+                if solver_fields[solver_name] != value[solver_name]:
+                    gs.raise_exception(f"'{solver_name}' is given both to the solver options and to the material.")
             data[solver_options_name] = {**solver_fields, **value}
-        elif name in data:
+        elif name == "links":
+            # The links the material couples alone, keyed as the links of the entity options are
+            links = dict(_key_links_by_index(data.get("links") or {}))
+            for link_index, link_fields in _key_links_by_index(value).items():
+                link_options = Link(**link_fields)
+                if links.get(link_index, link_options) != link_options:
+                    gs.raise_exception(f"The links of the entity options and the material both give {link_index}.")
+                links[link_index] = link_options
+            data["links"] = links
+        elif name in data and data[name] != value:
             gs.raise_exception(f"'{name}' is given both to the entity options and to the material.")
         else:
             data[name] = value
@@ -1099,7 +1112,7 @@ class Hybrid(BaseEntity["HybridEntity"]):
             for name, value in part_fields.items():
                 if name != "gravity_compensation":
                     gs.raise_exception(f"gs.entities.Hybrid cannot honour '{name}' of its {material_name}.")
-                if name in data:
+                if name in data and data[name] != value:
                     gs.raise_exception(f"'{name}' is given both to the entity options and to the material.")
                 data[name] = value
         if parts_fields:
