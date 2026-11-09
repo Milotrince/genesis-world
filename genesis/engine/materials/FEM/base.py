@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Annotated, ClassVar
 from pydantic import Field
 
 from genesis.typing import NonNegativeFloat, PositiveFloat, ValidFloat
+from genesis.utils.element import compute_lame_parameters
 
 from ..base import Material
 
@@ -41,3 +42,13 @@ class Base(Material["FEMEntity"]):
     hydroelastic_modulus: PositiveFloat = 1e7
     friction_mu: NonNegativeFloat = 0.1
     contact_resistance: PositiveFloat | None = None
+
+    @property
+    def mu(self) -> float:
+        """The shear modulus, the second Lame parameter of the Young's modulus and the Poisson ratio."""
+        return compute_lame_parameters(self.E, self.nu)[0]
+
+    @property
+    def lam(self) -> float:
+        """The first Lame parameter of the Young's modulus and the Poisson ratio."""
+        return compute_lame_parameters(self.E, self.nu)[1]
