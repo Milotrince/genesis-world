@@ -15,7 +15,7 @@ from uipc import builtin
 
 import genesis as gs
 import genesis.utils.geom as gu
-from genesis.utils.misc import geometric_mean, harmonic_mean, tensor_to_array
+from genesis.utils.misc import tensor_to_array, geometric_mean, harmonic_mean
 
 from ..utils.assertions import assert_allclose
 from ..utils.assets import get_hf_dataset
@@ -145,7 +145,7 @@ def test_objects_freefall(n_envs, n_substeps, show_viewer):
 
     # Get initial state
     p_0 = {obj: get_ipc_positions(scene, **obj_kwargs, envs_idx=envs_idx) for obj, obj_kwargs in objs_kwargs.items()}
-    v_0 = {obj: np.zeros_like(p_0[obj]) for obj in objs_kwargs}
+    v_0 = {obj: np.zeros_like(p_0[obj]) for obj in objs_kwargs.keys()}
 
     # Run simulation and validate dynamics equations at each step
     p_prev, v_prev = p_0.copy(), v_0.copy()
@@ -176,7 +176,7 @@ def test_objects_freefall(n_envs, n_substeps, show_viewer):
             assert_allclose(v_i, expected_v, atol=1e-3)
             assert_allclose(p_i, expected_p, tol=TOL_SINGLE)
 
-    for obj in objs_kwargs:
+    for obj in objs_kwargs.keys():
         # Validate centroid consistency
         ipc_centroid = p_prev[obj].mean(axis=-2)
         gs_centroid = obj.get_state().pos.mean(axis=-2)
@@ -412,11 +412,11 @@ def test_contact_pair_friction_resistance(enable_rigid_rigid_contact):
                     elem = coupler._ipc_ground_contacts[entity]
                 else:
                     elem = coupler._ipc_abd_contacts[entity]
-                friction = entity.options.solver_options.coup_friction
+                friction = entity.material.coup_friction
             else:
                 elem = coupler._ipc_fem_contacts[entity]
                 friction = entity.material.friction_mu
-            resistance = entity.options.solver_options.contact_resistance or coupler.options.contact_resistance
+            resistance = entity.material.contact_resistance or coupler.options.contact_resistance
             elems_idx.append(elem.id())
             frictions.append(friction)
             resistances.append(resistance)
@@ -527,7 +527,7 @@ def test_objects_colliding(n_envs, show_viewer):
             (sphere, "fem", scene.sim.fem_solver.entities.index(sphere)),
         )
     }
-    p_history = {obj: [] for obj in objs_kwargs}
+    p_history = {obj: [] for obj in objs_kwargs.keys()}
     for _i in range(NUM_STEPS):
         scene.step()
 
@@ -536,7 +536,7 @@ def test_objects_colliding(n_envs, show_viewer):
             p_history[obj].append(p_i)
 
     cloth_p_history = np.stack(p_history[cloth], axis=-3)
-    for obj in objs_kwargs:
+    for obj in objs_kwargs.keys():
         obj_p_history = np.stack(p_history[obj], axis=-3)
 
         # Make sure that all vertices are laying on the ground

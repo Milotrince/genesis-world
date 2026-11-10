@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any
 
 import quadrants as qd
 from pydantic import Field, PrivateAttr
@@ -34,8 +34,6 @@ class Muscle(Elastic):
     contact_resistance : float | None, optional
         IPC contact resistance/stiffness override. Default is None.
     """
-
-    _solver_options_names: ClassVar[tuple[str, ...]] = (*Elastic._solver_options_names, "n_groups")
 
     n_groups: PositiveInt = 1
 

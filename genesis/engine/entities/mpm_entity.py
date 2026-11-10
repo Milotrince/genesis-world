@@ -84,8 +84,6 @@ class MPMEntity(ParticleEntity):
             name=name,
             options=options,
         )
-        # The number of muscle groups, which the hybrid entity owning this one as its skin sets to its number of links
-        self._n_groups = options.solver_options.n_groups
 
     def _add_to_solver(self):
         super()._add_to_solver()
@@ -163,7 +161,7 @@ class MPMEntity(ParticleEntity):
         particles_idx = self._get_global_idx(
             particles_idx_local, self._n_particles, self._particle_start, unsafe=True, batched_idx=True
         )
-        self._solver.set_particles_actu(actus, particles_idx, envs_idx, n_groups=self._n_groups)
+        self._solver.set_particles_actu(actus, particles_idx, envs_idx, n_groups=self.material.n_groups)
 
     def get_particles_actu(self, envs_idx=None):
         particles_idx = self._get_global_idx(None, self._n_particles, self._particle_start, unsafe=True)

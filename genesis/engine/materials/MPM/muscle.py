@@ -1,12 +1,11 @@
-from typing import Any, ClassVar
+from typing import Any, Literal
 
 import quadrants as qd
 from pydantic import Field, PrivateAttr
 
-import genesis as gs
 from genesis.typing import PositiveFloat, PositiveInt, ValidFloat
 
-from .elastic import Elastic, ModelType
+from .elastic import Elastic
 
 
 @qd.data_oriented
@@ -23,15 +22,13 @@ class Muscle(Elastic):
     rho : float, optional
         Density (kg/m³). Default is 1000.
     model : str, optional
-        Stress model ('corotation', 'neohookean', also spelled 'neohooken'). Default is 'neohookean'.
+        Stress model ('corotation', 'neohooken'). Default is 'neohooken'.
     n_groups : int, optional
         Number of muscle groups. Default is 1.
     """
 
-    _solver_options_names: ClassVar[tuple[str, ...]] = (*Elastic._solver_options_names, "n_groups")
-
     E: PositiveFloat = 1e6
-    model: ModelType = gs.mpm_model.neohookean
+    model: Literal["corotation", "neohooken"] = "neohooken"
     n_groups: PositiveInt = 1
 
     # Auto-generated — equals E.

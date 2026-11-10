@@ -78,8 +78,6 @@ def main():
                 E=1.0e5,
                 nu=0.45,
                 rho=1000.0,
-            ),
-            solver_options=gs.options.FEMEntitySolverOptions(
                 model="linear_corotated",
             ),
             vertices={

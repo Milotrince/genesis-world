@@ -1,5 +1,5 @@
 import re
-from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 import quadrants as qd
 from pydantic import BeforeValidator, Field, PrivateAttr
@@ -55,9 +55,6 @@ class Base(Material["MPMEntity"]):
         cost of a slower first sampling of each shape, cached afterwards. 'regular' places them on a grid, which leaves
         the surface stair-stepped. 'random' draws them uniformly, which leaves local density fluctuations.
     """
-
-    _entity_options_name: ClassVar[str] = "gs.entities.MPM"
-    _solver_options_names: ClassVar[tuple[str, ...]] = ("sampler",)
 
     E: PositiveFloat = 1e6
     nu: Annotated[ValidFloat, Field(gt=-1.0, lt=0.5)] = 0.2

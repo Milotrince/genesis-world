@@ -1,4 +1,5 @@
 import collections.abc
+import copy
 import dataclasses
 import gc
 import hashlib
@@ -358,9 +359,8 @@ class Scene(RBC):
         The entity keeps a copy of them as ``entity.options``, so one instance can construct several entities.
 
         The individual arguments are a shorthand for the options of the entities the material is given to, such as
-        ``options=gs.entities.Rigid(...)`` for ``gs.materials.Rigid``, and stand for those options alone. The
-        options of a hybrid entity take the fields of its ``gs.materials.Hybrid``. Passing options and individual
-        arguments together raises an error.
+        ``options=gs.entities.Rigid(...)`` for ``gs.materials.Rigid``, and stand for those options alone. Passing
+        options and individual arguments together raises an error.
 
         Parameters
         ----------
@@ -401,32 +401,21 @@ class Scene(RBC):
             # Heterogeneous morphs may come as any iterable of morphs
             if isinstance(morph, collections.abc.Iterable) and not isinstance(morph, Morph):
                 morph = tuple(morph)
-            # A copy, since the surface given may be shared with other entities
             if vis_mode is not None:
                 if surface is None:
                     surface = gs.surfaces.Default()
-                surface = surface.model_copy(update={"vis_mode": vis_mode})
+                surface.vis_mode = vis_mode
             if material is None:
                 material = gs.materials.Rigid()
-            entity_fields = {"morph": morph, "surface": surface, "name": name}
+            options_classes = get_entity_options_cls(material)
+            if len(options_classes) != 1:
+                gs.raise_exception(f"No entity options admit material {type(material).__name__}.")
+            (options_cls,) = options_classes
+            entity_fields = {"morph": morph, "material": material, "surface": surface, "name": name}
             if visualize_contact:
+                if options_cls is not gs.entities.Rigid:
+                    gs.raise_exception(f"gs.entities.{options_cls.__name__} has no contacts to visualize.")
                 entity_fields["visualize_contact"] = visualize_contact
-            if isinstance(material, gs.materials.Hybrid):
-                options_cls = gs.entities.Hybrid
-                entity_fields.update(
-                    (field_name, value) for field_name, value in material if field_name in material.model_fields_set
-                )
-            elif isinstance(material, gs.materials.Kinematic) and not isinstance(material, gs.materials.Rigid):
-                options_cls = gs.entities.Kinematic
-                entity_fields.update(material.get_entity_options_fields())
-            else:
-                options_classes = get_entity_options_cls(material)
-                if len(options_classes) != 1:
-                    gs.raise_exception(f"No entity options admit material {type(material).__name__}.")
-                (options_cls,) = options_classes
-                entity_fields["material"] = material
-            if "visualize_contact" in entity_fields and options_cls is not gs.entities.Rigid:
-                gs.raise_exception(f"gs.entities.{options_cls.__name__} has no contacts to visualize.")
             options = options_cls(**entity_fields)
         elif any(value is not None for value in (morph, material, surface, visualize_contact, vis_mode, name)):
             gs.raise_exception("Pass either entity options or individual entity arguments, never both.")
@@ -436,12 +425,17 @@ class Scene(RBC):
             )
         if options.morph is None:
             gs.raise_exception("Entity construction requires a morph.")
-        # Revalidated, since 'model_copy(update=...)' bypasses validation. The entity owns the authored copy, while
-        # the resolution below modifies the morph and the surface of a copy of its own.
-        options = type(options).model_validate(options).model_copy(deep=True)
-        resolved_options = options.model_copy(deep=True)
+        # Revalidated, since 'model_copy(update=...)' bypasses validation. The resolution below modifies the morphs and
+        # the surface it is given, so the entity keeps copies of them as authored.
+        resolved_options = type(options).model_validate(options)
+        options = resolved_options.model_copy(
+            update={
+                "morph": copy.deepcopy(resolved_options.morph),
+                "surface": copy.deepcopy(resolved_options.surface),
+            }
+        )
         morph = resolved_options.morph
-        material = None if isinstance(options, (gs.entities.Kinematic, gs.entities.Hybrid)) else options.material
+        material = resolved_options.material
         surface = resolved_options.surface
         visualize_contact = isinstance(resolved_options, gs.entities.Rigid) and resolved_options.visualize_contact
         name = resolved_options.name
@@ -557,8 +551,8 @@ class Scene(RBC):
                 )
             if options.name is not None:
                 gs.raise_exception("A stage adds several entities, so its options take no name.")
-            if options.links or (
-                isinstance(options, gs.entities.Rigid) and any(not geom_index.is_all for geom_index in options.geoms)
+            if isinstance(options, gs.entities.Rigid) and (
+                options.links or any(not geom_index.is_all for geom_index in options.geoms)
             ):
                 gs.raise_exception(
                     "A stage adds entities of different links, so its options take no link options and select geoms "

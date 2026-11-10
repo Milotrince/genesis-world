@@ -490,7 +490,6 @@ with open(os.devnull, "w") as stderr, redirect_libc_stderr(stderr):
 
 from .constants import (
     IntEnum,
-    StrEnum,
     JOINT_TYPE,
     GEOM_TYPE,
     EQUALITY_TYPE,
@@ -504,10 +503,6 @@ from .constants import (
     contact_resolution,
     broadphase_traversal,
     link_ref_frame,
-    particle_sampler,
-    fem_model,
-    mpm_model,
-    coup_type,
 )
 
 from .utils.uid import UID

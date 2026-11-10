@@ -1,6 +1,4 @@
-from typing import TYPE_CHECKING, ClassVar
-
-from pydantic import StrictBool
+from typing import TYPE_CHECKING
 
 from .base import Material
 
@@ -13,15 +11,13 @@ class Kinematic[EntityT: "Entity"](Material[EntityT]):
     Visualization-only material for ghost/reference entities.
 
     Kinematic entities are rendered but do not participate in physics simulation, collision detection, or constraint
-    solving. ``Scene.add_entity`` turns it into the options of a kinematic entity (see ``gs.entities.Kinematic``).
+    solving.
 
     Parameters
     ----------
     use_visual_raycasting : bool, optional
-        Deprecated, see ``gs.entities.Kinematic``. Default is False.
+        Expose this entity's visual mesh to every consumer that casts against visual geometry: raycaster sensors, and
+        viewer plugins built on RaycasterViewerPlugin with use_visual_geom set. Each such consumer then re-scans the
+        entity's visual triangles as it moves, so reserve it for the entities meant to be sensed or picked.
+        Default is False.
     """
-
-    _entity_options_name: ClassVar[str] = "gs.entities.Kinematic"
-    _entity_names: ClassVar[tuple[str, ...]] = ("use_visual_raycasting",)
-
-    use_visual_raycasting: StrictBool = False

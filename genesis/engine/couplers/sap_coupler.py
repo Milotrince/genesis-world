@@ -448,7 +448,7 @@ class SAPCoupler(RBC):
                     init_positions,
                     init_positions,
                     fem_entity.surface_triangles,
-                    fem_entity._options.solver_options.hydroelastic_modulus,
+                    fem_entity.material.hydroelastic_modulus,
                 )
             )
         fem_pressure_np = np.concatenate(fem_pressure)

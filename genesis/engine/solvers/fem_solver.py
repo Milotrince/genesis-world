@@ -463,25 +463,6 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
     def add_entity(
         self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
     ) -> "FEMEntity":
-        # Imported here to avoid a circular dependency (see 'substep_pre_coupling')
-        from genesis.engine.couplers import IPCCoupler
-
-        # The solver simulates a copy of the material holding the constitutive model of the solver options. The IPC
-        # coupler simulates the elements itself, otherwise each solver supports some of the models alone.
-        if not isinstance(material, gs.materials.FEM.Cloth):
-            model = options.solver_options.model
-            if not isinstance(self._sim.coupler, IPCCoupler):
-                if self._use_implicit_solver and model == gs.fem_model.stable_neohookean:
-                    gs.raise_exception(
-                        "Model 'stable_neohookean' requires the explicit solver ('use_implicit_solver=False')."
-                    )
-                if not self._use_implicit_solver and model == gs.fem_model.linear_corotated:
-                    gs.raise_exception(
-                        "Model 'linear_corotated' requires the implicit solver ('use_implicit_solver=True')."
-                    )
-            material_fields = {name: value for name, value in material if name in material.model_fields_set}
-            material = type(material)(**{**material_fields, "model": model.value})
-
         # The kernels dispatch on the index of the material among the distinct ones, so each one is registered and built
         # once, whatever the number of entities sharing it. A new material is registered once the entity is accepted,
         # so a refused entity leaves the solver as it was.

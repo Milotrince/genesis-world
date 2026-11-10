@@ -1199,12 +1199,10 @@ def test_align_mesh(show_viewer, tol):
         show_viewer=show_viewer,
     )
     scene.add_entity(gs.morphs.Plane())
-    # Convexified for the kinematic entity too, so that both entities are aligned on the same collision geometry
     mango_morph = gs.morphs.Mesh(
         file=f"{mango_path}/glb/mango.glb",
         scale=0.045,
         pos=INIT_POS,
-        convexify=True,
         align=True,
     )
     mango = scene.add_entity(

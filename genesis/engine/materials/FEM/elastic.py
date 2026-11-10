@@ -1,4 +1,4 @@
-from typing import Any, ClassVar, Literal
+from typing import Any, Literal
 
 import quadrants as qd
 from pydantic import PrivateAttr, model_validator
@@ -45,8 +45,6 @@ class Elastic(Base):
         IPC contact resistance/stiffness override. ``None`` uses the coupler global
         default. Default is None.
     """
-
-    _solver_options_names: ClassVar[tuple[str, ...]] = (*Base._solver_options_names, "model")
 
     model: Literal["linear", "stable_neohookean", "linear_corotated"] = "linear"
 

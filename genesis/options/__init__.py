@@ -1,12 +1,7 @@
 from .entities import (
-    FEMEntitySolverOptions,
     FEMVertexSolverOptions,
     Geom,
     Link,
-    MPMEntitySolverOptions,
-    RigidEntitySolverOptions,
-    RigidLinkSolverOptions,
-    SPHEntitySolverOptions,
     Vertex,
 )
 from .misc import CoacdOptions, FoamOptions
@@ -30,7 +25,6 @@ from .vis import ViewerOptions, VisOptions
 __all__ = [
     "BaseCouplerOptions",
     "CoacdOptions",
-    "FEMEntitySolverOptions",
     "FEMOptions",
     "FEMVertexSolverOptions",
     "FoamOptions",
@@ -39,17 +33,13 @@ __all__ = [
     "KinematicOptions",
     "LegacyCouplerOptions",
     "Link",
-    "MPMEntitySolverOptions",
     "MPMOptions",
     "PBDOptions",
     "ProfilingOptions",
-    "RigidEntitySolverOptions",
-    "RigidLinkSolverOptions",
     "RigidOptions",
     "SAPCouplerOptions",
     "SceneOptions",
     "SimOptions",
-    "SPHEntitySolverOptions",
     "SPHOptions",
     "Vertex",
     "ViewerOptions",

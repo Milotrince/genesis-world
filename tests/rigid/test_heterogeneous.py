@@ -494,15 +494,14 @@ def test_morph_property_raises():
         ),
     )
 
-    assert single_obj.morph == single_morph
-    assert single_obj.morph is not single_morph
-    assert rigid_obj.main_morph == rigid_morphs_heterogeneous[0]
+    assert single_obj.morph is single_morph
+    assert rigid_obj.main_morph is rigid_morphs_heterogeneous[0]
     assert list(rigid_obj.morphs) == list(rigid_morphs_heterogeneous)
     with pytest.raises(gs.GenesisException, match=r"Heterogeneous.*\.morphs") as exc_info:
         _ = rigid_obj.morph
     assert ".main_morph" in str(exc_info.value)
 
-    assert kinematic_obj.main_morph == kinematic_morphs_heterogeneous[0]
+    assert kinematic_obj.main_morph is kinematic_morphs_heterogeneous[0]
     assert list(kinematic_obj.morphs) == list(kinematic_morphs_heterogeneous)
     with pytest.raises(gs.GenesisException, match=r"Heterogeneous.*\.morphs"):
         _ = kinematic_obj.morph

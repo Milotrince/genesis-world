@@ -274,11 +274,6 @@ class MPMSolver(ParticleSolver):
     def add_entity(
         self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
     ) -> "MPMEntity":
-        # The solver simulates a copy of the material holding the stress model of the solver options
-        model = options.material_params.model
-        if model is not None:
-            material_fields = {name: value for name, value in material if name in material.model_fields_set}
-            material = type(material)(**{**material_fields, "model": model})
         self.add_material(material)
 
         # create entity

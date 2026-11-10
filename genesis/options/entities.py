@@ -1,7 +1,7 @@
 """Typed options an entity is constructed from, each class deciding the kind of entity and the solver simulating it."""
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Annotated, Any, Callable, ClassVar, Generic, NamedTuple, TypeVar
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Generic, TypeVar
 
 import numpy as np
 
@@ -10,8 +10,7 @@ from pydantic import BeforeValidator, ConfigDict, Field, InstanceOf, StrictBool,
 import genesis as gs
 from genesis.engine import materials
 from genesis.engine.materials.base import Material
-from genesis.engine.materials.MPM.base import SamplerType
-from genesis.typing import FrozenDictType, NonNegativeFloat, PositiveFloat, PositiveInt, StrictInt, ValidFloat
+from genesis.typing import FrozenDictType
 
 from .indices import GeomIndex, LinkIndex, VertexIndex
 from .morphs import Mesh, Morph, Primitive
@@ -35,31 +34,13 @@ if TYPE_CHECKING:
 EntityT = TypeVar("EntityT", bound="Entity")
 
 
-def _reject_fields(options: "BaseEntity", sub_options: Options, field_names: tuple[str, ...], reason: str = "") -> None:
-    """Raise an error naming the fields of a material or of solver options that these entity options cannot honour.
-
-    A field counts as given when it is set explicitly to a value other than None. 'reason' completes the message.
-    """
-    names = sorted(
-        name
-        for name, value in dict(sub_options).items()
-        if name in field_names and name in sub_options.model_fields_set and value is not None
-    )
-    if names:
-        gs.raise_exception(
-            f"gs.entities.{type(options).__name__} cannot honour {', '.join(names)} of "
-            f"{type(sub_options).__name__}{reason}."
-        )
-
-
-def _merge_fields(fields: dict, options: Options, target: str, names: tuple[str, ...] | None = None) -> None:
+def _merge_fields(fields: dict, options: Options, target: str) -> None:
     """Add the fields given explicitly in 'options' to 'fields', raising on a field already given for 'target'.
 
-    A field given as None leaves the value to the scope above, as one left unset does. 'names' restricts the merge to
-    these fields, the others being resolved apart.
+    A field given as None leaves the value to the scope above, as one left unset does.
     """
     for name, value in options:
-        if name not in options.model_fields_set or value is None or (names is not None and name not in names):
+        if name not in options.model_fields_set or value is None:
             continue
         if name in fields:
             gs.raise_exception(f"Two selections of equal specificity give '{name}' of {target}.")
@@ -80,62 +61,23 @@ def _key_links_by_index(links):
     return links_by_index
 
 
-def _merge_material_fields(data: dict[str, Any], material_name: str, solver_options_name: str) -> dict[str, Any]:
-    """Return the fields given to entity options, completed by the deprecated fields of one of their materials.
-
-    The material under 'material_name' hands over the fields of the entity options it states (see
-    'Material.get_entity_options_fields'), those of the solver options to the solver options under
-    'solver_options_name'. The material stays as given, so it still reads the values of those fields. Giving a field
-    two different values, one on each side, raises an error. A field given the same value twice is accepted, as entity
-    options rebuilt from their own fields (a scene file) hold the value of the material in their solver
-    options as well, copied verbatim.
-    """
-    material = data.get(material_name)
-    if not isinstance(material, Material):
-        return data
-    fields = material.get_entity_options_fields()
-    if not fields:
-        return data
-    data = dict(data)
-    for name, value in fields.items():
-        if name == "solver_options":
-            solver_options = data.get(solver_options_name)
-            if isinstance(solver_options, Options):
-                solver_options = {n: v for n, v in solver_options if n in solver_options.model_fields_set}
-            solver_fields = dict(solver_options or {})
-            for solver_name in value.keys() & solver_fields.keys():
-                if solver_fields[solver_name] != value[solver_name]:
-                    gs.raise_exception(f"'{solver_name}' is given both to the solver options and to the material.")
-            data[solver_options_name] = {**solver_fields, **value}
-        elif name == "links":
-            # The links the material couples alone, keyed as the links of the entity options are
-            links = dict(_key_links_by_index(data.get("links") or {}))
-            for link_index, link_fields in _key_links_by_index(value).items():
-                link_options = Link(**link_fields)
-                if links.get(link_index, link_options) != link_options:
-                    gs.raise_exception(f"The links of the entity options and the material both give {link_index}.")
-                links[link_index] = link_options
-            data["links"] = links
-        elif name in data and data[name] != value:
-            gs.raise_exception(f"'{name}' is given both to the entity options and to the material.")
-        else:
-            data[name] = value
-    return data
+# The fields of a rigid material that the options of a link or a geom honour, the others applying to the whole entity
+_LINK_MATERIAL_FIELDS = ("rho", "friction", "friction_torsional", "friction_rolling")
 
 
 def _reject_material_entity_fields(material: "materials.Rigid", target: str) -> None:
-    """Raise an error naming the fields of the material of a link or a geom that state options of the entity."""
-    names = sorted(material.model_fields_set.intersection(material.get_entity_options_names()))
+    """Raise an error naming the fields of the material of a link or a geom that apply to the whole entity."""
+    names = sorted(material.model_fields_set.difference(_LINK_MATERIAL_FIELDS))
     if names:
         gs.raise_exception(
-            f"The material of a {target} cannot honour {', '.join(names)}, which state options of the entity."
+            f"The material of a {target} cannot honour {', '.join(names)}, which apply to the whole entity."
         )
 
 
 def get_entity_options_cls(material: Material) -> tuple[type["BaseEntity"], ...]:
     """Return the public classes of the entity options admitting a material, in declaration order.
 
-    Each class admits the materials of its declared 'material' field. A kinematic or hybrid entity has no such field.
+    Each class admits the materials of its declared 'material' field, except those it excludes explicitly.
     """
     classes, pending = [], [BaseEntity]
     while pending:
@@ -149,7 +91,7 @@ def get_entity_options_cls(material: Material) -> tuple[type["BaseEntity"], ...]
         if not options_cls.__name__.startswith("_")
         and options_cls.__pydantic_generic_metadata__["origin"] is None
         and "material" in options_cls.model_fields
-        and isinstance(material, options_cls.model_fields["material"].annotation)
+        and options_cls._admits(material)
     )
 
 
@@ -162,10 +104,9 @@ class _FrozenOptions(Options):
 class BaseEntity(_FrozenOptions, Generic[EntityT]):
     """Options an entity is constructed from, as passed to ``Scene.add_entity(options=...)``.
 
-    A concrete subclass decides the kind of entity and the solver simulating it, and declares the materials it admits
-    along with the options of that solver specific to the entity ('solver_options'). The options are immutable: derive
-    a variant with ``model_copy(update=...)``. The scene keeps its own copy of them as ``entity.options``, so one
-    instance can construct several entities.
+    A concrete subclass decides the kind of entity and the solver simulating it, and declares the materials it admits.
+    The options are immutable: derive a variant with ``model_copy(update=...)``. The scene keeps its own copy of them
+    as ``entity.options``, so one instance can construct several entities.
 
     Parameters
     ----------
@@ -185,23 +126,27 @@ class BaseEntity(_FrozenOptions, Generic[EntityT]):
     # The class of the scene options configuring the solver that simulates the entity, or None for an entity simulated
     # by no solver of its own, such as a hybrid entity, whose parts are entities of their own
     _solver_options_cls: ClassVar[type[Options] | None] = None
+    # The materials the 'material' field accepts by type that belong to the entity options of another solver
+    _excluded_materials: ClassVar[tuple[type[Material], ...]] = ()
 
     # Checked by instance alone, since validation would run the validators of 'Morph' on the sequence of morphs
     morph: InstanceOf[Morph] | Annotated[tuple[InstanceOf[Morph], ...], Field(strict=False)]
     surface: Surface | None = None
     name: str | None = None
 
+    @classmethod
+    def _admits(cls, material: Material) -> bool:
+        return isinstance(material, cls.model_fields["material"].annotation) and not isinstance(
+            material, cls._excluded_materials
+        )
+
     @model_validator(mode="before")
     @classmethod
-    def _merge_deprecated_material_fields(cls, data: Any) -> Any:
+    def _check_material_solver(cls, data: Any) -> Any:
         if not isinstance(data, dict):
             return data
         material = data.get("material")
-        if (
-            isinstance(material, Material)
-            and "material" in cls.model_fields
-            and not isinstance(material, cls.model_fields["material"].annotation)
-        ):
+        if isinstance(material, Material) and "material" in cls.model_fields and not cls._admits(material):
             options_names = " or ".join(
                 f"gs.entities.{options_cls.__name__}" for options_cls in get_entity_options_cls(material)
             )
@@ -209,94 +154,12 @@ class BaseEntity(_FrozenOptions, Generic[EntityT]):
                 f"gs.entities.{cls.__name__} cannot take material {type(material).__name__} of another solver. "
                 f"Pass it to {options_names or 'the entity options of its solver'} instead."
             )
-        return _merge_material_fields(data, "material", "solver_options")
+        return data
 
     @property
     def morphs(self) -> tuple[Morph, ...]:
         """The morphs of the entity, one per variant of a heterogeneous entity and a single one otherwise."""
         return self.morph if isinstance(self.morph, tuple) else (self.morph,)
-
-
-class RigidEntitySolverOptions(_FrozenOptions):
-    """Options of the rigid solver specific to one rigid entity: its coupling with other solvers and its collision grid.
-
-    Parameters
-    ----------
-    needs_coup : bool, optional
-        Whether the links of the entity interact with the entities of other solvers, unless the solver options of a
-        link override it (see ``RigidLinkSolverOptions``). Disabling it spares the cost of the coupling for an entity
-        that never touches them. Default is True.
-    coup_friction : float, optional
-        The friction coefficient of the contacts with the particles of other solvers. Default is 0.1.
-    coup_softness : float, optional
-        The distance over which the entity pushes the particles of other solvers away, in m. A larger value holds the
-        particles off more smoothly, at the cost of a visible gap. Default is 0.002.
-    coup_restitution : float, optional
-        The restitution coefficient of the contacts with the particles of other solvers, between 0 and 1. A non-zero
-        value bounces particles off, at the cost of numerical stability. Default is 0.0.
-    coup_type : gs.coup_type | None, optional
-        How the IPC coupler simulates the entity, which requires a coupled link (see 'needs_coup').
-        'two_way_soft_constraint' couples each link with a soft constraint, and alone couples some links of the entity
-        without the others. 'external_articulation' couples the joint positions, for articulated entities. 'ipc_only'
-        lets IPC simulate the entity alone, gravity included, and is restricted to non-articulated entities. If None,
-        'external_articulation' for a fixed-base articulated entity, 'two_way_soft_constraint' for a floating-base one
-        and 'ipc_only' for a non-articulated one, unless some links of the entity are coupled alone, which takes
-        'two_way_soft_constraint'. Default is None.
-    enable_coup_collision : bool, optional
-        Whether the links of the entity collide in the IPC coupler. Disabling it keeps the coupling forces while
-        dropping the contacts, whereas ``needs_coup=False`` leaves the entity out of the coupler entirely. Default is
-        True.
-    contact_resistance : float | None, optional
-        The contact stiffness of the entity in the IPC coupler. A stiffer contact lets less interpenetration through,
-        at the cost of smaller time steps. If None, ``IPCCouplerOptions.contact_resistance``. Default is None.
-    sdf_cell_size : float, optional
-        The target cell size of the signed distance field sampled around each collision geometry, in m. A finer grid
-        resolves the contacts of non-convex geometry better, at the cost of memory and build time. Default is 0.005.
-    sdf_min_res : int, optional
-        The minimum number of cells of the signed distance field along each axis, at least 16. Default is 32.
-    sdf_max_res : int, optional
-        The maximum number of cells of the signed distance field along each axis, at least 'sdf_min_res'. A primitive
-        geometry caps it at 32, which resolves its shape exactly. Default is 128.
-    """
-
-    needs_coup: StrictBool = True
-    coup_friction: NonNegativeFloat = 0.1
-    coup_softness: NonNegativeFloat = 0.002
-    coup_restitution: Annotated[ValidFloat, Field(ge=0.0, le=1.0)] = 0.0
-    coup_type: gs.coup_type | None = None
-    enable_coup_collision: StrictBool = True
-    contact_resistance: PositiveFloat | None = None
-    sdf_cell_size: PositiveFloat = 0.005
-    sdf_min_res: Annotated[StrictInt, Field(ge=16)] = 32
-    sdf_max_res: Annotated[StrictInt, Field(ge=16)] = 128
-
-    @model_validator(mode="after")
-    def _check_consistency(self) -> "RigidEntitySolverOptions":
-        if self.sdf_min_res > self.sdf_max_res:
-            gs.raise_exception("'sdf_min_res' must be smaller than or equal to 'sdf_max_res'.")
-        return self
-
-
-class RigidLinkSolverOptions(_FrozenOptions):
-    """Options of the rigid solver specific to one link: its coupling with other solvers.
-
-    A field left to None takes the value of the entity (see ``RigidEntitySolverOptions``).
-
-    Parameters
-    ----------
-    needs_coup : bool | None, optional
-        Whether the link interacts with the entities of other solvers. Coupling some links of an entity alone, by
-        disabling it on the others or by enabling it on these with ``needs_coup=False`` for the entity, takes the
-        'two_way_soft_constraint' coupling under the IPC coupler, which a 'coup_type' left to None resolves to.
-        Default is None.
-    enable_coup_collision : bool | None, optional
-        Whether the link collides in the IPC coupler. Disabling it keeps the coupling forces of the link while dropping
-        its contacts, and enabling it on some links with ``enable_coup_collision=False`` for the entity limits the
-        contacts to these links. Default is None.
-    """
-
-    needs_coup: StrictBool | None = None
-    enable_coup_collision: StrictBool | None = None
 
 
 class Geom(_FrozenOptions):
@@ -310,7 +173,7 @@ class Geom(_FrozenOptions):
         of the geoms. The density estimates the mass and the inertia of a link the asset states none for, or of every
         moving link under the 'recompute_inertia' option of the morph. The frame of an aligned body stays where the
         densities of the asset put it, so the body is then simulated as unaligned. The IPC coupler rejects the density
-        on a link it simulates. The other fields of the material state options of the entity, which a geom rejects.
+        on a link it simulates. The other fields of the material apply to the whole entity, so a geom rejects them.
         If None, the geoms take the material of their link. Default is None.
     """
 
@@ -335,18 +198,10 @@ class Link(_FrozenOptions):
     geoms : dict[gs.GeomIndex, gs.options.Geom], optional
         The options of collision geoms of each selected link, a ``gs.GeomIndex`` counting the collision geoms of the
         link as its asset states them. They override the options of the link. Default is no geom options.
-    solver_options : RigidLinkSolverOptions | None, optional
-        The options of the rigid solver specific to the selected links. If None, the links take those of the entity.
-        Default is None.
-    use_visual_raycasting : bool | None, optional
-        Whether to expose the visual mesh of the selected links to visual raycasting, as the option of the same name
-        of the entity does for all of them. If None, the links take the value of the entity. Default is None.
     """
 
     material: materials.Rigid | None = None
     geoms: FrozenDictType[GeomIndex, Geom] = {}
-    solver_options: RigidLinkSolverOptions | None = None
-    use_visual_raycasting: StrictBool | None = None
 
     @model_validator(mode="after")
     def _check_material(self) -> "Link":
@@ -355,47 +210,25 @@ class Link(_FrozenOptions):
         return self
 
 
-class _ArticulatedEntity(BaseEntity[EntityT]):
-    """Options shared by the entities made of links connected by joints, rigid and kinematic alike.
-
-    See ``gs.entities.Kinematic`` for the parameters they add to ``gs.entities.BaseEntity``.
-    """
-
-    use_visual_raycasting: StrictBool = False
-    links: Annotated[FrozenDictType[LinkIndex, Link], BeforeValidator(_key_links_by_index)] = {}
-
-    def get_link_use_visual_raycasting(self, link_path: tuple[str, ...]) -> bool:
-        """Return whether a link exposes its visual mesh to visual raycasting.
-
-        'link_path' holds the names from the root of the kinematic tree down to the link (see ``gs.LinkIndex``).
-        """
-        fields = {}
-        for link_index, link_options in self.links.items():
-            if link_index.matches(link_path):
-                _merge_fields(fields, link_options, f"link '{link_path[-1]}'", names=("use_visual_raycasting",))
-        return fields.get("use_visual_raycasting", self.use_visual_raycasting)
-
-
-class Rigid(_ArticulatedEntity["RigidEntity"]):
+class Rigid(BaseEntity["RigidEntity"]):
     """Options of a rigid entity, which the rigid solver simulates with contacts, joints and constraints.
 
     Use it for every entity whose motion follows from physics. Its links collide, so every geom adds to the cost of
-    collision detection and constraint solving. Parameters follow ``gs.entities.Kinematic``, plus the following.
+    collision detection and constraint solving. Parameters follow ``gs.entities.BaseEntity``, plus the following.
 
     Parameters
     ----------
     material : gs.materials.Rigid, optional
-        The density and the friction coefficients of the entity. Its other fields are deprecated, and given
-        explicitly they set the options of the entity they stand for (see ``gs.materials.Rigid``). Defaults to
-        ``gs.materials.Rigid()``.
-    solver_options : RigidEntitySolverOptions, optional
-        The options of the rigid solver specific to the entity. Defaults to ``RigidEntitySolverOptions()``.
+        The material of the entity. Defaults to ``gs.materials.Rigid()``.
     visualize_contact : bool, optional
         Whether to draw the contact forces applied to the entity as arrows in the viewer and rendered images. Each
         arrow is drawn every frame, so reserve it for the entities being inspected. Default is False.
-    gravity_compensation : float, optional
-        The fraction of gravity cancelled on the entity, 1.0 letting it float. Default is 0.0. An entity simulated by
-        IPC alone (``coup_type='ipc_only'``) falls under the gravity of IPC instead, so it requires 0.0.
+    links : dict[gs.LinkIndex | str | tuple[str, ...], gs.options.Link], optional
+        The options of the links each key selects, which override the material of the entity. A name or a tuple of
+        names stands for ``gs.LinkIndex.named(...)``. A link the asset parser merges into its parent has no name of
+        its own, so keep it with the 'links_to_keep' option of the morph to select it. Two keys selecting one link
+        stand at equal specificity whatever the number of links they name, so they cannot give one field. Default is
+        no link options.
     geoms : dict[gs.GeomIndex, gs.options.Geom], optional
         The options of the collision geoms each key selects, which override those of the entity and the material of
         the links. They stand at the specificity of the geom options of the links, so the two giving one field of one
@@ -409,9 +242,8 @@ class Rigid(_ArticulatedEntity["RigidEntity"]):
     _solver_options_cls = RigidOptions
 
     material: materials.Rigid = Field(default_factory=materials.Rigid)
-    solver_options: RigidEntitySolverOptions = Field(default_factory=RigidEntitySolverOptions)
     visualize_contact: StrictBool = False
-    gravity_compensation: ValidFloat = 0.0
+    links: Annotated[FrozenDictType[LinkIndex, Link], BeforeValidator(_key_links_by_index)] = {}
     geoms: FrozenDictType[GeomIndex, Geom] = {}
 
     @model_validator(mode="after")
@@ -422,28 +254,6 @@ class Rigid(_ArticulatedEntity["RigidEntity"]):
             gs.raise_exception(
                 "Geom options of an entity select geoms by ordinal only if its morph is a mesh or a primitive. Select "
                 "them with 'gs.GeomIndex.all()' or 'gs.GeomIndex.named', or through the options of their link instead."
-            )
-        solver_options = self.solver_options
-        if solver_options.coup_type == gs.coup_type.ipc_only and abs(self.gravity_compensation) > gs.EPS:
-            gs.raise_exception("'gravity_compensation' must be 0 with coup_type='ipc_only', since IPC applies gravity.")
-        links_solver_options = [
-            link_options.solver_options
-            for link_options in self.links.values()
-            if link_options.solver_options is not None
-        ]
-        links_needs_coup = [
-            link_solver_options.needs_coup
-            for link_solver_options in links_solver_options
-            if link_solver_options.needs_coup is not None
-        ]
-        if solver_options.coup_type is not None and not (solver_options.needs_coup or any(links_needs_coup)):
-            gs.raise_exception(f"'coup_type' requires a coupled link, got coup_type={solver_options.coup_type!r}.")
-        # A link coupled differently from its entity filters the links of the coupling
-        is_link_filtered = any(needs_coup != solver_options.needs_coup for needs_coup in links_needs_coup)
-        if is_link_filtered and solver_options.coup_type not in (None, "two_way_soft_constraint"):
-            gs.raise_exception(
-                "Coupling links differently from their entity requires the 'two_way_soft_constraint' coupling, got "
-                f"coup_type={solver_options.coup_type!r}."
             )
         return self
 
@@ -461,20 +271,6 @@ class Rigid(_ArticulatedEntity["RigidEntity"]):
         return any(
             geom_options.material is not None and geom_options.material.rho is not None
             for geom_options in geoms_options
-        )
-
-    def get_link_solver_options(self, link_path: tuple[str, ...]) -> RigidLinkSolverOptions:
-        """Return the solver options of a link, the fields its link options leave unset inherited.
-
-        'link_path' holds the names from the root of the kinematic tree down to the link (see ``gs.LinkIndex``).
-        """
-        fields = {}
-        for link_index, link_options in self.links.items():
-            if link_index.matches(link_path) and link_options.solver_options is not None:
-                _merge_fields(fields, link_options.solver_options, f"link '{link_path[-1]}'")
-        return RigidLinkSolverOptions(
-            needs_coup=fields.get("needs_coup", self.solver_options.needs_coup),
-            enable_coup_collision=fields.get("enable_coup_collision", self.solver_options.enable_coup_collision),
         )
 
     def get_geoms_material(self, link_path: tuple[str, ...], geoms_name: list[str]) -> list[materials.Rigid | None]:
@@ -506,60 +302,22 @@ class Rigid(_ArticulatedEntity["RigidEntity"]):
         ]
 
 
-class Kinematic(_ArticulatedEntity["KinematicEntity"]):
+class Kinematic(BaseEntity["KinematicEntity"]):
     """Options of a kinematic entity, which follows the poses it is given and takes no part in physics.
 
     Use it for a ghost or a reference motion: forward kinematics is all it costs, while it collides with nothing and
-    nothing pushes it, so it has no material. Parameters follow ``gs.entities.BaseEntity``, plus the following.
+    nothing pushes it. Parameters follow ``gs.entities.BaseEntity``, plus the following.
 
     Parameters
     ----------
-    use_visual_raycasting : bool, optional
-        Whether to expose the visual mesh of the entity to every consumer casting rays against visual geometry:
-        raycaster sensors, and viewer plugins built on RaycasterViewerPlugin with use_visual_geom set. Each consumer
-        then scans the visual triangles of the entity again as it moves, so reserve it for the entities meant to be
-        sensed or picked. The options of a link override it. Default is False.
-    links : dict[gs.LinkIndex | str | tuple[str, ...], gs.options.Link], optional
-        The options of the links each key selects, which override those of the entity. A name or a tuple of names
-        stands for ``gs.LinkIndex.named(...)``. A link the asset parser merges into its parent has no name of its own,
-        so keep it with the 'links_to_keep' option of the morph to select it. Two keys selecting one link stand at equal
-        specificity whatever the number of links they name, so they cannot give one field. A kinematic entity takes
-        the 'use_visual_raycasting' of its link options alone. Default is no link options.
+    material : gs.materials.Kinematic, optional
+        The material of the entity, which a rigid material cannot stand for. Defaults to ``gs.materials.Kinematic()``.
     """
 
     _solver_options_cls = KinematicOptions
+    _excluded_materials = (materials.Rigid,)
 
-    @model_validator(mode="after")
-    def _check_links(self) -> "Kinematic":
-        for link_options in self.links.values():
-            _reject_fields(self, link_options, ("material", "geoms", "solver_options"), ", which takes no physics")
-        return self
-
-
-class FEMEntitySolverOptions(_FrozenOptions):
-    """Options of the finite element method (FEM) solver specific to one entity.
-
-    Parameters
-    ----------
-    model : gs.fem_model, optional
-        The constitutive model of an Elastic or a Muscle material. 'linear' is the cheapest and suits small deformations.
-        'stable_neohookean' stays accurate under large deformations, at a higher cost per step, and only the explicit
-        solver supports it. 'linear_corotated' handles large rotations under small strain, and only the implicit solver
-        supports it. The IPC coupler always simulates a stable Neo-Hookean solid. Default is 'linear'.
-    hydroelastic_modulus : float, optional
-        The pressure at the deepest point of the entity under hydroelastic contact, in Pa. A larger value makes the
-        contact stiffer. Default is 1e7.
-    contact_resistance : float | None, optional
-        The contact stiffness of the entity in the IPC coupler. A stiffer contact lets less interpenetration through,
-        at the cost of smaller time steps. If None, ``IPCCouplerOptions.contact_resistance``. Default is None.
-    n_groups : int, optional
-        The number of muscle groups of a Muscle material, each actuated on its own. Default is 1.
-    """
-
-    model: gs.fem_model = gs.fem_model.linear
-    hydroelastic_modulus: PositiveFloat = 1e7
-    contact_resistance: PositiveFloat | None = None
-    n_groups: PositiveInt = 1
+    material: materials.Kinematic = Field(default_factory=materials.Kinematic)
 
 
 class FEMVertexSolverOptions(_FrozenOptions):
@@ -583,20 +341,11 @@ class Vertex(_FrozenOptions):
     Parameters
     ----------
     solver_options : FEMVertexSolverOptions | None, optional
-        The options of the solver specific to the selected vertices. If None, the vertices take those of the entity.
-        Default is None.
+        The options of the solver specific to the selected vertices. If None, the vertices take the defaults of
+        ``FEMVertexSolverOptions``. Default is None.
     """
 
     solver_options: FEMVertexSolverOptions | None = None
-
-
-class FEMMaterialParams(NamedTuple):
-    """The parameters of a material as the FEM solver simulates it."""
-
-    youngs_modulus: float
-    poisson_ratio: float
-    density: float
-    friction: float
 
 
 class FEM(BaseEntity["FEMEntity"]):
@@ -610,10 +359,7 @@ class FEM(BaseEntity["FEMEntity"]):
     Parameters
     ----------
     material : gs.materials.FEM.Elastic | gs.materials.FEM.Cloth
-        The material of the entity, a ``gs.materials.FEM.Muscle`` making it a muscle. Its deprecated fields, given
-        explicitly, set the solver options they stand for.
-    solver_options : FEMEntitySolverOptions, optional
-        The options of the FEM solver specific to the entity. Defaults to ``FEMEntitySolverOptions()``.
+        The material of the entity, a ``gs.materials.FEM.Muscle`` making it a muscle.
     vertices : dict[gs.VertexIndex, gs.options.Vertex], optional
         The options of the vertices each key selects among the vertices of the volume mesh. A Cloth material takes
         none. Default is no vertex options.
@@ -622,17 +368,12 @@ class FEM(BaseEntity["FEMEntity"]):
     _solver_options_cls = FEMOptions
 
     material: materials.FEM.Elastic | materials.FEM.Cloth
-    solver_options: FEMEntitySolverOptions = Field(default_factory=FEMEntitySolverOptions)
     vertices: FrozenDictType[VertexIndex, Vertex] = {}
 
     @model_validator(mode="after")
-    def _check_solver_options(self) -> "FEM":
-        if isinstance(self.material, materials.FEM.Cloth):
-            _reject_fields(self, self.solver_options, ("model",), " for a Cloth material")
-            if self.vertices:
-                gs.raise_exception("gs.entities.FEM cannot honour 'vertices' for a Cloth material.")
-        if not isinstance(self.material, materials.FEM.Muscle):
-            _reject_fields(self, self.solver_options, ("n_groups",), " for a material other than Muscle")
+    def _check_vertices(self) -> "FEM":
+        if isinstance(self.material, materials.FEM.Cloth) and self.vertices:
+            gs.raise_exception("gs.entities.FEM cannot honour 'vertices' for a Cloth material.")
         return self
 
     def get_fixed_verts_idx(self, verts_pos: np.ndarray) -> np.ndarray:
@@ -649,51 +390,6 @@ class FEM(BaseEntity["FEMEntity"]):
         return np.array(
             sorted(i_v for i_v, fields in verts_fields.items() if fields.get("is_fixed", False)), dtype=gs.np_int
         )
-
-    @property
-    def material_params(self) -> FEMMaterialParams:
-        """The parameters of the material."""
-        material = self.material
-        return FEMMaterialParams(
-            youngs_modulus=material.E, poisson_ratio=material.nu, density=material.rho, friction=material.friction_mu
-        )
-
-
-class MPMEntitySolverOptions(_FrozenOptions):
-    """Options of the material point method (MPM) solver specific to one entity.
-
-    Parameters
-    ----------
-    sampler : str | None, optional
-        How the morph is filled with particles. 'regular' lays them on a grid, which is cheap but shows aliasing,
-        'random' scatters them uniformly, and 'pbs' spreads them evenly by Poisson disk sampling, the most uniform but
-        also the slowest to build. 'pbs-<N>' samples with a signed distance field of resolution N. If None, 'random'
-        for Sand and Snow, and 'pbs' otherwise.
-        Default is None.
-    model : gs.mpm_model | None, optional
-        The stress model of an Elastic or a Muscle material. 'corotation' handles large rotations accurately, while
-        'neohookean' stays robust under large compression and skips a decomposition per particle, which makes it
-        faster. If None, 'corotation' for Elastic and 'neohookean' for Muscle. Default is None.
-    n_groups : int, optional
-        The number of muscle groups of a Muscle material, each actuated on its own. Default is 1.
-    """
-
-    sampler: SamplerType | None = None
-    model: gs.mpm_model | None = None
-    n_groups: PositiveInt = 1
-
-
-class MPMMaterialParams(NamedTuple):
-    """The parameters of a material as the MPM solver simulates it, the defaults of the solver filled in.
-
-    The Young's modulus and the Poisson ratio give the Lame parameters of the elastic law, unless the material states
-    them. The stress model is None for a material other than Elastic and Muscle.
-    """
-
-    youngs_modulus: float
-    poisson_ratio: float
-    model: gs.mpm_model | None
-    sampler: str
 
 
 class _EmittableParticles(BaseEntity[EntityT]):
@@ -713,67 +409,12 @@ class MPM(_EmittableParticles["MPMEntity"]):
     ----------
     material : gs.materials.MPM.Base
         The material of the entity, one of ``gs.materials.MPM.Elastic``, ``ElastoPlastic``, ``Liquid``, ``Sand``,
-        ``Snow`` or ``Muscle``. Its deprecated fields, given explicitly, set the solver options they stand for.
-    solver_options : MPMEntitySolverOptions, optional
-        The options of the MPM solver specific to the entity. Defaults to ``MPMEntitySolverOptions()``.
+        ``Snow`` or ``Muscle``.
     """
 
     _solver_options_cls = MPMOptions
 
     material: materials.MPM.Base
-    solver_options: MPMEntitySolverOptions = Field(default_factory=MPMEntitySolverOptions)
-
-    @model_validator(mode="after")
-    def _check_material(self) -> "MPM":
-        if not isinstance(self.material, materials.MPM.Elastic):
-            _reject_fields(self, self.solver_options, ("model",), " for a material other than Elastic and Muscle")
-        if not isinstance(self.material, materials.MPM.Muscle):
-            _reject_fields(self, self.solver_options, ("n_groups",), " for a material other than Muscle")
-        return self
-
-    @property
-    def material_params(self) -> MPMMaterialParams:
-        """The parameters of the material, the defaults of the MPM solver filled in.
-
-        The stress model defaults to 'corotation' for Elastic and 'neohookean' for Muscle, and the sampler to 'random'
-        for Sand and Snow and to 'pbs' otherwise.
-        """
-        material, solver_options = self.material, self.solver_options
-        model = solver_options.model
-        if model is None and isinstance(material, materials.MPM.Elastic):
-            is_muscle = isinstance(material, materials.MPM.Muscle)
-            model = gs.mpm_model.neohookean if is_muscle else gs.mpm_model.corotation
-        sampler = solver_options.sampler
-        if sampler is None:
-            is_granular = isinstance(material, (materials.MPM.Sand, materials.MPM.Snow))
-            sampler = gs.particle_sampler.random if is_granular else gs.particle_sampler.pbs
-        return MPMMaterialParams(material.E, material.nu, model, sampler)
-
-
-class SPHEntitySolverOptions(_FrozenOptions):
-    """Options of the smoothed particle hydrodynamics (SPH) solver specific to one entity.
-
-    Parameters
-    ----------
-    sampler : gs.particle_sampler, optional
-        How the morph is filled with particles. 'regular' lays them on a grid, which keeps the density uniform and the
-        simulation stable at rest, 'random' scatters them uniformly, and 'pbs' spreads them evenly by Poisson disk
-        sampling. Default is 'regular'.
-    exponent : float, optional
-        The exponent of the equation of state, relating pressure to density. A larger exponent resists compression
-        more sharply, at the cost of a stiffer and less stable simulation. Default is 7.0.
-    """
-
-    sampler: gs.particle_sampler = gs.particle_sampler.regular
-    exponent: PositiveFloat = 7.0
-
-
-class SPHMaterialParams(NamedTuple):
-    """The parameters of a Liquid as the SPH solver simulates it."""
-
-    stiffness: float
-    viscosity: float
-    surface_tension: float
 
 
 class SPH(_EmittableParticles["SPHEntity"]):
@@ -786,22 +427,12 @@ class SPH(_EmittableParticles["SPHEntity"]):
     Parameters
     ----------
     material : gs.materials.SPH.Liquid, optional
-        The material of the liquid. Its deprecated fields, given explicitly, set the solver options they stand for.
-        Defaults to ``gs.materials.SPH.Liquid()``.
-    solver_options : SPHEntitySolverOptions, optional
-        The options of the SPH solver specific to the entity. Defaults to ``SPHEntitySolverOptions()``.
+        The material of the liquid. Defaults to ``gs.materials.SPH.Liquid()``.
     """
 
     _solver_options_cls = SPHOptions
 
     material: materials.SPH.Liquid = Field(default_factory=materials.SPH.Liquid)
-    solver_options: SPHEntitySolverOptions = Field(default_factory=SPHEntitySolverOptions)
-
-    @property
-    def material_params(self) -> SPHMaterialParams:
-        """The parameters of the liquid."""
-        material = self.material
-        return SPHMaterialParams(stiffness=material.stiffness, viscosity=material.mu, surface_tension=material.gamma)
 
 
 class PBD(_EmittableParticles["PBDBaseEntity"]):
@@ -835,37 +466,8 @@ class Hybrid(BaseEntity["HybridEntity"]):
 
     Parameters
     ----------
-    material_rigid : gs.materials.Rigid
-        The material of the skeleton.
-    material_soft : gs.materials.MPM.Base
-        The material of the skin, a ``gs.materials.MPM.Muscle`` letting each link actuate its own group.
-    use_default_coupling : bool, optional
-        Whether the skin and the skeleton interact through the coupler of the scene alone. Otherwise, the skin follows
-        the links it is associated with, which holds it in place far more firmly. Default is False.
-    damping : float, optional
-        The damping of the velocity the skin takes from the skeleton, in 1/s. Default is 0.0.
-    thickness : float, optional
-        The thickness of the skin grown around the links of a URDF skeleton, in m. Default is 0.05.
-    soft_dv_coef : float, optional
-        The fraction of the velocity of the skeleton transferred to the skin at each substep. A larger value makes the
-        skin follow more tightly, at the cost of stability. Default is 0.01.
-    func_instantiate_rigid_from_soft : callable | None, optional
-        The function building the skeleton from the mesh of the skin. If None, the skeleton is extracted from the
-        mesh. Default is None.
-    func_instantiate_soft_from_rigid : callable | None, optional
-        The function building the skin from the links of the skeleton. If None, the skin is grown around them by
-        'thickness'. Default is None.
-    func_instantiate_rigid_soft_association : callable | None, optional
-        The function associating the particles of the skin with the links of the skeleton. If None, each particle
-        follows its closest link. Default is None.
+    material : gs.materials.Hybrid
+        The material of the skeleton and of the skin, and how they are coupled.
     """
 
-    material_rigid: materials.Rigid
-    material_soft: materials.MPM.Base
-    use_default_coupling: StrictBool = False
-    damping: NonNegativeFloat = 0.0
-    thickness: ValidFloat = 0.05
-    soft_dv_coef: ValidFloat = 0.01
-    func_instantiate_rigid_from_soft: Callable | None = Field(default=None, exclude=True)
-    func_instantiate_soft_from_rigid: Callable | None = Field(default=None, exclude=True)
-    func_instantiate_rigid_soft_association: Callable | None = Field(default=None, exclude=True)
+    material: materials.Hybrid

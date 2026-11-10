@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Annotated, Any, ClassVar
+from typing import TYPE_CHECKING, Annotated, Any
 
 import quadrants as qd
 from pydantic import Field
@@ -37,9 +37,6 @@ class Base(Material["FEMEntity"]):
         IPC contact resistance/stiffness override for this material. ``None`` means
         use the IPC coupler global default (``IPCCouplerOptions.contact_resistance``).
     """
-
-    _entity_options_name: ClassVar[str] = "gs.entities.FEM"
-    _solver_options_names: ClassVar[tuple[str, ...]] = ("hydroelastic_modulus", "contact_resistance")
 
     E: PositiveFloat = 1e6
     nu: Annotated[ValidFloat, Field(gt=-1.0, lt=0.5)] = 0.2

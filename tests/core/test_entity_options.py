@@ -47,6 +47,11 @@ def test_reject_material_for_solver():
     # The material of another solver is refused, naming the entity options admitting it
     with pytest.raises(gs.GenesisException, match="gs.entities.FEM"):
         gs.entities.MPM(morph=gs.morphs.Sphere(), material=gs.materials.FEM.Elastic())
+    with pytest.raises(gs.GenesisException, match="gs.entities.Rigid"):
+        gs.entities.Kinematic(morph=gs.morphs.Sphere(), material=gs.materials.Rigid())
+    # The material of a link applies to its geoms alone, which leaves out the fields applying to the whole entity
+    with pytest.raises(gs.GenesisException, match="needs_coup"):
+        gs.options.Link(material=gs.materials.Rigid(needs_coup=False))
     with pytest.raises(gs.GenesisException, match="either entity options"):
         scene.add_entity(morph=gs.morphs.Sphere(), options=gs.entities.Rigid(morph=gs.morphs.Sphere()))
 
@@ -303,12 +308,6 @@ def test_selection_precedence(tmp_path, show_viewer, tol, two_box_free_mjcf, tor
             options=arm.options.model_copy(
                 update={"geoms": {gs.GeomIndex.at(0): gs.options.Geom(material=gs.materials.Rigid(friction=1.0))}}
             )
-        )
-    with pytest.raises(gs.GenesisException, match="two_way_soft_constraint"):
-        gs.entities.Rigid(
-            morph=gs.morphs.Sphere(),
-            solver_options=gs.options.RigidEntitySolverOptions(coup_type="ipc_only"),
-            links={"base": gs.options.Link(solver_options=gs.options.RigidLinkSolverOptions(needs_coup=False))},
         )
 
     scene.build(n_envs=2)

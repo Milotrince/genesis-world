@@ -280,12 +280,11 @@ class FEMEntity(Entity):
         Exception
             If the tensor shape is not supported or per-element actuation is attempted.
         """
-        n_groups = self._options.solver_options.n_groups
         elements_idx = self._get_global_idx(None, self.n_elements, self._el_start, unsafe=True)
-        actu = broadcast_tensor(actu, gs.tc_float, (self._sim._B, n_groups), ("envs_idx", "groups"))
+        actu = broadcast_tensor(actu, gs.tc_float, (self._sim._B, self.material.n_groups), ("envs_idx", "groups"))
         # Every element of the entity takes the actuation of its muscle group
         actu = actu[:, None] if self._scene.n_envs > 0 else actu[0]
-        self._solver.set_elements_actu(actu, elements_idx, n_groups=n_groups)
+        self._solver.set_elements_actu(actu, elements_idx, n_groups=self.material.n_groups)
 
     def set_muscle(self, muscle_group=None, muscle_direction=None):
         """
@@ -304,7 +303,7 @@ class FEMEntity(Entity):
         AssertionError
             If tensor shapes are incorrect or normalization fails.
         """
-        n_groups = self._options.solver_options.n_groups
+        n_groups = self.material.n_groups
         max_group_id = muscle_group.max().item()
 
         muscle_group = broadcast_tensor(muscle_group, gs.tc_int, (self.n_elements,), ("elements_idx",))

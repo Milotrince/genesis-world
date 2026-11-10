@@ -41,21 +41,20 @@ class HybridEntity(Entity):
         The index of the entity within the scene.
     scene : genesis.Scene
         The simulation scene where the entity is added.
-    material : None
-        A hybrid entity holds no material of its own, its options holding the material of each part.
+    material : genesis.materials.Hybrid
+        The hybrid material that includes both rigid and soft sub-materials,
+        and defines coupling behavior.
     morph : genesis.morphs.Morph
         The shape/morphology of the entity. Must be either a `URDF` or `Mesh`.
     surface : genesis.surfaces.Surface
         The surface properties applied to the soft part of the entity.
-    options : gs.entities.Hybrid
-        The options of the entity, holding the material of each part and the coupling behavior.
     """
 
     def __init__(self, idx, scene, material, morph, surface, name: str | None = None, *, options):
         super().__init__(idx, scene, morph, None, material, surface, name=name, options=options)
 
-        material_rigid = options.material_rigid
-        material_soft = options.material_soft
+        material_rigid = material.material_rigid
+        material_soft = material.material_soft
 
         surface_rigid = gs.surfaces.Smooth(roughness=0.4)  # HACK hardcoded
         # The association of the soft particles with the rigid links, held without the default coupling alone
@@ -65,28 +64,28 @@ class HybridEntity(Entity):
         assert isinstance(material_soft, gs.materials.MPM.Base)  # TODO: need FEM and PBD
 
         if isinstance(morph, gs.morphs.URDF):
-            # The rigid part interacts with the soft part through the coupler exactly when the default coupling is used
-            part_rigid = scene.add_entity(
-                options=gs.entities.Rigid(
-                    morph=morph,
-                    material=material_rigid,
-                    solver_options=gs.options.RigidEntitySolverOptions(needs_coup=options.use_default_coupling),
-                    surface=surface_rigid,
-                )
-            )
+            # set up rigid part
+            if material.use_default_coupling:
+                gs.logger.info("Use default coupling in hybrid. Overwrite `needs_coup` in rigid material to True")
+                material_rigid.needs_coup = True
+            else:
+                gs.logger.info("Use default coupling in hybrid. Overwrite `needs_coup` in rigid material to False")
+                material_rigid.needs_coup = False
+
+            part_rigid = scene.add_entity(material=material_rigid, morph=morph, surface=surface_rigid)
 
             # get rigid part in world coords
             augment_link_world_coords(part_rigid)
 
             # set soft parts based on rigid links
             func_instantiate_soft_from_rigid = (
-                options.func_instantiate_soft_from_rigid or default_func_instantiate_soft_from_rigid
+                material.func_instantiate_soft_from_rigid or default_func_instantiate_soft_from_rigid
             )
             part_soft = func_instantiate_soft_from_rigid(
                 scene=scene,
                 part_rigid=part_rigid,
                 material_soft=material_soft,
-                material_hybrid=options,
+                material_hybrid=material,
                 surface=surface,
             )
 
@@ -98,39 +97,39 @@ class HybridEntity(Entity):
             mesh = load_mesh(morph.file)
 
             # instantiate rigid part
-            if options.func_instantiate_rigid_from_soft is None:
+            if material.func_instantiate_rigid_from_soft is None:
                 func_instantiate_rigid_from_soft = default_func_instantiate_rigid_from_soft
             else:
-                func_instantiate_rigid_from_soft = options.func_instantiate_rigid_from_soft
+                func_instantiate_rigid_from_soft = material.func_instantiate_rigid_from_soft
             part_rigid = func_instantiate_rigid_from_soft(
                 scene=scene,
                 mesh=mesh,
                 morph=morph,
                 material_rigid=material_rigid,
-                material_hybrid=options,
+                material_hybrid=material,
                 surface=surface_rigid,
             )
 
         else:
             raise ValueError("`morph` in hybrid entity should be either URDF or Mesh")
 
-        if not options.use_default_coupling:
+        if not material.use_default_coupling:
             # get rigid-soft association function
-            if options.func_instantiate_rigid_soft_association is None:
+            if material.func_instantiate_rigid_soft_association is None:
                 if isinstance(morph, gs.morphs.URDF):
                     func_instantiate_rigid_soft_association = default_func_instantiate_rigid_soft_association_from_rigid
                 elif isinstance(morph, gs.morphs.Mesh):
                     func_instantiate_rigid_soft_association = default_func_instantiate_rigid_soft_association_from_soft
             else:
-                func_instantiate_rigid_soft_association = options.func_instantiate_rigid_soft_association
+                func_instantiate_rigid_soft_association = material.func_instantiate_rigid_soft_association
             muscle_group, link_idcs, geom_idcs, trans_local_to_global, quat_local_to_global = (
                 func_instantiate_rigid_soft_association(part_rigid=part_rigid, part_soft=part_soft)
             )
             if muscle_group is not None:
                 muscle_group = muscle_group.astype(gs.np_int, copy=False)
 
-            # The soft part has one muscle group per link it follows (see 'MPMEntity._n_groups')
-            part_soft._n_groups = len(link_idcs)
+            # set muscle group
+            material_soft.n_groups = len(link_idcs)
             self._muscle_group_cache = muscle_group
 
             # set up info in Quadrants field
@@ -140,7 +139,7 @@ class HybridEntity(Entity):
                     geom_idx=gs.qd_int,
                     trans_local_to_global=gs.qd_vec3,
                     quat_local_to_global=gs.qd_vec4,
-                ).field(shape=(len(link_idcs),), needs_grad=False, layout=qd.Layout.SOA)
+                ).field(shape=(material_soft.n_groups,), needs_grad=False, layout=qd.Layout.SOA)
                 part_soft_info.link_idx.from_numpy(np.asarray(link_idcs, dtype=gs.np_int))
                 part_soft_info.geom_idx.from_numpy(np.asarray(geom_idcs, dtype=gs.np_int))
                 part_soft_info.trans_local_to_global.from_numpy(np.asarray(trans_local_to_global, dtype=gs.np_float))
@@ -347,7 +346,7 @@ class HybridEntity(Entity):
         Finalize the hybrid entity setup during simulation build.
         """
         # can only be called here (at sim build)
-        if not self._options.use_default_coupling and self._muscle_group_cache is not None:
+        if not self.material.use_default_coupling and self._muscle_group_cache is not None:
             self._part_soft.set_muscle(
                 muscle_group=torch.tensor(self._muscle_group_cache, dtype=gs.tc_int, device=gs.device)
                 # no muscle direction as the soft body is actuated by rigid parts

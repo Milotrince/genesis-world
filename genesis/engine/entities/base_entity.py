@@ -26,13 +26,8 @@ class EntityDescription:
     options: gs.entities.BaseEntity = field(kw_only=True)
 
     @property
-    def material(self) -> Material | None:
-        """The material of the entity, or None for an entity holding none.
-
-        A kinematic entity takes no part in physics, and each part of a hybrid entity holds a material of its own.
-        """
-        if isinstance(self.options, (gs.entities.Kinematic, gs.entities.Hybrid)):
-            return None
+    def material(self) -> Material:
+        """The material of the entity, which its options hold."""
         return self.options.material
 
 

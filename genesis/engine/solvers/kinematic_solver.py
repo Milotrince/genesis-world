@@ -806,10 +806,10 @@ class KinematicSolver(Solver):
         """
         vgeom_enabled = torch.zeros(self.n_vgeoms_, dtype=gs.tc_bool, device=gs.device)
         for entity in self.entities:
-            for link in entity.links:
-                if entity._options.get_link_use_visual_raycasting(entity._links_path[link.idx_local]):
-                    for vgeom in link.vgeoms:
-                        vgeom_enabled[vgeom.idx] = 1
+            if not entity.material.use_visual_raycasting:
+                continue
+            for vgeom in entity.vgeoms:
+                vgeom_enabled[vgeom.idx] = 1
         self._vfaces_raycast_mask = vgeom_enabled[qd_to_torch(self.dyn_info.vfaces.vgeom_idx)]
 
     def _init_entity_fields(self):
@@ -1556,10 +1556,10 @@ class KinematicSolver(Solver):
     def vfaces_raycast_mask(self) -> torch.Tensor:
         """Per-vface mask, shape (n_vfaces,), selecting the vfaces opted into visual raycasting.
 
-        A vface is opted in iff its owning vgeom belongs to a link whose options, or those of its entity, set
-        use_visual_raycasting=True. Both the entity options and the vface-to-vgeom mapping are fixed once the scene is
-        built, so the mask is fitted at build time and shared by every visual raycast BVH (raycaster sensors, viewer
-        plugins) to gate which vfaces contribute.
+        A vface is opted in iff its owning vgeom belongs to an entity whose material has use_visual_raycasting=True.
+        Both the entity materials and the vface-to-vgeom mapping are fixed once the scene is built, so the mask is
+        fitted at build time and shared by every visual raycast BVH (raycaster sensors, viewer plugins) to gate which
+        vfaces contribute.
         """
         return self._vfaces_raycast_mask
 

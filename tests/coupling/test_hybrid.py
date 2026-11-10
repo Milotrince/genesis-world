@@ -170,7 +170,7 @@ def test_mesh_mpm_build(show_viewer):
         show_viewer=show_viewer,
         show_FPS=False,
     )
-    hybrid = scene.add_entity(
+    scene.add_entity(
         morph=gs.morphs.Mesh(
             file="meshes/duck.obj",
             scale=0.15,
@@ -181,12 +181,6 @@ def test_mesh_mpm_build(show_viewer):
         ),
     )
     scene.build()
-
-    # The skin holds one muscle group per link of the skeleton, each actuated on its own
-    muscle_group = hybrid.part_soft.get_muscle_group()
-    hybrid.part_soft.set_actuation(torch.arange(1, hybrid.part_rigid.n_links + 1, dtype=gs.tc_float, device=gs.device))
-    scene.step()
-    assert_allclose(hybrid.part_soft.get_particles_actu(), muscle_group + 1, tol=gs.EPS)
 
 
 @pytest.mark.debug(False)  # Disable debug for speedup
@@ -379,19 +373,19 @@ def test_fem_mpm_coupling(precision, show_viewer, tol):
 
 
 @pytest.mark.parametrize(
-    "n_envs, options_cls, material_type",
+    "n_envs, material_type",
     [
-        pytest.param(0, gs.entities.SPH, gs.materials.SPH.Liquid, marks=pytest.mark.required),
-        (1, gs.entities.SPH, gs.materials.SPH.Liquid),
-        (2, gs.entities.SPH, gs.materials.SPH.Liquid),
-        pytest.param(2, gs.entities.PBD, gs.materials.PBD.Liquid, marks=pytest.mark.required),
-        pytest.param(2, gs.entities.MPM, gs.materials.MPM.Liquid, marks=pytest.mark.required),
-        (2, gs.entities.MPM, gs.materials.MPM.Sand),
-        (2, gs.entities.MPM, gs.materials.MPM.Snow),
-        (2, gs.entities.MPM, gs.materials.MPM.Elastic),  # This makes little sense but nothing prevents doing this
+        pytest.param(0, gs.materials.SPH.Liquid, marks=pytest.mark.required),
+        (1, gs.materials.SPH.Liquid),
+        (2, gs.materials.SPH.Liquid),
+        pytest.param(2, gs.materials.PBD.Liquid, marks=pytest.mark.required),
+        pytest.param(2, gs.materials.MPM.Liquid, marks=pytest.mark.required),
+        (2, gs.materials.MPM.Sand),
+        (2, gs.materials.MPM.Snow),
+        (2, gs.materials.MPM.Elastic),  # This makes little sense but nothing prevents doing this
     ],
 )
-def test_fluid_emitter(n_envs, options_cls, material_type, show_viewer):
+def test_fluid_emitter(n_envs, material_type, show_viewer):
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
             dt=4e-3,
@@ -434,10 +428,6 @@ def test_fluid_emitter(n_envs, options_cls, material_type, show_viewer):
             color=(0.7, 0.85, 1.0, 0.7),
         ),
     )
-    with pytest.raises(gs.GenesisException, match="emitter sets the morph"):
-        scene.add_emitter(options=options_cls(morph=gs.morphs.Box(size=(0.1, 0.1, 0.1)), material=material_type()))
-    with pytest.raises(gs.GenesisException, match="requires a morph"):
-        scene.add_entity(options=options_cls(material=material_type()))
     scene.build(n_envs=n_envs)
 
     emitter.emit_omni()

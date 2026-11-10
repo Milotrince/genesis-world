@@ -23,8 +23,8 @@ import trimesh
 
 import genesis as gs
 from genesis.constants import EQUALITY_TYPE, GEOM_TYPE, JOINT_TYPE
+from genesis.engine.materials.base import Material
 from genesis.engine.mesh import InertialProperties
-from genesis.options.entities import RigidEntitySolverOptions
 from genesis.options.indices import get_links_path
 from genesis.options.morphs import Morph
 from genesis.options.options import Options
@@ -83,16 +83,14 @@ class SignedDistanceFieldDescription:
     """Whether the grid carries the gradient of the field."""
 
     @classmethod
-    def from_geometry(
-        cls, mesh: "gs.Mesh", geom_type: GEOM_TYPE, solver_options: RigidEntitySolverOptions, is_primitive: bool
-    ) -> Self:
-        """Resolve the grid sampling the signed distance field (SDF) of a geometry, at the resolution its entity asks.
+    def from_geometry(cls, mesh: "gs.Mesh", geom_type: GEOM_TYPE, material: Material, is_primitive: bool) -> Self:
+        """Resolve the grid sampling the signed distance field (SDF) of a geometry, at the resolution its material asks.
 
         The grid extends past the bounding box of the geometry by a margin along each axis. Its cells have the size the
-        entity solver options ask, refined further for a closed non-convex geometry to fit 2 across its thinnest walls,
-        and clipped along each axis to the minimum and maximum resolutions of those options. A primitive caps the
-        maximum resolution at 32, which resolves its shape exactly whatever its size. A terrain carries no gradient,
-        since it derives its gradient from its height field instead.
+        material asks, refined further for a closed non-convex geometry to fit 2 across its thinnest walls, and clipped
+        along each axis to the minimum and maximum resolutions of the material. A primitive caps the maximum resolution
+        at 32, which resolves its shape exactly whatever its size. A terrain carries no gradient, since it derives its
+        gradient from its height field instead.
         """
         # The vertices are a trimesh array subclass, which the grid parameters derived from them would carry into an
         # exported description
@@ -102,8 +100,8 @@ class SignedDistanceFieldDescription:
         # The cell size is anisotropic, each axis being sized to its own extent, so a thin slab gets fine resolution
         # perpendicular to its surface without bloating the cell count along its long axes. A uniform cell size would
         # leave primitive-vs-mesh contacts noisy whenever the smallest dimension of the primitive is below it.
-        cell_size_lower = grid_size / ((32 if is_primitive else solver_options.sdf_max_res) - 1)
-        cell_size_upper = grid_size / max(solver_options.sdf_min_res - 1, 2)
+        cell_size_lower = grid_size / ((32 if is_primitive else material.sdf_max_res) - 1)
+        cell_size_upper = grid_size / max(material.sdf_min_res - 1, 2)
         # A convex geom has no thin wall to tunnel through, so it keeps the target. A non-convex geom tunnels when the
         # cell is coarser than its thinnest wall (its area-weighted p25 thickness), on all three axes: the certified
         # penetration bounds that hold shell contacts apart need lattice points near the contact in every direction,
@@ -111,7 +109,7 @@ class SignedDistanceFieldDescription:
         # surface, since inward rays escape an open mesh through its holes, and the mesh it probes stands for this
         # collision mesh, so both share their watertightness.
         sdf_tmesh = mesh.metadata.get("sdf_mesh", mesh.trimesh)
-        cell_size_target = solver_options.sdf_cell_size
+        cell_size_target = material.sdf_cell_size
         if not mesh.is_convex:
             if mesh.is_watertight:
                 wall_thickness = mu.get_wall_thickness(
@@ -477,12 +475,12 @@ class KinematicEntityDescription(EntityDescription):
         )
         resolution = Resolution(solver_options, enable_mujoco_compatibility)
         desc._load_morph(morphs[0], resolution)
-        links_path = get_links_path(
-            [l_desc.name for l_desc in desc.links], [l_desc.parent_idx for l_desc in desc.links]
-        )
-        for link_index in options.links:
-            link_index.resolve(links_path)
         if isinstance(options, gs.entities.Rigid):
+            links_path = get_links_path(
+                [l_desc.name for l_desc in desc.links], [l_desc.parent_idx for l_desc in desc.links]
+            )
+            for link_index in options.links:
+                link_index.resolve(links_path)
             geoms_index = [
                 *options.geoms,
                 *(i_g for link_options in options.links.values() for i_g in link_options.geoms),
@@ -1459,7 +1457,7 @@ class KinematicEntityDescription(EntityDescription):
         # An explicitly set material density overrides any asset-authored per-geom density, as material friction does
         # for authored frictions. Dropping the keys up front keeps the align anchor, its all-or-none source check,
         # and the build-time inertial estimate consistently uniform-density.
-        if self.material is not None and self.material.rho is not None:
+        if isinstance(self.material, gs.materials.Rigid) and self.material.rho is not None:
             for g_info in g_infos:
                 g_info.pop("density", None)
 
@@ -1568,7 +1566,7 @@ class KinematicEntityDescription(EntityDescription):
                 is_mass_explicit = None
 
         dynamics_hint = None
-        if self.material is not None:
+        if isinstance(self.material, gs.materials.Rigid):
             rho = self.material.rho
             if rho is None:
                 if resolution.is_mujoco_compatible:
@@ -1771,7 +1769,7 @@ class RigidEntityDescription(KinematicEntityDescription):
                     sdf=SignedDistanceFieldDescription.from_geometry(
                         g_info["mesh"],
                         g_info["type"],
-                        self.options.solver_options,
+                        self.material,
                         is_primitive=isinstance(self.morphs[0], gs.morphs.Primitive),
                     ),
                 )

@@ -42,8 +42,8 @@ class ParticleEntity(Entity):
         The scene object that this entity belongs to.
     solver : Solver
         The physics solver responsible for simulating the entity's particles.
-    material : gs.materials.MPM.Base | gs.materials.PBD.Base | gs.materials.SPH.Base
-        The physical law of the entity and its parameters.
+    material : Material
+        The material definition, including sampling strategy and physical properties.
     morph : Morph
         Geometry or volumetric shape used for sampling particles (e.g., mesh, primitive).
     surface : Surface
@@ -115,19 +115,14 @@ class ParticleEntity(Entity):
 
     def init_sampler(self):
         """
-        Initialize the particle sampling strategy from the entity options, or from the material of a PBD entity.
+        Initialize the particle sampling strategy based on the material's sampler field.
 
         Raises
         ------
         GenesisException
             If the specified sampler is not supported or incorrectly formatted.
         """
-        if isinstance(self._options, gs.entities.MPM):
-            self.sampler = self._options.material_params.sampler
-        elif isinstance(self._options, gs.entities.SPH):
-            self.sampler = self._options.solver_options.sampler
-        else:
-            self.sampler = self._material.sampler
+        self.sampler = self._material.sampler
 
         match self.sampler.split("-"):
             case ["regular"]:

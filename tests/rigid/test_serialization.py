@@ -372,7 +372,7 @@ def test_export_and_load_rigid(
     # A kinematic entity's description holds its frames, the geoms that render it, and no dynamics. The restored
     # entity keeps the same links and degrees of freedom, with nothing simulated behind them.
     ghost = restored.entities[10]
-    assert ghost.material is None
+    assert isinstance(ghost.material, gs.materials.Kinematic)
     assert (ghost.n_links, ghost.n_dofs) == (kinematic_arm.n_links, kinematic_arm.n_dofs)
     # At the configuration it was authored at rather than the one it was driven to, as every restored entity is.
     assert_equal(ghost.get_dofs_position(), 0.0)
