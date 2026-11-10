@@ -30,11 +30,12 @@ def torus_box_sphere_mjcf(asset_tmp_path):
     mjcf = ET.Element("mujoco", model="torus_box_sphere")
     asset = ET.SubElement(mjcf, "asset")
     ET.SubElement(asset, "mesh", name="torus", file=str(torus_path))
+    ET.SubElement(asset, "material", name="cap_paint", rgba="0.5 0.5 0.5 1")
     worldbody = ET.SubElement(mjcf, "worldbody")
     body = ET.SubElement(worldbody, "body", name="body", pos="0 0 0")
     ET.SubElement(body, "freejoint")
     ET.SubElement(body, "geom", name="torus", type="mesh", mesh="torus")
-    ET.SubElement(body, "geom", name="top_cap", type="box", size="0.03 0.03 0.03", pos="0 0 0.1")
+    ET.SubElement(body, "geom", name="top_cap", type="box", size="0.03 0.03 0.03", pos="0 0 0.1", material="cap_paint")
     ET.SubElement(body, "geom", name="bottom_cap", type="sphere", size="0.03", pos="0 0 -0.1")
     ET.SubElement(body, "geom", name="ring", type="mesh", mesh="torus", pos="0 0.3 0")
     tip = ET.SubElement(body, "body", name="tip", pos="0 0 0.2")
@@ -51,6 +52,8 @@ def test_reject_material_for_solver():
         gs.entities.MPM(morph=gs.morphs.Sphere(), material=gs.materials.FEM.Elastic())
     with pytest.raises(gs.GenesisException, match="gs.entities.Rigid"):
         gs.entities.Kinematic(morph=gs.morphs.Sphere(), material=gs.materials.Rigid())
+    with pytest.raises(gs.GenesisException, match="the density, the friction and the geoms"):
+        gs.entities.Kinematic(morph=gs.morphs.Sphere(), links={gs.LinkIndex.named("*"): gs.options.Link(friction=1.0)})
 
     # A subclass a user declares admits the materials of its base, which the shorthand keeps giving to the base
     class UserRigid(gs.entities.Rigid):
@@ -158,6 +161,16 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
                     },
                 ),
                 gs.LinkIndex.named("body"): gs.options.Link(
+                    surface=gs.surfaces.Default(
+                        color=(1.0, 0.0, 0.0),
+                    ),
+                    vgeoms={
+                        gs.VGeomIndex.with_material("cap_*"): gs.options.VGeom(
+                            surface=gs.surfaces.Default(
+                                color=(0.0, 1.0, 0.0),
+                            ),
+                        ),
+                    },
                     geoms={
                         gs.GeomIndex.named("tor*"): gs.options.Geom(
                             friction=0.7,
@@ -179,6 +192,13 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
                 ),
                 gs.GeomIndex.at(4): gs.options.Geom(
                     friction_rolling=0.001,
+                ),
+            },
+            vgeoms={
+                gs.VGeomIndex.named("tip"): gs.options.VGeom(
+                    surface=gs.surfaces.Default(
+                        color=(0.0, 0.0, 1.0),
+                    ),
                 ),
             },
         ),
@@ -231,10 +251,24 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
                     gs.GeomIndex.at(slice(0, 1)): gs.options.Geom(),
                     gs.GeomIndex.named("box*"): gs.options.Geom(),
                 },
+                surface=gs.surfaces.Default(
+                    color=(1.0, 0.0, 0.0),
+                ),
+                vgeoms={
+                    gs.VGeomIndex.with_material("lcd*"): gs.options.VGeom(
+                        surface=gs.surfaces.Emission(
+                            emissive=(0.0, 1.0, 0.0),
+                        ),
+                    ),
+                },
             ),
         },
         geoms={
             gs.GeomIndex.named("*"): gs.options.Geom(),
+        },
+        vgeoms={
+            gs.VGeomIndex.with_material("*"): gs.options.VGeom(),
+            gs.VGeomIndex.named("box*"): gs.options.VGeom(),
         },
     )
     fem_options = gs.entities.FEM(
@@ -291,6 +325,23 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
         scene.add_entity(
             options=arm.options.model_copy(update={"geoms": {gs.GeomIndex.named("leg*"): gs.options.Geom()}})
         )
+    with pytest.raises(gs.GenesisException, match="equal specificity"):
+        scene.add_entity(
+            options=arm.options.model_copy(
+                update={
+                    "links": {
+                        gs.LinkIndex.named("arm*"): gs.options.Link(surface=gs.surfaces.Default()),
+                        gs.LinkIndex.named("arm2"): gs.options.Link(surface=gs.surfaces.Rough()),
+                    }
+                }
+            )
+        )
+    with pytest.raises(gs.GenesisException, match="No visual geom of the entity has a material"):
+        scene.add_entity(
+            options=mixed_geoms_body.options.model_copy(
+                update={"vgeoms": {gs.VGeomIndex.with_material("lcd"): gs.options.VGeom()}}
+            )
+        )
     with pytest.raises(gs.GenesisException, match="links_to_keep"):
         scene.add_entity(
             options=arm.options.model_copy(update={"links": {gs.LinkIndex.named("arm3"): gs.options.Link()}})
@@ -298,6 +349,12 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
     with pytest.raises(gs.GenesisException, match="selects no valid geom among 2"):
         scene.add_entity(
             options=arm.options.model_copy(update={"geoms": {gs.GeomIndex.at(2): gs.options.Geom(friction=1.0)}})
+        )
+    with pytest.raises(gs.GenesisException, match="Visual geom options of an entity select"):
+        scene.add_entity(
+            options=arm.options.model_copy(
+                update={"vgeoms": {gs.VGeomIndex.at(0): gs.options.VGeom(surface=gs.surfaces.Default())}}
+            )
         )
 
     scene.build(n_envs=2)
@@ -347,3 +404,14 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
             assert_allclose(geom.get_friction(), friction, tol=gs.EPS)
         assert_allclose(geom.get_friction_torsional(), friction_torsional, tol=gs.EPS)
         assert_allclose(geom.get_friction_rolling(), friction_rolling, tol=gs.EPS)
+    # The link surface colors the visual geoms of the body, the visual geom options the cap of the selected material
+    # over it, and the entity selection by name the capsule of the child link
+    vgeoms_color = {
+        "torus": (1.0, 0.0, 0.0),
+        "top_cap": (0.0, 1.0, 0.0),
+        "bottom_cap": (1.0, 0.0, 0.0),
+        "ring": (1.0, 0.0, 0.0),
+        "tip": (0.0, 0.0, 1.0),
+    }
+    for vgeom in mixed_geoms_body.vgeoms:
+        assert_allclose(vgeom.surface.get_rgba().color[:3], vgeoms_color[vgeom.metadata["name"]], tol=gs.EPS)

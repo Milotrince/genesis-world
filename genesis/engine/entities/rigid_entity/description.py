@@ -399,6 +399,9 @@ class Resolution:
     geoms_start: int = 0
     # Paths of the links to which the link or geom options give a density
     links_path_with_density: set[tuple[str, ...]] = field(default_factory=set)
+    # The names and asset material names of every visual geom, which the visual geom options of the entity select on
+    vgeoms_name: list[str] = field(default_factory=list)
+    vgeoms_material_name: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -501,12 +504,12 @@ class KinematicEntityDescription(EntityDescription):
         )
         resolution = Resolution(solver_options, enable_mujoco_compatibility)
         desc._load_morph(morphs[0], resolution)
+        links_path = get_links_path(
+            [l_desc.name for l_desc in desc.links], [l_desc.parent_idx for l_desc in desc.links]
+        )
+        for link_index in options.links:
+            link_index.resolve(links_path)
         if isinstance(options, gs.entities.Rigid):
-            links_path = get_links_path(
-                [l_desc.name for l_desc in desc.links], [l_desc.parent_idx for l_desc in desc.links]
-            )
-            for link_index in options.links:
-                link_index.resolve(links_path)
             geoms_index = [
                 *options.geoms,
                 *(i_g for link_options in options.links.values() for i_g in link_options.geoms),
@@ -517,6 +520,23 @@ class KinematicEntityDescription(EntityDescription):
                         f"No collision geom of the entity matches {list(geom_index.names)}. Existing geoms: "
                         f"{resolution.geoms_name}."
                     )
+        vgeoms_index = [
+            *options.vgeoms,
+            *(i_vg for link_options in options.links.values() for i_vg in link_options.vgeoms),
+        ]
+        for vgeom_index in vgeoms_index:
+            if vgeom_index.names is not None and not any(map(vgeom_index.matches, resolution.vgeoms_name)):
+                gs.raise_exception(
+                    f"No visual geom of the entity matches {list(vgeom_index.names)}. Existing visual geoms: "
+                    f"{resolution.vgeoms_name}."
+                )
+            if vgeom_index.material_names is not None and not any(
+                map(vgeom_index.matches_material, resolution.vgeoms_material_name)
+            ):
+                gs.raise_exception(
+                    f"No visual geom of the entity has a material matching {list(vgeom_index.material_names)}. "
+                    f"Existing materials: {sorted(set(resolution.vgeoms_material_name) - {''})}."
+                )
         return desc
 
     def _load_morph(self, morph: Morph, resolution: Resolution):
@@ -1278,6 +1298,11 @@ class KinematicEntityDescription(EntityDescription):
         l_infos, links_j_infos, links_g_infos, _eqs_info = self._parse_scene(morph, resolution)
 
         # Add (link, joints, geoms) tuples sequentially
+        links_path = get_links_path(
+            [l_info["name"] for l_info in l_infos], [l_info["parent_idx"] for l_info in l_infos]
+        )
+        for l_info, link_path in zip(l_infos, links_path):
+            l_info["path"] = link_path
         for l_info, link_j_infos, link_g_infos in zip(l_infos, links_j_infos, links_g_infos):
             self._resolve_link(l_info, link_j_infos, link_g_infos, morph, resolution)
 
@@ -1544,7 +1569,9 @@ class KinematicEntityDescription(EntityDescription):
                             fields_options.append((link_geoms_fields[i_g], geom_options, target))
             conflicts = []
             for fields, options, target in fields_options:
-                for name, value in options.model_dump(exclude={"geoms"}, exclude_unset=True, exclude_none=True).items():
+                for name, value in options.model_dump(
+                    exclude={"geoms", "surface", "vgeoms"}, exclude_unset=True, exclude_none=True
+                ).items():
                     if name in fields:
                         conflicts.append(f"'{name}' of {target}")
                     else:
@@ -1559,6 +1586,58 @@ class KinematicEntityDescription(EntityDescription):
                     g_info["geom_options"] = gs.options.Geom(**geom_fields)
                     if g_info["geom_options"].rho is not None:
                         resolution.links_path_with_density.add(link_path)
+
+        # The surface the visual geom and link options give a visual geom replaces the one it was parsed with, which
+        # fills the textures the given surface leaves unset with those of the asset and of the entity surface. The
+        # visual geom options of the entity rank below the link options, which rank below the visual geom options of the
+        # links, as for the collision geoms, and two selections of one rank giving a surface to one target raise an
+        # error.
+        vgeoms_name = [g_info["vmesh"].metadata.get("name", "") for g_info in vg_infos]
+        vgeoms_material_name = [g_info["vmesh"].metadata.get("material_name", "") for g_info in vg_infos]
+        resolution.vgeoms_name += vgeoms_name
+        resolution.vgeoms_material_name += vgeoms_material_name
+        if vg_infos:
+            link_name = link_path[-1]
+            entity_vgeoms_surface, link_surface, link_vgeoms_surface = (
+                [None] * len(vg_infos),
+                [None],
+                [None] * len(vg_infos),
+            )
+            surfaces_options = [
+                (entity_vgeoms_surface, vgeom_index, vgeom_options)
+                for vgeom_index, vgeom_options in self.options.vgeoms.items()
+            ]
+            for link_index, link_options in self.options.links.items():
+                if link_index.matches(link_path):
+                    surfaces_options.append((link_surface, None, link_options))
+                    surfaces_options.extend(
+                        (link_vgeoms_surface, vgeom_index, vgeom_options)
+                        for vgeom_index, vgeom_options in link_options.vgeoms.items()
+                    )
+            for surfaces, vgeom_index, options in surfaces_options:
+                if options.surface is None:
+                    continue
+                targets_idx = [0] if vgeom_index is None else vgeom_index.resolve(vgeoms_name, vgeoms_material_name)
+                for i_target in targets_idx:
+                    if surfaces[i_target] is not None:
+                        target = (
+                            f"link '{link_name}'"
+                            if vgeom_index is None
+                            else f"visual geom {i_target} of link '{link_name}'"
+                        )
+                        gs.raise_exception(f"Two selections of equal specificity give 'surface' of {target}.")
+                    surfaces[i_target] = options.surface
+            for g_info, entity_surface, link_vgeom_surface in zip(vg_infos, entity_vgeoms_surface, link_vgeoms_surface):
+                surface = next(
+                    (
+                        surface
+                        for surface in (link_vgeom_surface, link_surface[0], entity_surface)
+                        if surface is not None
+                    ),
+                    None,
+                )
+                if surface is not None:
+                    g_info["vmesh"].set_surface(surface)
 
         # Post-process all collision meshes at once.
         # Destroying the original geometries should be avoided if possible as it will change the way objects

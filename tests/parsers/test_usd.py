@@ -96,9 +96,11 @@ def test_parse_nodegraph(usd_file):
 def test_usdz_packaged_texture_resolution(usdz_packaged_texture_usd):
     scene_file, texture_image = usdz_packaged_texture_usd
     usd_scene = build_usd_scene(scene_file, scale=1.0, vis_mode="visual", fixed=True)
-    texture = usd_scene.entities[0].vgeoms[0].vmesh.surface.diffuse_texture
-    assert isinstance(texture, gs.textures.ImageTexture)
-    assert_equal(texture.image_array, texture_image)
+    vgeom = usd_scene.entities[0].vgeoms[0]
+    assert isinstance(vgeom.vmesh.surface.diffuse_texture, gs.textures.ImageTexture)
+    assert_equal(vgeom.vmesh.surface.diffuse_texture.image_array, texture_image)
+    # A visual geom selection matches the material by its path in the stage, the package referencing it included
+    assert vgeom.metadata["material_name"] == "/world/asset/material"
 
 
 @pytest.mark.slow  # ~400s
@@ -571,10 +573,16 @@ def test_collision_filtering(collision_filtering_usd, show_viewer, caplog):
             ),
         ),
     )
-    with pytest.raises(gs.GenesisException, match="no link or geom options"):
+    with pytest.raises(gs.GenesisException, match="no link, geom or visual geom options"):
         scene.add_stage(
             options=gs.entities.Rigid(
                 morph=gs.morphs.USD(file=collision_filtering_usd), links={gs.LinkIndex.named("base"): gs.options.Link()}
+            )
+        )
+    with pytest.raises(gs.GenesisException, match="no link, geom or visual geom options"):
+        scene.add_stage(
+            options=gs.entities.Kinematic(
+                morph=gs.morphs.USD(file=collision_filtering_usd), vgeoms={gs.VGeomIndex.named("*"): gs.options.VGeom()}
             )
         )
     scene.build()
