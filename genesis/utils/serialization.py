@@ -153,9 +153,13 @@ def _field_check(cls: type, name: str) -> TypeAdapter:
 
 
 def _declared_fields(cls: type) -> dict[str, type]:
-    """Return the declared type of each field of a class. Those types drive how a value loads back."""
+    """Return the declared type of each field of a class. Those types drive how a value loads back.
+
+    The fields of options excluded from their dump hold what the options compute or are given at run time (the
+    kernels a material binds, the index a solver assigns), so a file leaves them out.
+    """
     if issubclass(cls, Options):
-        return {name: info.annotation for name, info in cls.model_fields.items()}
+        return {name: info.annotation for name, info in cls.model_fields.items() if not info.exclude}
     return typing.get_type_hints(cls)
 
 
@@ -393,7 +397,7 @@ def _export_value(value, expect, exported: "Exported"):
         if issubclass(type(value), Options):
             # An option object carries the names of the fields the user gave, since rebuilding one needs them. They
             # are sorted, so exporting the same scene twice gives the same file.
-            values = {"values": values, "given": sorted(value.model_fields_set)}
+            values = {"values": values, "given": sorted(value.model_fields_set.intersection(values))}
         return values if _accepted_classes(expect) == (type(value),) else {"@": type(value).__name__, **values}
     # A union mixing an option with a sequence of them, such as one morph or several, exports as the argument it holds
     deduced = _deduce_union(expect, value)
