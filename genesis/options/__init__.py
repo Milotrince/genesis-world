@@ -10,7 +10,6 @@ from .entities import (
     RigidLinkSolverOptions,
     SPHEntitySolverOptions,
     Vertex,
-    VGeom,
 )
 from .misc import CoacdOptions, FoamOptions
 from .profiling import ProfilingOptions
@@ -57,7 +56,6 @@ __all__ = [
     "SPHEntitySolverOptions",
     "SPHOptions",
     "Vertex",
-    "VGeom",
     "ViewerOptions",
     "VisOptions",
 ]

@@ -13,7 +13,7 @@ from genesis.engine.materials.base import Material
 from genesis.engine.materials.MPM.base import SamplerType
 from genesis.typing import FrozenDictType, NonNegativeFloat, PositiveFloat, PositiveInt, StrictInt, ValidFloat
 
-from .indices import GeomIndex, LinkIndex, VertexIndex, VGeomIndex
+from .indices import GeomIndex, LinkIndex, VertexIndex
 from .morphs import URDF, Mesh, Morph, Primitive
 from .options import Options
 from .solvers import FEMOptions, KinematicOptions, MPMOptions, PBDOptions, RigidOptions, SPHOptions
@@ -323,20 +323,6 @@ class Geom(_FrozenOptions):
         return self
 
 
-class VGeom(_FrozenOptions):
-    """Options of the visual geoms of a rigid or kinematic entity that a ``gs.VGeomIndex`` selects.
-
-    Parameters
-    ----------
-    surface : gs.surfaces.Surface | None, optional
-        The appearance of the selected visual geoms, which replaces that of their link and of the entity. The textures
-        it leaves unset keep those the asset and the surface of the entity give the geoms. If None, the geoms take the
-        surface of their link. Default is None.
-    """
-
-    surface: Surface | None = None
-
-
 class Link(_FrozenOptions):
     """Options of the links of a rigid entity that a ``gs.LinkIndex`` or link names select.
 
@@ -355,20 +341,12 @@ class Link(_FrozenOptions):
     use_visual_raycasting : bool | None, optional
         Whether to expose the visual mesh of the selected links to visual raycasting, as the option of the same name
         of the entity does for all of them. If None, the links take the value of the entity. Default is None.
-    surface : gs.surfaces.Surface | None, optional
-        The appearance of every visual geom of the selected links, which replaces that of the entity (see
-        ``gs.options.VGeom.surface``). If None, the links take the surface of the entity. Default is None.
-    vgeoms : dict[gs.VGeomIndex, gs.options.VGeom], optional
-        The options of visual geoms of each selected link, a ``gs.VGeomIndex`` counting the visual geoms of the link as
-        its asset splits them. They override the options of the link. Default is no visual geom options.
     """
 
     material: materials.Rigid | None = None
     geoms: FrozenDictType[GeomIndex, Geom] = {}
     solver_options: RigidLinkSolverOptions | None = None
     use_visual_raycasting: StrictBool | None = None
-    surface: Surface | None = None
-    vgeoms: FrozenDictType[VGeomIndex, VGeom] = {}
 
     @model_validator(mode="after")
     def _check_material(self) -> "Link":
@@ -385,45 +363,6 @@ class _ArticulatedEntity(BaseEntity[EntityT]):
 
     use_visual_raycasting: StrictBool = False
     links: Annotated[FrozenDictType[LinkIndex, Link], BeforeValidator(_key_links_by_index)] = {}
-    vgeoms: FrozenDictType[VGeomIndex, VGeom] = {}
-
-    @model_validator(mode="after")
-    def _check_vgeoms(self) -> "_ArticulatedEntity":
-        if any(
-            not vgeom_index.is_all and vgeom_index.names is None and vgeom_index.material_names is None
-            for vgeom_index in self.vgeoms
-        ) and not all(isinstance(morph, (Mesh, Primitive)) for morph in self.morphs):
-            gs.raise_exception(
-                "Visual geom options of an entity select visual geoms by ordinal only if its morph is a mesh or a "
-                "primitive. Select them with 'gs.VGeomIndex.all()', 'named' or 'with_material', or through the options "
-                "of their link instead."
-            )
-        return self
-
-    def get_vgeoms_surface(
-        self, link_path: tuple[str, ...], vgeoms_name: list[str], vgeoms_material_name: list[str]
-    ) -> list[Surface | None]:
-        """Return the surface the link and visual geom options give each visual geom of a link, or None where none.
-
-        'link_path' holds the names from the root of the kinematic tree down to the link (see ``gs.LinkIndex``), while
-        'vgeoms_name' and 'vgeoms_material_name' hold the names and the asset material names of the visual geoms of the
-        link as its asset splits them, which a ``gs.VGeomIndex`` counts and matches. The surface of the visual geom
-        options overrides that of the link options. Two selections of equal specificity giving a surface to one visual
-        geom raise an error.
-        """
-        link_name = link_path[-1]
-        link_fields = {}
-        vgeoms_options = list(self.vgeoms.items())
-        for link_index, link_options in self.links.items():
-            if link_index.matches(link_path):
-                _merge_fields(link_fields, link_options, f"link '{link_name}'", names=("surface",))
-                vgeoms_options.extend(link_options.vgeoms.items())
-        vgeoms_fields = [{} for _ in vgeoms_name]
-        for vgeom_index, vgeom_options in vgeoms_options:
-            if vgeom_options.surface is not None:
-                for i_vg in vgeom_index.resolve(vgeoms_name, vgeoms_material_name):
-                    _merge_fields(vgeoms_fields[i_vg], vgeom_options, f"visual geom {i_vg} of link '{link_name}'")
-        return [vgeom_fields.get("surface", link_fields.get("surface")) for vgeom_fields in vgeoms_fields]
 
     def get_link_use_visual_raycasting(self, link_path: tuple[str, ...]) -> bool:
         """Return whether a link exposes its visual mesh to visual raycasting.
@@ -585,14 +524,7 @@ class Kinematic(_ArticulatedEntity["KinematicEntity"]):
         stands for ``gs.LinkIndex.named(...)``. A link the asset parser merges into its parent has no name of its own,
         so keep it with the 'links_to_keep' option of the morph to select it. Two keys selecting one link stand at equal
         specificity whatever the number of links they name, so they cannot give one field. A kinematic entity takes
-        the 'use_visual_raycasting', 'surface' and 'vgeoms' of its link options alone. Default is no link options.
-    vgeoms : dict[gs.VGeomIndex, gs.options.VGeom], optional
-        The options of the visual geoms each key selects, which override the surface of the entity and of their link.
-        They stand at the specificity of the visual geom options of the links, so the two giving a surface to one
-        visual geom raise an error. ``gs.VGeomIndex.all()`` selects every visual geom of the entity, while
-        ``gs.VGeomIndex.named`` and ``gs.VGeomIndex.with_material`` select those of the given names or asset materials
-        in any of its links, raising if no link has one. A selection by ordinal requires a mesh or a primitive morph,
-        whose entity has a single link. Default is no visual geom options.
+        the 'use_visual_raycasting' of its link options alone. Default is no link options.
     """
 
     _solver_options_cls = KinematicOptions
