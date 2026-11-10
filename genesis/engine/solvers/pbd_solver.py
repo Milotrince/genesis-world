@@ -14,7 +14,6 @@ from genesis.engine.entities import (
     PBDParticleEntity,
 )
 from genesis.engine.entities.pbd_entity import PBDTetEntity
-from genesis.engine.materials.PBD import Cloth, Elastic, Particle
 from genesis.engine.state_change import StateChange, mutates
 from genesis.engine.states.solvers import PBDSolverState
 from genesis.utils.geom import SpatialHasher
@@ -350,9 +349,7 @@ class PBDSolver(ParticleSolver):
     def add_entity(
         self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, *, options, desc=None
     ) -> "PBD2DEntity | PBD3DEntity | PBDParticleEntity | PBDFreeParticleEntity":
-        if isinstance(material, Cloth):
-            names_used = ("stretch_compliance", "bending_compliance", "stretch_relaxation", "bending_relaxation")
-            names_used += ("air_resistance", "kinetic_friction")
+        if isinstance(material, gs.materials.PBD.Cloth):
             entity = PBD2DEntity(
                 scene=self.scene,
                 solver=self,
@@ -370,9 +367,7 @@ class PBDSolver(ParticleSolver):
                 options=options,
             )
 
-        elif isinstance(material, Elastic):
-            names_used = ("stretch_compliance", "volume_compliance", "stretch_relaxation", "volume_relaxation")
-            names_used += ("kinetic_friction",)
+        elif isinstance(material, gs.materials.PBD.Elastic):
             entity = PBD3DEntity(
                 scene=self.scene,
                 solver=self,
@@ -390,8 +385,7 @@ class PBDSolver(ParticleSolver):
                 options=options,
             )
 
-        elif not isinstance(material, Particle) and options.solver_options.particle_interaction:
-            names_used = ("sampler", "particle_interaction", "density_relaxation", "viscosity_relaxation")
+        elif isinstance(material, gs.materials.PBD.Liquid):
             entity = PBDParticleEntity(
                 scene=self.scene,
                 solver=self,
@@ -405,8 +399,7 @@ class PBDSolver(ParticleSolver):
                 options=options,
             )
 
-        else:
-            names_used = ("sampler", "particle_interaction")
+        elif isinstance(material, gs.materials.PBD.Particle):
             entity = PBDFreeParticleEntity(
                 scene=self.scene,
                 solver=self,
@@ -420,13 +413,9 @@ class PBDSolver(ParticleSolver):
                 options=options,
             )
 
-        # A kind of entity ignores the options of the others, which share one options class
-        names_ignored = sorted(options.solver_options.model_fields_set.difference(names_used))
-        if names_ignored:
-            gs.logger.warning(
-                f"A PBD entity of material {type(material).__name__} ignores the solver options given for another "
-                f"kind of PBD entity: {', '.join(names_ignored)}."
-            )
+        else:
+            raise NotImplementedError()
+
         self._entities.append(entity)
 
         return entity

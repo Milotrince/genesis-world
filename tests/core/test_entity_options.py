@@ -310,14 +310,6 @@ def test_selection_precedence(tmp_path, show_viewer, tol, two_box_free_mjcf, tor
             solver_options=gs.options.RigidEntitySolverOptions(coup_type="ipc_only"),
             links={"base": gs.options.Link(solver_options=gs.options.RigidLinkSolverOptions(needs_coup=False))},
         )
-    with pytest.raises(gs.GenesisException, match="coupled link"):
-        gs.entities.Hybrid(
-            morph=gs.morphs.URDF(file="urdf/simple/two_link_arm.urdf"),
-            material_soft=gs.materials.MPM.Muscle(),
-            solver_options=gs.options.HybridEntitySolverOptions(
-                rigid=gs.options.RigidEntitySolverOptions(coup_type="two_way_soft_constraint")
-            ),
-        )
 
     scene.build(n_envs=2)
     # The mass of each box is its volume, 0.2^3 m^3, times the density its geom options give

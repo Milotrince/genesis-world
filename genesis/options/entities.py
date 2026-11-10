@@ -14,7 +14,7 @@ from genesis.engine.materials.MPM.base import SamplerType
 from genesis.typing import FrozenDictType, NonNegativeFloat, PositiveFloat, PositiveInt, StrictInt, ValidFloat
 
 from .indices import GeomIndex, LinkIndex, VertexIndex
-from .morphs import URDF, Mesh, Morph, Primitive
+from .morphs import Mesh, Morph, Primitive
 from .options import Options
 from .solvers import FEMOptions, KinematicOptions, MPMOptions, PBDOptions, RigidOptions, SPHOptions
 from .surfaces import Surface
@@ -87,7 +87,7 @@ def _merge_material_fields(data: dict[str, Any], material_name: str, solver_opti
     'Material.get_entity_options_fields'), those of the solver options to the solver options under
     'solver_options_name'. The material stays as given, so it still reads the values of those fields. Giving a field
     two different values, one on each side, raises an error. A field given the same value twice is accepted, as entity
-    options rebuilt from their own fields (a scene file, a hybrid part) hold the value of the material in their solver
+    options rebuilt from their own fields (a scene file) hold the value of the material in their solver
     options as well, copied verbatim.
     """
     material = data.get(material_name)
@@ -804,78 +804,6 @@ class SPH(_EmittableParticles["SPHEntity"]):
         return SPHMaterialParams(stiffness=material.stiffness, viscosity=material.mu, surface_tension=material.gamma)
 
 
-class PBDMaterialParams(NamedTuple):
-    """The parameters of a cloth or an elastic material as the PBD solver simulates it, the defaults filled in.
-
-    The density is a mass per unit area for a cloth, in kg/m^2, and a mass per unit volume otherwise, in kg/m^3. The
-    static friction coefficient holds a sticking particle, and the kinetic one slows a sliding particle.
-    """
-
-    density: float
-    static_friction: float
-    kinetic_friction: float
-
-
-class PBDEntitySolverOptions(_FrozenOptions):
-    """Options of the position-based dynamics (PBD) solver specific to one entity.
-
-    The material of the entity decides which options apply (see ``gs.entities.PBD``), and an option given explicitly
-    for another kind of entity is ignored with a warning. A compliance is the inverse stiffness of a constraint: 0
-    makes it rigid, and a larger value lets it give way. A relaxation scales each correction of a constraint: a smaller
-    value weakens it but converges more smoothly.
-
-    Parameters
-    ----------
-    stretch_compliance : float | None, optional
-        The compliance of the edges against stretching, in m/N, for a sheet or a volume. If None, 1e-7 for a sheet and
-        0.0 for a volume. Default is None.
-    bending_compliance : float, optional
-        The compliance of a sheet against bending, in rad/N. Default is 1e-5.
-    volume_compliance : float, optional
-        The compliance of the elements of a volume against a change of volume, in m^3/N. Default is 0.0.
-    stretch_relaxation : float | None, optional
-        The relaxation of the stretching constraints of a sheet or a volume. If None, 0.3 for a sheet and 0.1 for a
-        volume. Default is None.
-    bending_relaxation : float, optional
-        The relaxation of the bending constraints of a sheet. Default is 0.1.
-    volume_relaxation : float, optional
-        The relaxation of the volume constraints of a volume. Default is 0.1.
-    air_resistance : float, optional
-        The damping of the particle velocities of a sheet by air drag. A larger value slows the fall and the swing of
-        the sheet. Default is 1e-3.
-    kinetic_friction : float | None, optional
-        The friction coefficient of a particle of a sheet or a volume sliding on a contact, the friction of the
-        material holding a particle that sticks. A smaller value lets the entity slide on more easily once it moves.
-        If None, the static friction of the material. Default is None.
-    sampler : gs.particle_sampler, optional
-        How the morph of a liquid is filled with particles. 'regular' lays them on a grid, 'random' scatters them
-        uniformly, and 'pbs' spreads them evenly by Poisson disk sampling. Default is 'pbs'.
-    particle_interaction : bool, optional
-        Whether the particles of a liquid interact with each other. False makes them free particles moved by external
-        forces alone, the cheapest particle entity, at the cost of any volume or cohesion: use it for particle effects
-        and animations. Default is True.
-    density_relaxation : float, optional
-        The relaxation of the constraint keeping the density of an interacting liquid at rest. A larger value keeps the
-        volume more constant but converges less smoothly. Default is 0.2.
-    viscosity_relaxation : float, optional
-        The relaxation of the viscosity of an interacting liquid, which smooths the velocities of neighboring
-        particles. A larger value damps the flow more, as honey does. Default is 0.01.
-    """
-
-    stretch_compliance: NonNegativeFloat | None = None
-    bending_compliance: NonNegativeFloat = 1e-5
-    volume_compliance: NonNegativeFloat = 0.0
-    stretch_relaxation: ValidFloat | None = None
-    bending_relaxation: ValidFloat = 0.1
-    volume_relaxation: ValidFloat = 0.1
-    air_resistance: NonNegativeFloat = 1e-3
-    kinetic_friction: NonNegativeFloat | None = None
-    sampler: gs.particle_sampler = gs.particle_sampler.pbs
-    particle_interaction: StrictBool = True
-    density_relaxation: ValidFloat = 0.2
-    viscosity_relaxation: ValidFloat = 0.01
-
-
 class PBD(_EmittableParticles["PBDBaseEntity"]):
     """Options of an entity the position-based dynamics (PBD) solver simulates, whose material decides its kind.
 
@@ -883,75 +811,18 @@ class PBD(_EmittableParticles["PBDBaseEntity"]):
     finite element method (FEM), the material point method (MPM) and smoothed particle hydrodynamics (SPH) offer at a
     higher cost. A Cloth material makes a sheet, such as a towel or a flag, remeshed to the particle size of the
     solver. An Elastic material makes a soft solid on a volume mesh. A Liquid material makes a liquid of incompressible
-    particles, each interacting with its neighbors so that the cost grows with the particle count, or free particles
-    (see 'particle_interaction'). A Particle material makes free particles. Parameters follow
-    ``gs.entities.BaseEntity``, plus the following.
+    particles, each interacting with its neighbors so that the cost grows with the particle count. A Particle material
+    makes free particles. Parameters follow ``gs.entities.BaseEntity``, plus the following.
 
     Parameters
     ----------
     material : gs.materials.PBD.Base
-        The material of the entity, one of ``gs.materials.PBD.Cloth``, ``Elastic``, ``Liquid`` or ``Particle``. Its
-        deprecated fields, given explicitly, set the solver options they stand for.
-    solver_options : PBDEntitySolverOptions, optional
-        The options of the PBD solver specific to the entity, among which its stiffness. Defaults to
-        ``PBDEntitySolverOptions()``.
+        The material of the entity, one of ``gs.materials.PBD.Cloth``, ``Elastic``, ``Liquid`` or ``Particle``.
     """
 
     _solver_options_cls = PBDOptions
 
     material: materials.PBD.Base
-    solver_options: PBDEntitySolverOptions = Field(default_factory=PBDEntitySolverOptions)
-
-    @model_validator(mode="after")
-    def _check_material(self) -> "PBD":
-        solver_options = self.solver_options
-        if (
-            isinstance(self.material, materials.PBD.Particle)
-            and "particle_interaction" in solver_options.model_fields_set
-            and solver_options.particle_interaction
-        ):
-            gs.raise_exception("gs.entities.PBD cannot honour particle_interaction=True for a Particle material.")
-        return self
-
-    @property
-    def material_params(self) -> PBDMaterialParams:
-        """The parameters of a sheet or a volume, the kinetic friction coefficient defaulting to the static one."""
-        material, kinetic_friction = self.material, self.solver_options.kinetic_friction
-        if kinetic_friction is None:
-            kinetic_friction = material.static_friction
-        return PBDMaterialParams(material.rho, material.static_friction, kinetic_friction)
-
-    @property
-    def stretch_params(self) -> tuple[float, float]:
-        """The compliance and the relaxation of the stretching constraints, the defaults of its kind filled in."""
-        solver_options = self.solver_options
-        is_sheet = isinstance(self.material, materials.PBD.Cloth)
-        compliance = solver_options.stretch_compliance
-        if compliance is None:
-            compliance = 1e-7 if is_sheet else 0.0
-        relaxation = solver_options.stretch_relaxation
-        if relaxation is None:
-            relaxation = 0.3 if is_sheet else 0.1
-        return compliance, relaxation
-
-
-class HybridEntitySolverOptions(_FrozenOptions):
-    """Options of the solvers simulating the two parts of a hybrid entity.
-
-    Parameters
-    ----------
-    rigid : RigidEntitySolverOptions, optional
-        The options of the rigid solver specific to the skeleton. The 'needs_coup' of a URDF skeleton follows
-        'use_default_coupling' of the hybrid entity, and must equal it if given. Defaults to
-        ``RigidEntitySolverOptions()``.
-    soft : MPMEntitySolverOptions, optional
-        The options of the material point method (MPM) solver specific to the skin. Its 'n_groups' can be given under
-        'use_default_coupling' alone, since the skin otherwise has one muscle group per link it follows. Defaults to
-        ``MPMEntitySolverOptions()``.
-    """
-
-    rigid: RigidEntitySolverOptions = Field(default_factory=RigidEntitySolverOptions)
-    soft: MPMEntitySolverOptions = Field(default_factory=MPMEntitySolverOptions)
 
 
 class Hybrid(BaseEntity["HybridEntity"]):
@@ -964,16 +835,10 @@ class Hybrid(BaseEntity["HybridEntity"]):
 
     Parameters
     ----------
-    material_rigid : gs.materials.Rigid, optional
-        The material of the skeleton. Its deprecated fields, given explicitly, set the rigid solver options and the
-        gravity compensation they stand for. Defaults to ``gs.materials.Rigid()``.
+    material_rigid : gs.materials.Rigid
+        The material of the skeleton.
     material_soft : gs.materials.MPM.Base
-        The material of the skin, a ``gs.materials.MPM.Muscle`` letting each link actuate its own group. Its
-        deprecated fields, given explicitly, set the MPM solver options they stand for.
-    solver_options : HybridEntitySolverOptions, optional
-        The options of the solvers simulating both parts. Defaults to ``HybridEntitySolverOptions()``.
-    gravity_compensation : float, optional
-        The fraction of gravity cancelled on the skeleton, 1.0 letting it float. Default is 0.0.
+        The material of the skin, a ``gs.materials.MPM.Muscle`` letting each link actuate its own group.
     use_default_coupling : bool, optional
         Whether the skin and the skeleton interact through the coupler of the scene alone. Otherwise, the skin follows
         the links it is associated with, which holds it in place far more firmly. Default is False.
@@ -995,10 +860,8 @@ class Hybrid(BaseEntity["HybridEntity"]):
         follows its closest link. Default is None.
     """
 
-    material_rigid: materials.Rigid = Field(default_factory=materials.Rigid)
+    material_rigid: materials.Rigid
     material_soft: materials.MPM.Base
-    solver_options: HybridEntitySolverOptions = Field(default_factory=HybridEntitySolverOptions)
-    gravity_compensation: ValidFloat = 0.0
     use_default_coupling: StrictBool = False
     damping: NonNegativeFloat = 0.0
     thickness: ValidFloat = 0.05
@@ -1006,81 +869,3 @@ class Hybrid(BaseEntity["HybridEntity"]):
     func_instantiate_rigid_from_soft: Callable | None = Field(default=None, exclude=True)
     func_instantiate_soft_from_rigid: Callable | None = Field(default=None, exclude=True)
     func_instantiate_rigid_soft_association: Callable | None = Field(default=None, exclude=True)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _merge_deprecated_parts_fields(cls, data: Any) -> Any:
-        if not isinstance(data, dict):
-            return data
-        solver_options = data.get("solver_options")
-        if isinstance(solver_options, Options):
-            solver_options = {name: value for name, value in solver_options if name in solver_options.model_fields_set}
-        parts_fields = dict(solver_options or {})
-        # The hybrid entity decides these fields of its parts itself, so it ignores them on a material
-        decided_names = {
-            "rigid": ("needs_coup",) if isinstance(data.get("morph"), URDF) else (),
-            "soft": () if data.get("use_default_coupling", False) else ("n_groups",),
-        }
-        for material_name, part_name in (("material_rigid", "rigid"), ("material_soft", "soft")):
-            if material_name not in data:
-                continue
-            given_solver_options = parts_fields.get(part_name)
-            if isinstance(given_solver_options, Options):
-                given_solver_options = {
-                    name: value for name, value in given_solver_options if name in given_solver_options.model_fields_set
-                }
-            part_fields = _merge_material_fields(
-                {material_name: data[material_name], part_name: given_solver_options}, material_name, part_name
-            )
-            data = {**data, material_name: part_fields.pop(material_name)}
-            part_solver_fields = part_fields.pop(part_name)
-            if part_solver_fields is not None:
-                given_names = (given_solver_options or {}).keys()
-                parts_fields[part_name] = {
-                    name: value
-                    for name, value in part_solver_fields.items()
-                    if name in given_names or name not in decided_names[part_name]
-                }
-            for name, value in part_fields.items():
-                if name != "gravity_compensation":
-                    gs.raise_exception(f"gs.entities.Hybrid cannot honour '{name}' of its {material_name}.")
-                if name in data and data[name] != value:
-                    gs.raise_exception(f"'{name}' is given both to the entity options and to the material.")
-                data[name] = value
-        if parts_fields:
-            data["solver_options"] = parts_fields
-        return data
-
-    @model_validator(mode="after")
-    def _check_parts(self) -> "Hybrid":
-        rigid, soft = self.solver_options.rigid, self.solver_options.soft
-        if isinstance(self.morph, URDF) and "needs_coup" in rigid.model_fields_set:
-            if rigid.needs_coup != self.use_default_coupling:
-                gs.raise_exception(
-                    "The URDF skeleton of a hybrid entity interacts with its skin through the coupler exactly when "
-                    f"'use_default_coupling' is set, got needs_coup={rigid.needs_coup} and "
-                    f"use_default_coupling={self.use_default_coupling}."
-                )
-        if not self.use_default_coupling:
-            _reject_fields(self, soft, ("n_groups",), ", which is one per link the skin follows")
-        # Each part is an entity of its own, whose options reject what its solver cannot honour
-        for part_options_cls, material, solver_options in (
-            (Rigid, self.material_rigid, self.rigid_solver_options),
-            (MPM, self.material_soft, soft),
-        ):
-            try:
-                part_options_cls(morph=self.morph, material=material, solver_options=solver_options)
-            except gs.GenesisException as e:
-                gs.raise_exception_from(f"Invalid part of a hybrid entity: {e}", e)
-        return self
-
-    @property
-    def rigid_solver_options(self) -> RigidEntitySolverOptions:
-        """The solver options the skeleton is built with.
-
-        A URDF skeleton interacts with its skin through the coupler exactly when 'use_default_coupling' is set.
-        """
-        rigid = self.solver_options.rigid
-        if isinstance(self.morph, URDF):
-            rigid = rigid.model_copy(update={"needs_coup": self.use_default_coupling})
-        return rigid

@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING
 
 from pydantic import StrictBool
 
@@ -14,8 +14,6 @@ if TYPE_CHECKING:
 class Hybrid(Material["HybridEntity"]):
     """
     The class for hybrid body material (soft skin actuated by inner rigid skeleton).
-
-    ``Scene.add_entity`` turns it into the options of a hybrid entity (see ``gs.entities.Hybrid``).
 
     Parameters
     ----------
@@ -38,8 +36,6 @@ class Hybrid(Material["HybridEntity"]):
     func_instantiate_rigid_soft_association : callable, optional
         The function that determines the association of the rigid and the soft body. Default is None.
     """
-
-    _entity_options_name: ClassVar[str] = "gs.entities.Hybrid"
 
     material_rigid: Material = ...
     material_soft: Material = ...

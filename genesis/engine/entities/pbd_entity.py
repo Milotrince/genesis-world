@@ -9,7 +9,6 @@ import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
 from genesis.engine.entities.particle_entity import ParticleEntity
-from genesis.engine.materials.PBD import Cloth
 
 
 class PBDBaseEntity(ParticleEntity):
@@ -165,19 +164,18 @@ class PBDTetEntity(PBDBaseEntity):
             material_type=self._material_type,
             mass=float(self._particle_mass),
             rho_rest=0.0,
-            mu_s=self._options.material_params.static_friction,
-            mu_k=self._options.material_params.kinetic_friction,
-            air_resistance=self._options.solver_options.air_resistance if isinstance(self._material, Cloth) else 0.0,
+            mu_s=self.material.static_friction,
+            mu_k=self.material.kinetic_friction,
+            air_resistance=self.material.air_resistance if isinstance(self.material, gs.materials.PBD.Cloth) else 0.0,
             density_relaxation=0.0,
             viscosity_relaxation=0.0,
             particles=self._particles,
         )
-        stretch_compliance, stretch_relaxation = self._options.stretch_params
         self._solver.add_edges(
             self._edge_start,
             self._particle_start,
-            stretch_compliance,
-            stretch_relaxation,
+            self.material.stretch_compliance,
+            self.material.stretch_relaxation,
             self._edges,
             self._edges_len_rest,
         )
@@ -302,7 +300,7 @@ class PBD2DEntity(PBDTetEntity):
 
         if self._vmesh.area < 1e-6:
             gs.raise_exception("Input mesh has zero surface area.")
-        self._mass = self._vmesh.area * self._options.material_params.density
+        self._mass = self._vmesh.area * self.material.rho
 
         self._particles = np.asarray(self._mesh.verts, dtype=gs.np_float)
         self._init_particles_offset = torch.tensor(
@@ -332,8 +330,8 @@ class PBD2DEntity(PBDTetEntity):
         self._solver.add_inner_edges(
             self._inner_edge_start,
             self._particle_start,
-            self._options.solver_options.bending_compliance,
-            self._options.solver_options.bending_relaxation,
+            self.material.bending_compliance,
+            self.material.bending_relaxation,
             self._inner_edges,
             self._inner_edges_len_rest,
         )
@@ -420,7 +418,7 @@ class PBD3DEntity(PBDTetEntity):
 
         if self._vmesh.volume < 1e-6:
             gs.raise_exception("Input mesh has zero volume.")
-        self._mass = self._vmesh.volume * self._options.material_params.density
+        self._mass = self._vmesh.volume * self.material.rho
 
         tet_cfg = mu.generate_tetgen_config_from_morph(self.morph)
         particles, elems, *_ = self._mesh.tetrahedralize(tet_cfg)
@@ -456,8 +454,8 @@ class PBD3DEntity(PBDTetEntity):
         self._solver.add_elems(
             self._elem_start,
             self._particle_start,
-            self._options.solver_options.volume_compliance,
-            self._options.solver_options.volume_relaxation,
+            self.material.volume_compliance,
+            self.material.volume_relaxation,
             self._elems,
             self._elems_vol_rest,
         )
@@ -542,8 +540,8 @@ class PBDParticleEntity(PBDBaseEntity):
             mu_s=0.0,
             mu_k=0.0,
             air_resistance=0.0,
-            density_relaxation=self._options.solver_options.density_relaxation,
-            viscosity_relaxation=self._options.solver_options.viscosity_relaxation,
+            density_relaxation=self.material.density_relaxation,
+            viscosity_relaxation=self.material.viscosity_relaxation,
             particles=self._particles,
         )
 

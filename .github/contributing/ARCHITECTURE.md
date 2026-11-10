@@ -87,7 +87,7 @@ Materials define physical properties, each material belonging to one solver. Eac
 gs.materials.Rigid(rho=1000)
 gs.materials.MPM.Elastic(E=1e5, nu=0.3)
 gs.materials.SPH.Liquid(mu=0.01)
-gs.materials.PBD.Cloth(rho=4.0)
+gs.materials.PBD.Cloth(stretch_compliance=0.0)
 ```
 
 Location: `genesis/engine/materials/`

@@ -115,7 +115,7 @@ class ParticleEntity(Entity):
 
     def init_sampler(self):
         """
-        Initialize the particle sampling strategy from the sampler the entity options resolve to.
+        Initialize the particle sampling strategy from the entity options, or from the material of a PBD entity.
 
         Raises
         ------
@@ -124,8 +124,10 @@ class ParticleEntity(Entity):
         """
         if isinstance(self._options, gs.entities.MPM):
             self.sampler = self._options.material_params.sampler
-        else:
+        elif isinstance(self._options, gs.entities.SPH):
             self.sampler = self._options.solver_options.sampler
+        else:
+            self.sampler = self._material.sampler
 
         match self.sampler.split("-"):
             case ["regular"]:
