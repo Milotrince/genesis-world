@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Any, ClassVar
 
-import genesis as gs
 from genesis.options.options import Options
+from genesis.utils.warnings import warn_once
 
 if TYPE_CHECKING:
     from genesis.engine.entities.base_entity import Entity
@@ -26,38 +26,40 @@ class Material[EntityT: "Entity"](Options):
     _entity_names: ClassVar[tuple[str, ...]] = ()
     _solver_options_names: ClassVar[tuple[str, ...]] = ()
 
-    def model_post_init(self, context: Any) -> None:
-        super().model_post_init(context)
-        names = sorted(self.model_fields_set.intersection(self.get_entity_options_names()))
-        if names:
-            gs.logger.warning(
-                f"Setting {', '.join(map(repr, names))} on 'gs.materials' is deprecated and will be removed. Pass "
-                f"'options={self._entity_options_name}(...)' to 'add_entity' and set them there instead."
-            )
+    def __deepcopy__(self, memo: dict[int, Any] | None = None) -> "Material":
+        # A material binds its kernels to itself as it is built, so a copy is built anew from the fields given
+        # explicitly rather than holding the kernels of the original. The fields the solver sets are left out.
+        return type(self)(
+            **{
+                name: value
+                for name, value in self
+                if name in self.model_fields_set and not type(self).model_fields[name].exclude
+            }
+        )
 
     @classmethod
     def get_entity_options_names(cls) -> tuple[str, ...]:
         """Return the names of the deprecated fields, which state options of the entity rather than of its material."""
         return (*cls._entity_names, *cls._solver_options_names)
 
-    def split_entity_options_fields(self) -> tuple["Material", dict[str, Any]]:
-        """Split off the deprecated fields given explicitly, as the fields of the entity options they stand for.
+    def get_entity_options_fields(self) -> dict[str, Any]:
+        """Return the fields of the entity options that the deprecated fields given explicitly stand for, with a warning.
 
-        Return the material holding the other fields given explicitly, and the fields of the entity options, those of
-        the solver options gathered under 'solver_options'.
+        The fields of the solver options are gathered under 'solver_options'.
         """
-        if self.model_fields_set.isdisjoint(self.get_entity_options_names()):
-            return self, {}
-        fields, solver_fields, material_fields = {}, {}, {}
+        fields, solver_fields = {}, {}
         for name, value in self:
-            if name not in self.model_fields_set:
-                continue
-            if name in self._entity_names:
-                fields[name] = value
-            elif name in self._solver_options_names:
-                solver_fields[name] = value
-            else:
-                material_fields[name] = value
+            if name in self.model_fields_set:
+                if name in self._entity_names:
+                    fields[name] = value
+                elif name in self._solver_options_names:
+                    solver_fields[name] = value
         if solver_fields:
             fields["solver_options"] = solver_fields
-        return type(self)(**material_fields), fields
+        if fields:
+            names = sorted(self.model_fields_set.intersection(self.get_entity_options_names()))
+            warn_once(
+                f"Setting {', '.join(map(repr, names))} on 'gs.materials' is deprecated and will be removed. Pass "
+                f"'options={self._entity_options_name}(...)' to 'add_entity' and set them there instead."
+            )
+        return fields

@@ -246,11 +246,6 @@ class mpm_model(StrEnum):
     neohookean = enum.auto()
 
 
-class yield_criterion(StrEnum):
-    von_mises = enum.auto()
-    stretch_clamp = enum.auto()
-
-
 # how the IPC coupler couples a rigid entity
 class coup_type(StrEnum):
     two_way_soft_constraint = enum.auto()

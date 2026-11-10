@@ -86,8 +86,8 @@ class Rigid(Kinematic["RigidEntity"]):
     coup_collision_links: StrArrayType | None = None
     contact_resistance: PositiveFloat | None = None
 
-    def split_entity_options_fields(self) -> tuple["Rigid", dict[str, Any]]:
-        material, fields = super().split_entity_options_fields()
+    def get_entity_options_fields(self) -> dict[str, Any]:
+        fields = super().get_entity_options_fields()
         solver_fields = fields.pop("solver_options", {})
         links_solver_fields: dict[str, dict[str, bool]] = {}
         for field_name, flag_name in (("coup_links", "needs_coup"), ("coup_collision_links", "enable_coup_collision")):
@@ -103,4 +103,4 @@ class Rigid(Kinematic["RigidEntity"]):
             fields["solver_options"] = solver_fields
         if links_solver_fields:
             fields["links"] = {name: {"solver_options": flags} for name, flags in links_solver_fields.items()}
-        return material, fields
+        return fields

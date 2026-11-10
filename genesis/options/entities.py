@@ -84,7 +84,7 @@ def _merge_material_fields(data: dict[str, Any], material_name: str, solver_opti
     """Return the fields given to entity options, completed by the deprecated fields of one of their materials.
 
     The material under 'material_name' hands over the fields of the entity options it states (see
-    'Material.split_entity_options_fields'), those of the solver options to the solver options under
+    'Material.get_entity_options_fields'), those of the solver options to the solver options under
     'solver_options_name'. The material stays as given, so it still reads the values of those fields. Giving a field
     two different values, one on each side, raises an error. A field given the same value twice is accepted, as entity
     options rebuilt from their own fields (a scene file, a hybrid part) hold the value of the material in their solver
@@ -93,7 +93,7 @@ def _merge_material_fields(data: dict[str, Any], material_name: str, solver_opti
     material = data.get(material_name)
     if not isinstance(material, Material):
         return data
-    _, fields = material.split_entity_options_fields()
+    fields = material.get_entity_options_fields()
     if not fields:
         return data
     data = dict(data)

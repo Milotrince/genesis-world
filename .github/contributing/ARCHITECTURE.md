@@ -81,7 +81,7 @@ Location: `genesis/options/morphs.py`
 
 ## Materials
 
-Materials define physical properties, each material belonging to one solver. Each entity options class admits the materials of its solver, and the numerical choices of that solver for the entity go in its `solver_options`. A material field that the solver options state as well, such as the `model` of `gs.materials.FEM.Elastic`, is deprecated: given explicitly, it warns and sets the solver option it stands for (see `Material.split_entity_options_fields`).
+Materials define physical properties, each material belonging to one solver. Each entity options class admits the materials of its solver, and the numerical choices of that solver for the entity go in its `solver_options`. A material field that the solver options state as well, such as the `model` of `gs.materials.FEM.Elastic`, is deprecated: given explicitly, it warns and sets the solver option it stands for (see `Material.get_entity_options_fields`).
 
 ```python
 gs.materials.Rigid(rho=1000)

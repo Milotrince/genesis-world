@@ -12,7 +12,6 @@ import quadrants as qd
 import genesis as gs
 import genesis.utils.simt as su
 from genesis.engine.entities.fem_entity import FEMEntity
-from genesis.engine.solvers.fem_models import FEM_MODEL_CLS_BY_MATERIAL, FEMModel
 from genesis.engine.solvers.rigid.data import LinksState
 from genesis.engine.state_change import StateChange, mutates
 from genesis.engine.states.solvers import FEMSolverState
@@ -70,10 +69,8 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
         # use scaled volume for better numerical stability, similar to p_vol_scale in mpm
         self._vol_scale = float(1e4)
 
-        # The constitutive models of the entities, dispatched statically, one per model class and model (see
-        # 'FEMModel')
-        self._models: list[FEMModel] = []
-        self._models_key: list[tuple[type[FEMModel], str | None]] = []
+        # materials
+        self._mats = list()
 
         # lazy initialization
         self._constraints_initialized = False
@@ -386,8 +383,8 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
             for entity in self._entities:
                 entity._add_to_solver()
 
-        for model in self._models:
-            model.build(self)
+        for mat in self._mats:
+            mat.build(self)
 
         if self.n_elements_max > 0:
             self._init_surface_info()
@@ -469,27 +466,26 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
         # Imported here to avoid a circular dependency (see 'substep_pre_coupling')
         from genesis.engine.couplers import IPCCoupler
 
-        # The IPC coupler simulates the elements itself, otherwise each solver supports some of the models alone. A Cloth
-        # material has no constitutive model of its own.
-        model = None if isinstance(material, gs.materials.FEM.Cloth) else options.solver_options.model
-        if not isinstance(self._sim.coupler, IPCCoupler):
-            if self._use_implicit_solver and model == gs.fem_model.stable_neohookean:
-                gs.raise_exception(
-                    "Model 'stable_neohookean' requires the explicit solver ('use_implicit_solver=False')."
-                )
-            if not self._use_implicit_solver and model == gs.fem_model.linear_corotated:
-                gs.raise_exception(
-                    "Model 'linear_corotated' requires the implicit solver ('use_implicit_solver=True')."
-                )
-        # The model of a new key is registered once the entity is accepted, so a refused entity leaves the solver as it was
-        model_cls = next(
-            FEM_MODEL_CLS_BY_MATERIAL[material_cls]
-            for material_cls in type(material).__mro__
-            if material_cls in FEM_MODEL_CLS_BY_MATERIAL
-        )
-        model_key = (model_cls, model)
-        is_new_model = model_key not in self._models_key
-        model_idx = len(self._models_key) if is_new_model else self._models_key.index(model_key)
+        # The solver simulates a copy of the material holding the constitutive model of the solver options. The IPC
+        # coupler simulates the elements itself, otherwise each solver supports some of the models alone.
+        if not isinstance(material, gs.materials.FEM.Cloth):
+            model = options.solver_options.model
+            if not isinstance(self._sim.coupler, IPCCoupler):
+                if self._use_implicit_solver and model == gs.fem_model.stable_neohookean:
+                    gs.raise_exception(
+                        "Model 'stable_neohookean' requires the explicit solver ('use_implicit_solver=False')."
+                    )
+                if not self._use_implicit_solver and model == gs.fem_model.linear_corotated:
+                    gs.raise_exception(
+                        "Model 'linear_corotated' requires the implicit solver ('use_implicit_solver=True')."
+                    )
+            material_fields = {name: value for name, value in material if name in material.model_fields_set}
+            material = type(material)(**{**material_fields, "model": model.value})
+
+        # The kernels dispatch on the index of the material among the distinct ones, so each one is registered and built
+        # once, whatever the number of entities sharing it. A new material is registered once the entity is accepted,
+        # so a refused entity leaves the solver as it was.
+        material.idx = next((mat.idx for mat in self._mats if material == mat), len(self._mats))
 
         # create entity
         entity = FEMEntity(
@@ -499,7 +495,6 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
             morph=morph,
             surface=surface,
             idx=idx,
-            model_idx=model_idx,
             v_start=self.n_vertices,
             el_start=self.n_elements,
             s_start=self.n_surfaces,
@@ -517,9 +512,8 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
                 )
             self._enable_vertex_constraints = True
 
-        if is_new_model:
-            self._models_key.append(model_key)
-            self._models.append(model_cls(model))
+        if material.idx == len(self._mats):
+            self._mats.append(material)
         self._entities.append(entity)
         return entity
 
@@ -543,12 +537,12 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
         actu = self.elements_el[f, i_e, i_b].actu
         m_dir = self.elements_i[i_e].muscle_direction
         stress = qd.Matrix.zero(gs.qd_float, 3, 3)
-        for mat_idx in qd.static(range(len(self._models))):
+        for mat_idx in qd.static(range(len(self._mats))):
             if self.elements_i[i_e].mat_idx == mat_idx:
                 if qd.static(self._use_implicit_solver):
-                    _, stress = self._models[mat_idx].compute_energy_gradient(i_e, i_b, mu, lam, J, F, actu, m_dir)
+                    _, stress = self._mats[mat_idx].compute_energy_gradient(i_e, i_b, mu, lam, J, F, actu, m_dir)
                 else:
-                    stress = self._models[mat_idx].update_stress(mu, lam, J, F, actu, m_dir)
+                    stress = self._mats[mat_idx].update_stress(mu, lam, J, F, actu, m_dir)
         H = -self.elements_i[i_e].V * stress @ self.elements_i[i_e].B.transpose()
         return qd.Matrix.cols([H[:, 0], H[:, 1], H[:, 2], -H[:, 0] - H[:, 1] - H[:, 2]])
 
@@ -594,9 +588,9 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
     def precompute_material_data(self, f: qd.i32):
         for i_b, i_e in qd.ndrange(self._B, self.n_elements):
             J, F = self._compute_ele_J_F(f, i_e, i_b)  # use last time step's pos to compute
-            for mat_idx in qd.static(range(len(self._models))):
+            for mat_idx in qd.static(range(len(self._mats))):
                 if self.elements_i[i_e].mat_idx == mat_idx:
-                    self._models[mat_idx].pre_compute(i_e, i_b, J, F, self.elements_i[i_e].muscle_direction)
+                    self._mats[mat_idx].pre_compute(i_e, i_b, J, F, self.elements_i[i_e].muscle_direction)
 
     @qd.kernel
     def init_pos_and_inertia(self, f: qd.i32, links_state: LinksState):
@@ -654,9 +648,9 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
         m_dir = self.elements_i[i_e].muscle_direction
         energy = gs.qd_float(0.0)
         gradient = qd.Matrix.zero(gs.qd_float, 3, 3)
-        for mat_idx in qd.static(range(len(self._models))):
+        for mat_idx in qd.static(range(len(self._mats))):
             if self.elements_i[i_e].mat_idx == mat_idx:
-                energy, gradient = self._models[mat_idx].compute_energy_gradient(i_e, i_b, mu, lam, J, F, actu, m_dir)
+                energy, gradient = self._mats[mat_idx].compute_energy_gradient(i_e, i_b, mu, lam, J, F, actu, m_dir)
         if qd.static(self._damping_beta > gs.EPS):
             damping_beta_over_dt = self._damping_beta / self._substep_dt
             i_vs = self.elements_i[i_e].el2v
@@ -714,9 +708,9 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
         mu = self.elements_i[i_e].mu
         lam = self.elements_i[i_e].lam
         dP = qd.Matrix.zero(gs.qd_float, 3, 3)
-        for mat_idx in qd.static(range(len(self._models))):
+        for mat_idx in qd.static(range(len(self._mats))):
             if self.elements_i[i_e].mat_idx == mat_idx:
-                dP = self._models[mat_idx].hessian_product(i_e, i_b, mu, lam, dF)
+                dP = self._mats[mat_idx].hessian_product(i_e, i_b, mu, lam, dF)
         return dF, dP
 
     @qd.func
@@ -748,9 +742,9 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
             lam = self.elements_i[i_e].lam
             actu = self.elements_el[f, i_e, i_b].actu
             m_dir = self.elements_i[i_e].muscle_direction
-            for mat_idx in qd.static(range(len(self._models))):
+            for mat_idx in qd.static(range(len(self._mats))):
                 if self.elements_i[i_e].mat_idx == mat_idx:
-                    self.elements_el_energy[i_b, i_e].energy = self._models[mat_idx].compute_energy(
+                    self.elements_el_energy[i_b, i_e].energy = self._mats[mat_idx].compute_energy(
                         i_e, i_b, mu, lam, J, F, actu, m_dir
                     )
 
@@ -1327,9 +1321,9 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
             actu = self.elements_el[f, i_e, i_b].actu
             m_dir = self.elements_i[i_e].muscle_direction
             F_start_grad = qd.Matrix.zero(gs.qd_float, 3, 3)
-            for mat_idx in qd.static(range(len(self._models))):
+            for mat_idx in qd.static(range(len(self._mats))):
                 if self.elements_i[i_e].mat_idx == mat_idx:
-                    F_start_grad = self._models[mat_idx].pre_compute_grad(
+                    F_start_grad = self._mats[mat_idx].pre_compute_grad(
                         i_e, i_b, mu, lam, F_start, F, dF_damping, gradient_grad, actu, m_dir
                     )
             # F_start = D B, D holding the positions of the first three vertices relative to the last in its columns

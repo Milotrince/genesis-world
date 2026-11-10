@@ -507,7 +507,6 @@ from .constants import (
     particle_sampler,
     fem_model,
     mpm_model,
-    yield_criterion,
     coup_type,
 )
 

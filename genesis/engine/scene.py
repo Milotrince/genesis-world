@@ -418,7 +418,7 @@ class Scene(RBC):
                 )
             elif isinstance(material, gs.materials.Kinematic) and not isinstance(material, gs.materials.Rigid):
                 options_cls = gs.entities.Kinematic
-                entity_fields.update(material.split_entity_options_fields()[1])
+                entity_fields.update(material.get_entity_options_fields())
             else:
                 options_classes = get_entity_options_cls(material)
                 if len(options_classes) != 1:
