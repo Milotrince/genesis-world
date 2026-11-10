@@ -551,12 +551,17 @@ class Scene(RBC):
                 )
             if options.name is not None:
                 gs.raise_exception("A stage adds several entities, so its options take no name.")
-            if isinstance(options, gs.entities.Rigid) and (
-                options.links or any(not geom_index.is_all for geom_index in options.geoms)
+            if (
+                options.links
+                or any(not vgeom_index.is_all for vgeom_index in options.vgeoms)
+                or (
+                    isinstance(options, gs.entities.Rigid)
+                    and any(not geom_index.is_all for geom_index in options.geoms)
+                )
             ):
                 gs.raise_exception(
                     "A stage adds entities of different links, so its options take no link options and select geoms "
-                    "with 'gs.GeomIndex.all()' alone."
+                    "and visual geoms with 'gs.GeomIndex.all()' and 'gs.VGeomIndex.all()' alone."
                 )
             morph = options.morph
         if not isinstance(morph, gs.morphs.USD):

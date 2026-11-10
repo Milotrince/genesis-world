@@ -12,7 +12,7 @@ from genesis.engine import materials
 from genesis.engine.materials.base import Material
 from genesis.typing import FrozenDictType
 
-from .indices import GeomIndex, LinkIndex, VertexIndex
+from .indices import GeomIndex, LinkIndex, VertexIndex, VGeomIndex
 from .morphs import Mesh, Morph, Primitive
 from .options import Options
 from .solvers import FEMOptions, KinematicOptions, MPMOptions, PBDOptions, RigidOptions, SPHOptions
@@ -34,13 +34,14 @@ if TYPE_CHECKING:
 EntityT = TypeVar("EntityT", bound="Entity")
 
 
-def _merge_fields(fields: dict, options: Options, target: str) -> None:
+def _merge_fields(fields: dict, options: Options, target: str, names: tuple[str, ...] | None = None) -> None:
     """Add the fields given explicitly in 'options' to 'fields', raising on a field already given for 'target'.
 
-    A field given as None leaves the value to the scope above, as one left unset does.
+    A field given as None leaves the value to the scope above, as one left unset does. 'names' restricts the merge to
+    these fields, the others being resolved apart.
     """
     for name, value in options:
-        if name not in options.model_fields_set or value is None:
+        if name not in options.model_fields_set or value is None or (names is not None and name not in names):
             continue
         if name in fields:
             gs.raise_exception(f"Two selections of equal specificity give '{name}' of {target}.")
@@ -186,8 +187,22 @@ class Geom(_FrozenOptions):
         return self
 
 
+class VGeom(_FrozenOptions):
+    """Options of the visual geoms of a rigid or kinematic entity that a ``gs.VGeomIndex`` selects.
+
+    Parameters
+    ----------
+    surface : gs.surfaces.Surface | None, optional
+        The appearance of the selected visual geoms, which replaces that of their link and of the entity. The textures
+        it leaves unset keep those the asset and the surface of the entity give the geoms. If None, the geoms take the
+        surface of their link. Default is None.
+    """
+
+    surface: Surface | None = None
+
+
 class Link(_FrozenOptions):
-    """Options of the links of a rigid entity that a ``gs.LinkIndex`` or link names select.
+    """Options of the links of a rigid or kinematic entity that a ``gs.LinkIndex`` or link names select.
 
     Parameters
     ----------
@@ -198,10 +213,18 @@ class Link(_FrozenOptions):
     geoms : dict[gs.GeomIndex, gs.options.Geom], optional
         The options of collision geoms of each selected link, a ``gs.GeomIndex`` counting the collision geoms of the
         link as its asset states them. They override the options of the link. Default is no geom options.
+    surface : gs.surfaces.Surface | None, optional
+        The appearance of every visual geom of the selected links, which replaces that of the entity (see
+        ``gs.options.VGeom.surface``). If None, the links take the surface of the entity. Default is None.
+    vgeoms : dict[gs.VGeomIndex, gs.options.VGeom], optional
+        The options of visual geoms of each selected link, a ``gs.VGeomIndex`` counting the visual geoms of the link as
+        its asset splits them. They override the options of the link. Default is no visual geom options.
     """
 
     material: materials.Rigid | None = None
     geoms: FrozenDictType[GeomIndex, Geom] = {}
+    surface: Surface | None = None
+    vgeoms: FrozenDictType[VGeomIndex, VGeom] = {}
 
     @model_validator(mode="after")
     def _check_material(self) -> "Link":
@@ -210,11 +233,59 @@ class Link(_FrozenOptions):
         return self
 
 
-class Rigid(BaseEntity["RigidEntity"]):
+class _ArticulatedEntity(BaseEntity[EntityT]):
+    """Options shared by the entities made of links connected by joints, rigid and kinematic alike.
+
+    See ``gs.entities.Kinematic`` for the parameters they add to ``gs.entities.BaseEntity``.
+    """
+
+    links: Annotated[FrozenDictType[LinkIndex, Link], BeforeValidator(_key_links_by_index)] = {}
+    vgeoms: FrozenDictType[VGeomIndex, VGeom] = {}
+
+    @model_validator(mode="after")
+    def _check_vgeoms(self) -> "_ArticulatedEntity":
+        if any(
+            not vgeom_index.is_all and vgeom_index.names is None and vgeom_index.material_names is None
+            for vgeom_index in self.vgeoms
+        ) and not all(isinstance(morph, (Mesh, Primitive)) for morph in self.morphs):
+            gs.raise_exception(
+                "Visual geom options of an entity select visual geoms by ordinal only if its morph is a mesh or a "
+                "primitive. Select them with 'gs.VGeomIndex.all()', 'named' or 'with_material', or through the options "
+                "of their link instead."
+            )
+        return self
+
+    def get_vgeoms_surface(
+        self, link_path: tuple[str, ...], vgeoms_name: list[str], vgeoms_material_name: list[str]
+    ) -> list[Surface | None]:
+        """Return the surface the link and visual geom options give each visual geom of a link, or None where none.
+
+        'link_path' holds the names from the root of the kinematic tree down to the link (see ``gs.LinkIndex``), while
+        'vgeoms_name' and 'vgeoms_material_name' hold the names and the asset material names of the visual geoms of the
+        link as its asset splits them, which a ``gs.VGeomIndex`` counts and matches. The surface of the visual geom
+        options overrides that of the link options. Two selections of equal specificity giving a surface to one visual
+        geom raise an error.
+        """
+        link_name = link_path[-1]
+        link_fields = {}
+        vgeoms_options = list(self.vgeoms.items())
+        for link_index, link_options in self.links.items():
+            if link_index.matches(link_path):
+                _merge_fields(link_fields, link_options, f"link '{link_name}'", names=("surface",))
+                vgeoms_options.extend(link_options.vgeoms.items())
+        vgeoms_fields = [{} for _ in vgeoms_name]
+        for vgeom_index, vgeom_options in vgeoms_options:
+            if vgeom_options.surface is not None:
+                for i_vg in vgeom_index.resolve(vgeoms_name, vgeoms_material_name):
+                    _merge_fields(vgeoms_fields[i_vg], vgeom_options, f"visual geom {i_vg} of link '{link_name}'")
+        return [vgeom_fields.get("surface", link_fields.get("surface")) for vgeom_fields in vgeoms_fields]
+
+
+class Rigid(_ArticulatedEntity["RigidEntity"]):
     """Options of a rigid entity, which the rigid solver simulates with contacts, joints and constraints.
 
     Use it for every entity whose motion follows from physics. Its links collide, so every geom adds to the cost of
-    collision detection and constraint solving. Parameters follow ``gs.entities.BaseEntity``, plus the following.
+    collision detection and constraint solving. Parameters follow ``gs.entities.Kinematic``, plus the following.
 
     Parameters
     ----------
@@ -223,12 +294,6 @@ class Rigid(BaseEntity["RigidEntity"]):
     visualize_contact : bool, optional
         Whether to draw the contact forces applied to the entity as arrows in the viewer and rendered images. Each
         arrow is drawn every frame, so reserve it for the entities being inspected. Default is False.
-    links : dict[gs.LinkIndex | str | tuple[str, ...], gs.options.Link], optional
-        The options of the links each key selects, which override the material of the entity. A name or a tuple of
-        names stands for ``gs.LinkIndex.named(...)``. A link the asset parser merges into its parent has no name of
-        its own, so keep it with the 'links_to_keep' option of the morph to select it. Two keys selecting one link
-        stand at equal specificity whatever the number of links they name, so they cannot give one field. Default is
-        no link options.
     geoms : dict[gs.GeomIndex, gs.options.Geom], optional
         The options of the collision geoms each key selects, which override those of the entity and the material of
         the links. They stand at the specificity of the geom options of the links, so the two giving one field of one
@@ -243,7 +308,6 @@ class Rigid(BaseEntity["RigidEntity"]):
 
     material: materials.Rigid = Field(default_factory=materials.Rigid)
     visualize_contact: StrictBool = False
-    links: Annotated[FrozenDictType[LinkIndex, Link], BeforeValidator(_key_links_by_index)] = {}
     geoms: FrozenDictType[GeomIndex, Geom] = {}
 
     @model_validator(mode="after")
@@ -302,7 +366,7 @@ class Rigid(BaseEntity["RigidEntity"]):
         ]
 
 
-class Kinematic(BaseEntity["KinematicEntity"]):
+class Kinematic(_ArticulatedEntity["KinematicEntity"]):
     """Options of a kinematic entity, which follows the poses it is given and takes no part in physics.
 
     Use it for a ghost or a reference motion: forward kinematics is all it costs, while it collides with nothing and
@@ -312,12 +376,35 @@ class Kinematic(BaseEntity["KinematicEntity"]):
     ----------
     material : gs.materials.Kinematic, optional
         The material of the entity, which a rigid material cannot stand for. Defaults to ``gs.materials.Kinematic()``.
+    links : dict[gs.LinkIndex | str | tuple[str, ...], gs.options.Link], optional
+        The options of the links each key selects, which override those of the entity. A name or a tuple of names
+        stands for ``gs.LinkIndex.named(...)``. A link the asset parser merges into its parent has no name of its own,
+        so keep it with the 'links_to_keep' option of the morph to select it. Two keys selecting one link stand at equal
+        specificity whatever the number of links they name, so they cannot give one field. A kinematic entity takes
+        the 'surface' and 'vgeoms' of its link options alone. Default is no link options.
+    vgeoms : dict[gs.VGeomIndex, gs.options.VGeom], optional
+        The options of the visual geoms each key selects, which override the surface of the entity and of their link.
+        They stand at the specificity of the visual geom options of the links, so the two giving a surface to one
+        visual geom raise an error. ``gs.VGeomIndex.all()`` selects every visual geom of the entity, while
+        ``gs.VGeomIndex.named`` and ``gs.VGeomIndex.with_material`` select those of the given names or asset materials
+        in any of its links, raising if no link has one. A selection by ordinal requires a mesh or a primitive morph,
+        whose entity has a single link. Default is no visual geom options.
     """
 
     _solver_options_cls = KinematicOptions
     _excluded_materials = (materials.Rigid,)
 
     material: materials.Kinematic = Field(default_factory=materials.Kinematic)
+
+    @model_validator(mode="after")
+    def _check_links(self) -> "Kinematic":
+        for link_options in self.links.values():
+            if link_options.material is not None or link_options.geoms:
+                gs.raise_exception(
+                    "gs.entities.Kinematic cannot honour the material and the geoms of link options, which take no "
+                    "physics."
+                )
+        return self
 
 
 class FEMVertexSolverOptions(_FrozenOptions):

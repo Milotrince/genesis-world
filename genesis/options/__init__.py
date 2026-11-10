@@ -3,6 +3,7 @@ from .entities import (
     Geom,
     Link,
     Vertex,
+    VGeom,
 )
 from .misc import CoacdOptions, FoamOptions
 from .profiling import ProfilingOptions
@@ -42,6 +43,7 @@ __all__ = [
     "SimOptions",
     "SPHOptions",
     "Vertex",
+    "VGeom",
     "ViewerOptions",
     "VisOptions",
 ]
