@@ -569,9 +569,17 @@ def test_load_rejects_damaged_file(checkpoint_scene, tmp_path):
     gs.Scene.load(exported)
 
     # A file exported before entity options existed holds none, and its entities take the options of their material.
+    # A batch texture it holds stands for the texture of its single entry.
     manifest = deepcopy(original)
     for entity in manifest["held"]["scene"]["entities"]:
         del entity["options"]
+    surface = manifest["held"]["scene"]["entities"][1]["surface"]["values"]
+    surface["diffuse_texture"] = {
+        "@": "BatchTexture",
+        "values": {"textures": [{"@": "ColorTexture", "values": {"color": [0.2, 0.4, 0.6]}, "given": ["color"]}]},
+        "given": ["textures"],
+    }
+    manifest["schema"]["BatchTexture"] = ["textures"]
     for name in [name for name in manifest["schema"] if name.startswith("entities.")]:
         del manifest["schema"][name]
     manifest["schema"]["RigidEntityDescription"].remove("options")
@@ -580,6 +588,7 @@ def test_load_rejects_damaged_file(checkpoint_scene, tmp_path):
         for name, content in members.items():
             archive.writestr(name, content)
     scene = gs.Scene.load(exported)
+    assert_allclose(scene.entities[1].surface.diffuse_texture.color, (0.2, 0.4, 0.6), tol=gs.EPS)
     for entity, entity_authored in zip(scene.entities, checkpoint_scene.entities):
         assert type(entity.options) is type(entity_authored.options)
         assert entity.material == entity_authored.material

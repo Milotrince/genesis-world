@@ -23,10 +23,12 @@ from genesis.typing import (
     UnitIntervalArrayType,
 )
 from genesis.utils.serialization import Exporting, Loading, SerializationMixin
+from genesis.utils.warnings import warn_once
 
 from .options import Options
 
 
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".bmp", ".webp", ".hdr", ".exr")
 HDR_EXTENSIONS = (".hdr", ".exr")
 
 
@@ -374,6 +376,180 @@ class ImageTexture(Texture, SerializationMixin):
             encoding=raw["encoding"],
             is_batched=raw.get("is_batched", False),
         )
+
+
+def stack_textures(textures: Sequence["ColorTexture | ImageTexture"]) -> "ColorTexture | ImageTexture":
+    """Return the batched texture whose entries are the given textures that are not batched.
+
+    Colors stack into a batched color, and images of one factor and one encoding into a batched image of that factor.
+    Otherwise, each entry turns into an image of the resolution of the first image, its factor applied to its pixels,
+    since a batched image holds one factor for all its entries.
+    """
+    if all(isinstance(texture, ColorTexture) for texture in textures):
+        return ColorTexture(color=[texture.color for texture in textures], is_batched=True)
+    first = next(texture for texture in textures if isinstance(texture, ImageTexture))
+    if all(
+        isinstance(texture, ImageTexture)
+        and texture.encoding == first.encoding
+        and len(texture.image_color) == len(first.image_color)
+        and np.allclose(texture.image_color, first.image_color, atol=gs.EPS)
+        for texture in textures
+    ):
+        return ImageTexture(
+            image_array=[texture.image_array for texture in textures],
+            image_color=first.image_color,
+            encoding=first.encoding,
+            is_batched=True,
+        )
+    images = []
+    for texture in textures:
+        if isinstance(texture, ImageTexture):
+            image = texture.image_array if texture.image_array.ndim == 3 else texture.image_array[..., None]
+            images.append(np.round(image * np.array(texture.image_color)).astype(np.uint8))
+        else:
+            images.append(
+                np.full((*first.image_array.shape[:2], len(texture.color)), mu.color_f32_to_u8(texture.color), np.uint8)
+            )
+    return ImageTexture(image_array=images, is_batched=True)
+
+
+class BatchTexture(Texture):
+    """
+    A batch of textures for batch rendering, environment i showing texture i modulo their number.
+
+    Deprecated: give a batched texture instead, ``ImageTexture(..., is_batched=True)`` or
+    ``ColorTexture(..., is_batched=True)``. A surface given a batch texture holds the batched texture it stands for in
+    its place (see 'to_batched').
+
+    Parameters
+    ----------
+    textures : list[Texture | None]
+        List of textures, each a ``ColorTexture`` or an ``ImageTexture``, or None for white.
+    """
+
+    textures: Annotated[list[Texture | None], BeforeValidator(list)] = Field(default_factory=list)
+
+    def model_post_init(self, context) -> None:
+        super().model_post_init(context)
+        warn_once(
+            "gs.textures.BatchTexture is deprecated and will be removed in a future release. Give a batched texture "
+            "instead: 'gs.textures.ImageTexture(..., is_batched=True)' or "
+            "'gs.textures.ColorTexture(..., is_batched=True)'."
+        )
+
+    @staticmethod
+    def from_images(
+        image_paths: Sequence[str] | None = None,
+        image_folder: str | None = None,
+        image_arrays: Sequence[np.ndarray] | None = None,
+        image_colors: Sequence[float] | Sequence[Sequence[float] | None] | None = None,
+        encoding: Literal["srgb", "linear"] = "srgb",
+    ) -> "BatchTexture":
+        """
+        Create a batch texture from images.
+
+        Parameters
+        ----------
+        image_paths : list[str], optional
+            List of paths to the image files.
+        image_folder : str, optional
+            Path to the image folder.
+        image_arrays : list[np.ndarray], optional
+            List of image arrays.
+        image_colors : list[float | list[float]], optional
+            List of color factors that will be multiplied with the base color, stored as tuple. Default is None.
+        encoding : str, optional
+            The encoding way of the image. Possible values are ['srgb', 'linear']. Default is 'srgb'.
+
+            - 'srgb': Encoding of some RGB images.
+            - 'linear': All generic images, such as opacity, roughness and normal, should be encoded with 'linear'.
+        """
+        image_sources = (image_paths, image_folder, image_arrays)
+        if sum(x is not None for x in image_sources) != 1:
+            gs.raise_exception("Please set exactly one of `image_paths`, `image_folder`, `image_arrays`.")
+
+        image_textures = []
+        if image_folder is not None:
+            input_image_folder = image_folder
+            if not os.path.exists(image_folder):
+                image_folder = os.path.join(gs.utils.get_assets_dir(), image_folder)
+            if not os.path.exists(image_folder):
+                gs.raise_exception(
+                    f"Directory not found in either current directory or assets directory: '{input_image_folder}'."
+                )
+            image_paths = [
+                os.path.join(image_folder, image_path)
+                for image_path in sorted(os.listdir(image_folder))
+                if image_path.lower().endswith(IMAGE_EXTENSIONS)
+            ]
+
+        if image_paths is not None:
+            num_images = len(image_paths)
+        else:
+            assert image_arrays is not None
+            num_images = len(image_arrays)
+        if num_images == 0:
+            gs.raise_exception("No images found.")
+
+        if image_colors is not None:
+            if isinstance(image_colors[0], float):  # list[float]
+                image_colors = [image_colors for _ in range(num_images)]
+            else:  # list[list[float]]
+                if len(image_colors) != num_images:
+                    gs.raise_exception("The number of image colors must be the same as the number of images.")
+        else:
+            image_colors = [None] * num_images
+        assert image_colors is not None
+
+        if image_paths is not None:
+            for image_path, image_color in zip(image_paths, image_colors):
+                image_textures.append(ImageTexture(image_path=image_path, image_color=image_color, encoding=encoding))
+        else:
+            assert image_arrays is not None
+            for image_array, image_color in zip(image_arrays, image_colors):
+                image_textures.append(ImageTexture(image_array=image_array, image_color=image_color, encoding=encoding))
+
+        return BatchTexture(textures=image_textures)
+
+    @staticmethod
+    def from_colors(
+        colors: Sequence[Sequence[float]],
+    ) -> "BatchTexture":
+        """
+        Create a batch texture from colors.
+
+        Parameters
+        ----------
+        colors : list[list[float]]
+            List of colors.
+        """
+        return BatchTexture(textures=[ColorTexture(color=color) for color in colors])
+
+    def merge(self, other: "BatchTexture") -> None:
+        self.textures.extend(other.textures)
+
+    def to_batched(self) -> "ColorTexture | ImageTexture":
+        """Return the batched texture whose entries are the textures of the batch, as a surface holds it.
+
+        A batch of one texture stands for that texture alone, as every environment shows it. A texture left as None is
+        white. An image read from an HDR or EXR file has no pixels to batch, so it raises an error in a batch of
+        several textures. A batched image keeps the path of each image it was read from.
+        """
+        if not self.textures:
+            gs.raise_exception("A batch texture holds no texture.")
+        textures = [ColorTexture() if texture is None else texture for texture in self.textures]
+        if len(textures) == 1:
+            return textures[0]
+        for texture in textures:
+            if not isinstance(texture, (ColorTexture, ImageTexture)) or texture.is_batched:
+                gs.raise_exception(f"A batch texture holds colors and images alone, got {type(texture).__name__}.")
+            if isinstance(texture, ImageTexture) and texture.image_array is None:
+                gs.raise_exception(f"A batch of several textures takes no HDR image, got '{texture.image_path}'.")
+        batched = stack_textures(textures)
+        images_path = [texture.image_path if isinstance(texture, ImageTexture) else None for texture in textures]
+        if isinstance(batched, ImageTexture) and None not in images_path:
+            batched = batched.model_copy(update={"image_path": tuple(images_path)})
+        return batched
 
 
 class _ImagelessTexture(Texture):

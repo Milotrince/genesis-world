@@ -12,7 +12,7 @@ from genesis.utils.cache import OwnedCache, get_hashkey
 
 from .misc import FoamOptions
 from .options import Options
-from .textures import ColorTexture, DynamicTexture, ImageTexture, Texture
+from .textures import BatchTexture, ColorTexture, DynamicTexture, ImageTexture, Texture, stack_textures
 
 MetalType = Literal["aluminium", "gold", "copper", "brass", "iron", "titanium", "vanadium", "lithium"]
 
@@ -139,6 +139,13 @@ class Surface(Options):
 
         return data
 
+    def model_post_init(self, context: Any) -> None:
+        super().model_post_init(context)
+        # A deprecated batch texture, given or read from a scene file, gives way to the batched texture it stands for
+        for name, value in dict(self).items():
+            if isinstance(value, BatchTexture):
+                setattr(self, name, value.to_batched())
+
     @model_validator(mode="after")
     def _check_dynamic_textures(self) -> Self:
         for name, value in self:
@@ -164,8 +171,13 @@ class Surface(Options):
     def requires_uv(self) -> bool:
         return False
 
-    def get_rgba(self) -> Texture:
-        return _make_rgba(_resolve_albedo(self.texture, self.emission), None)
+    def get_rgba(self, batch: bool = False) -> Texture | BatchTexture:
+        """Return the color and opacity of the surface as one RGBA texture, the one the renderers draw.
+
+        A batched texture gives a batched RGBA texture. 'batch' returns a ``gs.textures.BatchTexture`` of its entries
+        instead, which is deprecated.
+        """
+        return _make_rgba(_resolve_albedo(self.texture, self.emission), None, batch)
 
     def update_texture(
         self,
@@ -250,25 +262,6 @@ def _get_entries(texture: Texture | None) -> list[Texture | None]:
     return [texture]
 
 
-def _stack_entries(textures: list[Texture]) -> Texture:
-    """Return the batched texture whose entries are the given textures that are not batched.
-
-    Colors stack into a batched color. Otherwise, each entry turns into an image of the resolution of the first image,
-    its factor applied to its pixels, since a batched image holds one factor for all its entries.
-    """
-    if all(isinstance(texture, ColorTexture) for texture in textures):
-        return ColorTexture(color=[texture.color for texture in textures], is_batched=True)
-    shape = next(texture.image_array.shape[:2] for texture in textures if isinstance(texture, ImageTexture))
-    images = []
-    for texture in textures:
-        if isinstance(texture, ImageTexture):
-            image = texture.image_array if texture.image_array.ndim == 3 else texture.image_array[..., None]
-            images.append(np.round(image * np.array(texture.image_color)).astype(np.uint8))
-        else:
-            images.append(np.full((*shape, len(texture.color)), mu.color_f32_to_u8(texture.color), dtype=np.uint8))
-    return ImageTexture(image_array=images, is_batched=True)
-
-
 def _resolve_albedo(base_texture: Texture | None, emissive_texture: Texture | None) -> Texture | None:
     # Packed RGBA feeds renderers that read it as base color, so prefer the base-color texture. Fall back to emissive
     # only when the base is absent or fully black, which keeps zero-base-factor assets (visible imagery authored into
@@ -287,13 +280,15 @@ def _resolve_albedo(base_texture: Texture | None, emissive_texture: Texture | No
         # rather than a wrapper built anew on each call, whose entry would be released and computed again each time.
         if len(resolved) == len(base_batch) and all(r is b for r, b in zip(resolved, base_batch)):
             return base_texture
-        return _stack_entries(resolved)
+        return stack_textures(resolved)
     if base_texture is not None and not base_texture.is_black:
         return base_texture
     return emissive_texture if emissive_texture is not None else base_texture
 
 
-def _make_rgba(color_texture: Texture | None, opacity_texture: Texture | None) -> Texture:
+def _make_rgba(
+    color_texture: Texture | None, opacity_texture: Texture | None, batch: bool = False
+) -> Texture | BatchTexture:
     # The image of a dynamic texture is written at runtime and holds its own opacity
     if isinstance(color_texture, DynamicTexture):
         return color_texture
@@ -301,7 +296,7 @@ def _make_rgba(color_texture: Texture | None, opacity_texture: Texture | None) -
     input_textures = [texture for texture in (color_texture, opacity_texture) if texture is not None]
     # TODO: Identical pixels loaded from distinct files are not shared, since 'image_path' is part of the key. Sharing
     # them requires texture-specific hashing, which 'get_hashkey' leaves out to stay generic.
-    cache_key = get_hashkey(color_texture, opacity_texture)
+    cache_key = get_hashkey(color_texture, opacity_texture, batch)
     result = _RGBA_CACHE.find(cache_key)
     if result is None:
         color_textures, opacity_textures = _get_entries(color_texture), _get_entries(opacity_texture)
@@ -356,10 +351,14 @@ def _make_rgba(color_texture: Texture | None, opacity_texture: Texture | None) -
 
             rgba_textures.append(rgba_texture)
 
-        result = _stack_entries(rgba_textures) if is_batched else rgba_textures[0]
+        if batch:
+            result = BatchTexture(textures=rgba_textures)
+        else:
+            result = stack_textures(rgba_textures) if is_batched else rgba_textures[0]
         # Read-only like the textures they are merged from (see '_COLOR_TEXTURES_CACHE')
-        if isinstance(result, ImageTexture):
-            result.image_array.flags.writeable = False
+        for rgba_texture in result.textures if batch else (result,):
+            if isinstance(rgba_texture, ImageTexture):
+                rgba_texture.image_array.flags.writeable = False
     for texture in input_textures:
         _RGBA_CACHE.own(texture, cache_key, result)
     return result
@@ -526,8 +525,8 @@ class Metal(Surface):
             )
         )
 
-    def get_rgba(self) -> Texture:
-        return _make_rgba(_resolve_albedo(self.texture, self.emission), self.opacity_texture)
+    def get_rgba(self, batch: bool = False) -> Texture | BatchTexture:
+        return _make_rgba(_resolve_albedo(self.texture, self.emission), self.opacity_texture, batch)
 
     @model_validator(mode="after")
     def _post_init(self) -> Self:
@@ -616,8 +615,8 @@ class Plastic(Surface):
             )
         )
 
-    def get_rgba(self) -> Texture:
-        return _make_rgba(_resolve_albedo(self.texture, self.emission), self.opacity_texture)
+    def get_rgba(self, batch: bool = False) -> Texture | BatchTexture:
+        return _make_rgba(_resolve_albedo(self.texture, self.emission), self.opacity_texture, batch)
 
     @model_validator(mode="after")
     def _post_init(self) -> Self:
@@ -712,8 +711,8 @@ class BSDF(Surface):
             )
         )
 
-    def get_rgba(self) -> Texture:
-        return _make_rgba(_resolve_albedo(self.texture, self.emission), self.opacity_texture)
+    def get_rgba(self, batch: bool = False) -> Texture | BatchTexture:
+        return _make_rgba(_resolve_albedo(self.texture, self.emission), self.opacity_texture, batch)
 
     @model_validator(mode="after")
     def _post_init(self) -> Self:
