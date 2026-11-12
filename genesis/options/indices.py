@@ -158,8 +158,9 @@ class _NamedOrdinalIndex(_OrdinalIndex):
 
     @model_validator(mode="after")
     def _check_single_selection(self) -> Self:
-        if sum(selection is not None for selection in (self.ordinals, self.mask, self.span, self.names)) != 1:
-            gs.raise_exception(f"{type(self).__name__} takes one of ordinals, a mask, a span and names.")
+        # Every field of a geom selection is one way of selecting, so exactly one of them holds a value
+        if sum(value is not None for value in self.__dict__.values()) != 1:
+            gs.raise_exception(f"{type(self).__name__} takes one of {', '.join(type(self).model_fields)}.")
         return self
 
     @classmethod
@@ -190,13 +191,10 @@ class _NamedOrdinalIndex(_OrdinalIndex):
         geom of the whole entity raises when the entity is added, and so does an ordinal out of range.
         """
         if self.names is None:
-            return self._resolve_link_ordinals(len(geoms_name), geoms_start, n_geoms)
+            ordinals = self._resolve_ordinals(n_geoms, "geom")
+            is_in_link = (ordinals >= geoms_start) & (ordinals < geoms_start + len(geoms_name))
+            return ordinals[is_in_link] - geoms_start
         return np.flatnonzero([self.matches(geom_name) for geom_name in geoms_name]).astype(gs.np_int, copy=False)
-
-    def _resolve_link_ordinals(self, n_link_geoms: int, geoms_start: int, n_geoms: int) -> np.ndarray:
-        ordinals = self._resolve_ordinals(n_geoms, "geom")
-        is_in_link = (ordinals >= geoms_start) & (ordinals < geoms_start + n_link_geoms)
-        return ordinals[is_in_link] - geoms_start
 
 
 class GeomIndex(_NamedOrdinalIndex):
@@ -222,13 +220,6 @@ class VGeomIndex(_NamedOrdinalIndex):
 
     material_names: Annotated[StrArrayType, Field(min_length=1)] | None = None
 
-    @model_validator(mode="after")
-    def _check_single_selection(self) -> Self:
-        selections = (self.ordinals, self.mask, self.span, self.names, self.material_names)
-        if sum(selection is not None for selection in selections) != 1:
-            gs.raise_exception("VGeomIndex takes one of ordinals, a mask, a span, names and material names.")
-        return self
-
     @classmethod
     def with_material(cls, *names: str) -> Self:
         """Select the visual geoms whose asset material has one of the given names, each exact or a glob pattern."""
@@ -246,12 +237,9 @@ class VGeomIndex(_NamedOrdinalIndex):
         An ordinal counts 'n_vgeoms' visual geoms, of which those of the link start at 'vgeoms_start' (see
         ``GeomIndex.resolve``). A selection by name or by material may match no visual geom of a link.
         """
-        if self.material_names is not None:
-            is_selected = [self.matches_material(material_name) for material_name in vgeoms_material_name]
-        elif self.names is not None:
-            is_selected = [self.matches(vgeom_name) for vgeom_name in vgeoms_name]
-        else:
-            return self._resolve_link_ordinals(len(vgeoms_name), vgeoms_start, n_vgeoms)
+        if self.material_names is None:
+            return super().resolve(vgeoms_name, vgeoms_start, n_vgeoms)
+        is_selected = [self.matches_material(material_name) for material_name in vgeoms_material_name]
         return np.flatnonzero(is_selected).astype(gs.np_int, copy=False)
 
 

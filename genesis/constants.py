@@ -207,8 +207,9 @@ class IMAGE_TYPE(IntEnum):
         return self.name
 
 
-# surface maps a dynamic texture binds to
 class TEXTURE_MAP_TYPE(IntEnum):
+    """The surface map a dynamic texture binds to."""
+
     DIFFUSE = 0
     EMISSIVE = 1
 
