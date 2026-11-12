@@ -248,24 +248,28 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
                 plane_size=(1.0, 1.0),
                 fixed=True,
             ),
-            vgeoms={
-                gs.VGeomIndex.all(): gs.options.VGeom(
-                    surface=gs.surfaces.Rough(
-                        diffuse_texture=gs.textures.DynamicTexture(
-                            resolution=(8, 8),
-                            variants=(
-                                gs.textures.AssetTexture(),
-                                gs.textures.AssetTexture(
-                                    is_batched=True,
-                                ),
-                                gs.textures.ColorTexture(
-                                    color=(1.0, 1.0, 1.0),
-                                    is_batched=True,
+            links={
+                gs.LinkIndex.named("*"): gs.options.Link(
+                    vgeoms={
+                        gs.VGeomIndex.at(0): gs.options.VGeom(
+                            surface=gs.surfaces.Rough(
+                                diffuse_texture=gs.textures.DynamicTexture(
+                                    resolution=(8, 8),
+                                    variants=(
+                                        gs.textures.AssetTexture(),
+                                        gs.textures.AssetTexture(
+                                            is_batched=True,
+                                        ),
+                                        gs.textures.ColorTexture(
+                                            color=(1.0, 1.0, 1.0),
+                                            is_batched=True,
+                                        ),
+                                    ),
+                                    initial_variant=1,
                                 ),
                             ),
-                            initial_variant=1,
                         ),
-                    ),
+                    },
                 ),
             },
         ),
@@ -318,7 +322,7 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     )
     scene.build(n_envs=2)
     (screen_vgeom,) = screen.vgeoms
-    (label_vgeom,) = label.get_vgeoms(gs.VGeomIndex.all())
+    (label_vgeom,) = label.get_vgeoms(gs.VGeomIndex.at(0))
     (lamp_vgeom,) = lamp.vgeoms
 
     entities = (screen, label, lamp, reference)
@@ -341,7 +345,7 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
 
     # A variant shown by name in one environment, one drawing per environment, and a drawing shared by every one
     screen.set_texture("red", envs_idx=[1])
-    label.set_texture(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None], vgeoms_idx=gs.VGeomIndex.all())
+    label.set_texture(np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])[:, None, None], vgeoms_idx=gs.VGeomIndex.at(0))
     lamp.set_texture(gs.textures.ColorTexture(color=(0.0, 1.0, 0.0)), vgeoms_idx=0)
     assert_equal(screen_vgeom.get_texture(), [0, 1])
     assert_equal(label_vgeom.get_texture(envs_idx=[1]), [1])
