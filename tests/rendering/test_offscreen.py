@@ -402,7 +402,7 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     with pytest.raises(gs.GenesisException, match="draws a dynamic texture"):
         reference.set_texture(0)
     with pytest.raises(gs.GenesisException, match="No visual geom"):
-        label.get_vgeoms(gs.VGeomIndex.with_material("lcd"))
+        label.get_vgeoms(gs.VGeomIndex.named("lcd"))
     with pytest.raises(gs.GenesisException, match="selects no valid geom among 2"):
         gs.Scene().add_entity(morph=gs.morphs.URDF(file="urdf/simple/two_link_arm.urdf")).get_vgeoms(
             gs.VGeomIndex.at(2)

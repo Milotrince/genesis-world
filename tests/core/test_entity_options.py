@@ -165,7 +165,7 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
                         color=(1.0, 0.0, 0.0),
                     ),
                     vgeoms={
-                        gs.VGeomIndex.with_material("cap_*"): gs.options.VGeom(
+                        gs.VGeomIndex.named("top_cap"): gs.options.VGeom(
                             surface=gs.surfaces.Default(
                                 color=(0.0, 1.0, 0.0),
                             ),
@@ -255,7 +255,7 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
                     color=(1.0, 0.0, 0.0),
                 ),
                 vgeoms={
-                    gs.VGeomIndex.with_material("lcd*"): gs.options.VGeom(
+                    gs.VGeomIndex.at(0): gs.options.VGeom(
                         surface=gs.surfaces.Emission(
                             emissive=(0.0, 1.0, 0.0),
                         ),
@@ -267,7 +267,7 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
             gs.GeomIndex.named("*"): gs.options.Geom(),
         },
         vgeoms={
-            gs.VGeomIndex.with_material("*"): gs.options.VGeom(),
+            gs.VGeomIndex.at([True]): gs.options.VGeom(),
             gs.VGeomIndex.named("box*"): gs.options.VGeom(),
         },
     )
@@ -336,10 +336,10 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
                 }
             )
         )
-    with pytest.raises(gs.GenesisException, match="No visual geom of the entity has a material"):
+    with pytest.raises(gs.GenesisException, match="No visual geom of the entity matches"):
         scene.add_entity(
             options=mixed_geoms_body.options.model_copy(
-                update={"vgeoms": {gs.VGeomIndex.with_material("lcd"): gs.options.VGeom()}}
+                update={"vgeoms": {gs.VGeomIndex.named("lcd"): gs.options.VGeom()}}
             )
         )
     with pytest.raises(gs.GenesisException, match="links_to_keep"):
@@ -400,8 +400,8 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
             assert_allclose(geom.get_friction(), friction, tol=gs.EPS)
         assert_allclose(geom.get_friction_torsional(), friction_torsional, tol=gs.EPS)
         assert_allclose(geom.get_friction_rolling(), friction_rolling, tol=gs.EPS)
-    # The link surface colors the visual geoms of the body, the visual geom options the cap of the selected material
-    # over it, and the entity selection by ordinal the capsule of the child link
+    # The link surface colors the visual geoms of the body, the visual geom options the cap they name over it, and the
+    # entity selection by ordinal the capsule of the child link
     vgeoms_color = {
         "torus": (1.0, 0.0, 0.0),
         "top_cap": (0.0, 1.0, 0.0),

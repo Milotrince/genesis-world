@@ -800,11 +800,6 @@ class RigidVisGeom(RBC):
         return self.desc.vmesh.metadata.get("name", "")
 
     @property
-    def material_name(self) -> str:
-        """The name of the material the asset assigns the vgeom, empty when none, as ``gs.VGeomIndex`` matches it."""
-        return self.desc.vmesh.metadata.get("material_name", "")
-
-    @property
     def solver(self):
         """
         Get the solver that the vgeom belongs to.

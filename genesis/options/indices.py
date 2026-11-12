@@ -209,38 +209,11 @@ class GeomIndex(_NamedOrdinalIndex):
 
 
 class VGeomIndex(_NamedOrdinalIndex):
-    """Select visual geoms by their ordinal in the asset (see ``GeomIndex.at``), by name or by material.
+    """Select visual geoms by their ordinal in the asset (see ``GeomIndex.at``) or by name.
 
     A mesh asset holding several materials loads as one visual geom per material, so the ordinal counts the visual
     geoms as the asset splits them. A name is matched against the names the asset gives its geoms (see ``GeomIndex``).
-    A material name is matched against the name of the material the asset assigns a visual geom: the material of a
-    glTF primitive, an OBJ or a URDF, the 'material' attribute of an MJCF geom, or the prim path of the material bound
-    to a USD mesh. Names and material names are exact names or glob patterns (see ``LinkIndex``).
     """
-
-    material_names: Annotated[StrArrayType, Field(min_length=1)] | None = None
-
-    @classmethod
-    def with_material(cls, *names: str) -> Self:
-        """Select the visual geoms whose asset material has one of the given names, each exact or a glob pattern."""
-        return cls(material_names=names)
-
-    def matches_material(self, material_name: str) -> bool:
-        """Whether a selection by material name holds the visual geom of a given asset material name."""
-        return any(fnmatchcase(material_name, name) for name in self.material_names)
-
-    def resolve(
-        self, vgeoms_name: list[str], vgeoms_material_name: list[str], vgeoms_start: int, n_vgeoms: int
-    ) -> np.ndarray:
-        """Return the ordinals of the selected visual geoms of a link, given their names and asset material names.
-
-        An ordinal counts 'n_vgeoms' visual geoms, of which those of the link start at 'vgeoms_start' (see
-        ``GeomIndex.resolve``). A selection by name or by material may match no visual geom of a link.
-        """
-        if self.material_names is None:
-            return super().resolve(vgeoms_name, vgeoms_start, n_vgeoms)
-        is_selected = [self.matches_material(material_name) for material_name in vgeoms_material_name]
-        return np.flatnonzero(is_selected).astype(gs.np_int, copy=False)
 
 
 class VertexIndex(_OrdinalIndex):

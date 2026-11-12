@@ -447,7 +447,6 @@ def parse_mesh_glb(path, group_by_material, scale, is_mesh_zup, surface):
                 metadata = {
                     "mesh_path": path,
                     "name": material_name if group_by_material else mesh_name,
-                    "material_name": material_name or "",
                     # Index of the material in the file, which renderers loading the file whole use to target it
                     "material_index": primitive.material,
                 }

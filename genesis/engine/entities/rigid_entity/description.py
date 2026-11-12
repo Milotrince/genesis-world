@@ -399,9 +399,8 @@ class Resolution:
     geoms_start: int = 0
     # Paths of the links to which the link or geom options give a density
     links_path_with_density: set[tuple[str, ...]] = field(default_factory=set)
-    # The names and asset material names of every visual geom, which the visual geom options of the entity select on
+    # The names of every visual geom, which the visual geom options of the entity select on
     vgeoms_name: list[str] = field(default_factory=list)
-    vgeoms_material_name: list[str] = field(default_factory=list)
     # The counterparts of 'n_geoms' and 'geoms_start' for the visual geoms, which a 'gs.VGeomIndex.at' selection counts
     n_vgeoms: int | None = None
     vgeoms_start: int = 0
@@ -532,13 +531,6 @@ class KinematicEntityDescription(EntityDescription):
                 gs.raise_exception(
                     f"No visual geom of the entity matches {list(vgeom_index.names)}. Existing visual geoms: "
                     f"{resolution.vgeoms_name}."
-                )
-            if vgeom_index.material_names is not None and not any(
-                map(vgeom_index.matches_material, resolution.vgeoms_material_name)
-            ):
-                gs.raise_exception(
-                    f"No visual geom of the entity has a material matching {list(vgeom_index.material_names)}. "
-                    f"Existing materials: {sorted(set(resolution.vgeoms_material_name) - {''})}."
                 )
         return desc
 
@@ -1600,9 +1592,7 @@ class KinematicEntityDescription(EntityDescription):
         # links, as for the collision geoms, and two selections of one rank giving a surface to one target raise an
         # error.
         vgeoms_name = [g_info["vmesh"].metadata.get("name", "") for g_info in vg_infos]
-        vgeoms_material_name = [g_info["vmesh"].metadata.get("material_name", "") for g_info in vg_infos]
         resolution.vgeoms_name += vgeoms_name
-        resolution.vgeoms_material_name += vgeoms_material_name
         vgeoms_start = resolution.vgeoms_start
         n_vgeoms = len(vg_infos) if resolution.n_vgeoms is None else resolution.n_vgeoms
         resolution.vgeoms_start += len(vg_infos)
@@ -1626,9 +1616,7 @@ class KinematicEntityDescription(EntityDescription):
                     )
             for surfaces, vgeom_index, options, start, n in surfaces_options:
                 # Resolved before the surface is checked, so that an ordinal out of range raises whatever the options
-                targets_idx = (
-                    [0] if vgeom_index is None else vgeom_index.resolve(vgeoms_name, vgeoms_material_name, start, n)
-                )
+                targets_idx = [0] if vgeom_index is None else vgeom_index.resolve(vgeoms_name, start, n)
                 if options.surface is None:
                     continue
                 for i_target in targets_idx:

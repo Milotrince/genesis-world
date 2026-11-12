@@ -235,9 +235,8 @@ class Kinematic(_ArticulatedEntity["KinematicEntity"]):
         is no link options.
     vgeoms : dict[gs.VGeomIndex, gs.options.VGeom], optional
         The options of the visual geoms each key selects among the visual geoms of the whole entity, by ordinal (see
-        ``gs.GeomIndex.at``), or by name or asset material in any of its links, raising if it selects no visual geom.
-        They override the surface of the entity, and the options of the links override them in turn. Default is no
-        visual geom options.
+        ``gs.GeomIndex.at``) or by name in any of its links, raising if it selects no visual geom. They override the
+        surface of the entity, and the options of the links override them in turn. Default is no visual geom options.
     """
 
     _solver_options_cls = KinematicOptions

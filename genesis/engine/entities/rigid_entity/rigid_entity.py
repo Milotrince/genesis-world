@@ -1234,10 +1234,7 @@ class KinematicEntity(Entity):
         """
         vgeoms = self.vgeoms
         vgeoms_name = [vgeom.name for vgeom in vgeoms]
-        vgeoms_material_name = [vgeom.material_name for vgeom in vgeoms]
-        vgeoms = gs.List(
-            vgeoms[i_vg] for i_vg in vgeom_index.resolve(vgeoms_name, vgeoms_material_name, 0, len(vgeoms))
-        )
+        vgeoms = gs.List(vgeoms[i_vg] for i_vg in vgeom_index.resolve(vgeoms_name, 0, len(vgeoms)))
         if not vgeoms:
             gs.raise_exception(f"No visual geom of entity '{self.name}' matches {vgeom_index}.")
         return vgeoms
