@@ -1229,23 +1229,15 @@ class KinematicEntity(Entity):
     def get_vgeoms(self, vgeom_index: VGeomIndex) -> gs.List[RigidVisGeom]:
         """Return the visual geoms of the entity that a selection holds, link after link.
 
-        'vgeom_index' selects within every link, as the visual geom options of the entity do, so that the selection
-        giving a visual geom its surface finds it again (see ``gs.VGeomIndex``). A selection by ordinal counts within each
-        link, so that it requires a mesh or a primitive morph, whose single link holds every visual geom.
+        'vgeom_index' selects among the visual geoms of the whole entity, as the visual geom options of the entity do,
+        so that the selection giving a visual geom its surface finds it again (see ``gs.VGeomIndex``).
         """
-        if vgeom_index.is_by_ordinal and not all(
-            isinstance(morph, (gs.morphs.Mesh, gs.morphs.Primitive))
-            for morph in (self.morph, *self._morph_heterogeneous)
-        ):
-            gs.raise_exception(
-                f"Entity '{self.name}' selects visual geoms by ordinal only if its morph is a mesh or a primitive. "
-                "Select them with 'gs.VGeomIndex.named' or 'with_material', or index 'entity.vgeoms' by position."
-            )
-        vgeoms = gs.List()
-        for link in self._links:
-            vgeoms_name = [vgeom.name for vgeom in link.vgeoms]
-            vgeoms_material_name = [vgeom.material_name for vgeom in link.vgeoms]
-            vgeoms.extend(link.vgeoms[i_vg] for i_vg in vgeom_index.resolve(vgeoms_name, vgeoms_material_name))
+        vgeoms = self.vgeoms
+        vgeoms_name = [vgeom.name for vgeom in vgeoms]
+        vgeoms_material_name = [vgeom.material_name for vgeom in vgeoms]
+        vgeoms = gs.List(
+            vgeoms[i_vg] for i_vg in vgeom_index.resolve(vgeoms_name, vgeoms_material_name, 0, len(vgeoms))
+        )
         if not vgeoms:
             gs.raise_exception(f"No visual geom of entity '{self.name}' matches {vgeom_index}.")
         return vgeoms
@@ -1262,7 +1254,7 @@ class KinematicEntity(Entity):
         """Show a variant, or draw pixels, on the dynamic texture of every selected visual geom of the entity.
 
         'vgeoms_idx' selects visual geoms by their position among ``vgeoms``, or by a ``gs.VGeomIndex`` as the visual
-        geom options do, whose ordinals count within each link. None selects every visual geom drawing a dynamic
+        geom options of the entity do. None selects every visual geom drawing a dynamic
         texture, in 'texture_map_type' when given. See ``RigidVisGeom.set_texture`` for 'texture', 'envs_idx' and
         'texture_map_type'.
         """

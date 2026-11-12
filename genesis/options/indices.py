@@ -164,12 +164,12 @@ class _NamedOrdinalIndex(_OrdinalIndex):
 
     @classmethod
     def at(cls, idx: "int | slice | np.typing.ArrayLike") -> Self:
-        """Select the collision geoms a numpy index picks: an ordinal, ordinals, a boolean mask or a slice.
+        """Select the geoms a numpy index picks: an ordinal, ordinals, a boolean mask or a slice.
 
-        Keying the 'geoms' of entity options, the index counts the collision geoms of the whole entity, link after link
-        in the order of the asset. Keying the 'geoms' of link options, it counts the collision geoms of each selected
-        link alone, so 'gs.GeomIndex.at(0)' there selects the first collision geom of every link the key of the link
-        options selects.
+        A ``GeomIndex`` counts collision geoms and a ``VGeomIndex`` counts visual geoms. Keying the 'geoms' or 'vgeoms'
+        of entity options, the index counts those geoms over the whole entity, link after link in the order of the
+        asset. Keying the 'geoms' or 'vgeoms' of link options, it counts those of each selected link alone, so
+        'gs.GeomIndex.at(0)' there selects the first collision geom of every link the key of the link options selects.
         """
         return super().at(idx)
 
@@ -185,15 +185,18 @@ class _NamedOrdinalIndex(_OrdinalIndex):
     def resolve(self, geoms_name: list[str], geoms_start: int, n_geoms: int) -> np.ndarray:
         """Return the ordinals of the selected geoms among the geoms of a link, given their names.
 
-        An ordinal counts 'n_geoms' collision geoms, of which the geoms of the link start at 'geoms_start'. A selection
-        may match no geom of a link, so that it combines with a selection of several links. A selection by name that
-        matches no geom of the whole entity raises when the entity is added, and so does an ordinal out of range.
+        An ordinal counts 'n_geoms' geoms, of which the geoms of the link start at 'geoms_start'. A selection may match
+        no geom of a link, so that it combines with a selection of several links. A selection by name that matches no
+        geom of the whole entity raises when the entity is added, and so does an ordinal out of range.
         """
         if self.names is None:
-            ordinals = self._resolve_ordinals(n_geoms, "geom")
-            is_in_link = (ordinals >= geoms_start) & (ordinals < geoms_start + len(geoms_name))
-            return ordinals[is_in_link] - geoms_start
+            return self._resolve_link_ordinals(len(geoms_name), geoms_start, n_geoms)
         return np.flatnonzero([self.matches(geom_name) for geom_name in geoms_name]).astype(gs.np_int, copy=False)
+
+    def _resolve_link_ordinals(self, n_link_geoms: int, geoms_start: int, n_geoms: int) -> np.ndarray:
+        ordinals = self._resolve_ordinals(n_geoms, "geom")
+        is_in_link = (ordinals >= geoms_start) & (ordinals < geoms_start + n_link_geoms)
+        return ordinals[is_in_link] - geoms_start
 
 
 class GeomIndex(_NamedOrdinalIndex):
@@ -208,7 +211,7 @@ class GeomIndex(_NamedOrdinalIndex):
 
 
 class VGeomIndex(_NamedOrdinalIndex):
-    """Select the visual geoms of a link by their ordinal in the asset, counted within the link, by name or by material.
+    """Select visual geoms by their ordinal in the asset (see ``GeomIndex.at``), by name or by material.
 
     A mesh asset holding several materials loads as one visual geom per material, so the ordinal counts the visual
     geoms as the asset splits them. A name is matched against the names the asset gives its geoms (see ``GeomIndex``).
@@ -231,27 +234,24 @@ class VGeomIndex(_NamedOrdinalIndex):
         """Select the visual geoms whose asset material has one of the given names, each exact or a glob pattern."""
         return cls(material_names=names)
 
-    @property
-    def is_by_ordinal(self) -> bool:
-        """Whether the selection holds visual geoms by ordinal, by mask or by span, which count within a link."""
-        return self.names is None and self.material_names is None
-
     def matches_material(self, material_name: str) -> bool:
         """Whether a selection by material name holds the visual geom of a given asset material name."""
         return any(fnmatchcase(material_name, name) for name in self.material_names)
 
-    def resolve(self, vgeoms_name: list[str], vgeoms_material_name: list[str]) -> np.ndarray:
+    def resolve(
+        self, vgeoms_name: list[str], vgeoms_material_name: list[str], vgeoms_start: int, n_vgeoms: int
+    ) -> np.ndarray:
         """Return the ordinals of the selected visual geoms of a link, given their names and asset material names.
 
-        An ordinal counts the visual geoms of the link. A selection by name or by material may match no visual geom of
-        a link (see ``GeomIndex.resolve``).
+        An ordinal counts 'n_vgeoms' visual geoms, of which those of the link start at 'vgeoms_start' (see
+        ``GeomIndex.resolve``). A selection by name or by material may match no visual geom of a link.
         """
         if self.material_names is not None:
             is_selected = [self.matches_material(material_name) for material_name in vgeoms_material_name]
         elif self.names is not None:
             is_selected = [self.matches(vgeom_name) for vgeom_name in vgeoms_name]
         else:
-            return self._resolve_ordinals(len(vgeoms_name), "visual geom")
+            return self._resolve_link_ordinals(len(vgeoms_name), vgeoms_start, n_vgeoms)
         return np.flatnonzero(is_selected).astype(gs.np_int, copy=False)
 
 

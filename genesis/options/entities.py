@@ -174,8 +174,9 @@ class Link(_GeomFields):
         The appearance of every visual geom of the selected links, which replaces that of the entity (see
         ``gs.options.VGeom.surface``). If None, the links take the surface of the entity. Default is None.
     vgeoms : dict[gs.VGeomIndex, gs.options.VGeom], optional
-        The options of visual geoms of each selected link, a ``gs.VGeomIndex`` counting the visual geoms of the link as
-        its asset splits them. They override the options of the link. Default is no visual geom options.
+        The options of visual geoms of each selected link, a ``gs.VGeomIndex`` ordinal counting the visual geoms of that
+        link alone, as its asset splits them (see ``gs.GeomIndex.at``). They override the options of the link. Default
+        is no visual geom options.
     """
 
     geoms: FrozenDictType[GeomIndex, Geom] = {}
@@ -191,15 +192,6 @@ class _ArticulatedEntity(BaseEntity[EntityT]):
 
     links: FrozenDictType[LinkIndex, Link] = {}
     vgeoms: FrozenDictType[VGeomIndex, VGeom] = {}
-
-    @model_validator(mode="after")
-    def _check_vgeoms(self) -> "_ArticulatedEntity":
-        if any(vgeom_index.names is None and vgeom_index.material_names is None for vgeom_index in self.vgeoms):
-            gs.raise_exception(
-                "Visual geom options of an entity select visual geoms with 'gs.VGeomIndex.named' or 'with_material'. "
-                "Select visual geoms by ordinal through the options of their link."
-            )
-        return self
 
 
 class Rigid(_ArticulatedEntity["RigidEntity"]):
@@ -242,10 +234,10 @@ class Kinematic(_ArticulatedEntity["KinematicEntity"]):
         applies, with a warning. A kinematic entity takes the 'surface' and 'vgeoms' of its link options alone. Default
         is no link options.
     vgeoms : dict[gs.VGeomIndex, gs.options.VGeom], optional
-        The options of the visual geoms each key selects with ``gs.VGeomIndex.named`` or
-        ``gs.VGeomIndex.with_material``, by name or by asset material in any link of the entity, raising if no link
-        has one. They override the surface of the entity, and the options of the links override them in turn. Select
-        visual geoms by ordinal through the options of their link in 'links'. Default is no visual geom options.
+        The options of the visual geoms each key selects among the visual geoms of the whole entity, by ordinal (see
+        ``gs.GeomIndex.at``), or by name or asset material in any of its links, raising if it selects no visual geom.
+        They override the surface of the entity, and the options of the links override them in turn. Default is no
+        visual geom options.
     """
 
     _solver_options_cls = KinematicOptions

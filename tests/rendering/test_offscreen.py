@@ -248,28 +248,24 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
                 plane_size=(1.0, 1.0),
                 fixed=True,
             ),
-            links={
-                gs.LinkIndex.named("*"): gs.options.Link(
-                    vgeoms={
-                        gs.VGeomIndex.at(0): gs.options.VGeom(
-                            surface=gs.surfaces.Rough(
-                                diffuse_texture=gs.textures.DynamicTexture(
-                                    resolution=(8, 8),
-                                    variants=(
-                                        gs.textures.AssetTexture(),
-                                        gs.textures.AssetTexture(
-                                            is_batched=True,
-                                        ),
-                                        gs.textures.ColorTexture(
-                                            color=(1.0, 1.0, 1.0),
-                                            is_batched=True,
-                                        ),
-                                    ),
-                                    initial_variant=1,
+            vgeoms={
+                gs.VGeomIndex.at(0): gs.options.VGeom(
+                    surface=gs.surfaces.Rough(
+                        diffuse_texture=gs.textures.DynamicTexture(
+                            resolution=(8, 8),
+                            variants=(
+                                gs.textures.AssetTexture(),
+                                gs.textures.AssetTexture(
+                                    is_batched=True,
+                                ),
+                                gs.textures.ColorTexture(
+                                    color=(1.0, 1.0, 1.0),
+                                    is_batched=True,
                                 ),
                             ),
+                            initial_variant=1,
                         ),
-                    },
+                    ),
                 ),
             },
         ),
@@ -377,8 +373,8 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     # Refused inputs: a variant the texture does not declare, a value that is neither a variant nor pixels, pixels on a
     # texture without batched variant, or on one with several where the environment shows none of them, a number of
     # variants matching neither one nor the environments, an HDR image, drawn or batched, a map, a visual geom or an
-    # entity without dynamic texture, a selection matching no visual geom, and one by ordinal on an entity of several
-    # links
+    # entity without dynamic texture, a selection matching no visual geom, and an ordinal out of range of an entity of
+    # several links
     with pytest.raises(gs.GenesisException, match="No variant is named"):
         screen_vgeom.set_texture("green")
     with pytest.raises(gs.GenesisException, match="integer position"):
@@ -407,9 +403,9 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
         reference.set_texture(0)
     with pytest.raises(gs.GenesisException, match="No visual geom"):
         label.get_vgeoms(gs.VGeomIndex.with_material("lcd"))
-    with pytest.raises(gs.GenesisException, match="by ordinal"):
+    with pytest.raises(gs.GenesisException, match="selects no valid geom among 2"):
         gs.Scene().add_entity(morph=gs.morphs.URDF(file="urdf/simple/two_link_arm.urdf")).get_vgeoms(
-            gs.VGeomIndex.at(0)
+            gs.VGeomIndex.at(2)
         )
     with pytest.raises(gs.GenesisException, match="diffuse_texture"):
         gs.surfaces.Default(roughness_texture=gs.textures.DynamicTexture(resolution=(4, 4)))

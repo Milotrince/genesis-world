@@ -195,7 +195,7 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
                 ),
             },
             vgeoms={
-                gs.VGeomIndex.named("tip"): gs.options.VGeom(
+                gs.VGeomIndex.at(4): gs.options.VGeom(
                     surface=gs.surfaces.Default(
                         color=(0.0, 0.0, 1.0),
                     ),
@@ -350,12 +350,8 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
         scene.add_entity(
             options=arm.options.model_copy(update={"geoms": {gs.GeomIndex.at(2): gs.options.Geom(friction=1.0)}})
         )
-    with pytest.raises(gs.GenesisException, match="Visual geom options of an entity select"):
-        scene.add_entity(
-            options=arm.options.model_copy(
-                update={"vgeoms": {gs.VGeomIndex.at(0): gs.options.VGeom(surface=gs.surfaces.Default())}}
-            )
-        )
+    with pytest.raises(gs.GenesisException, match="selects no valid geom among 2"):
+        scene.add_entity(options=arm.options.model_copy(update={"vgeoms": {gs.VGeomIndex.at(2): gs.options.VGeom()}}))
 
     scene.build(n_envs=2)
     with pytest.raises(gs.GenesisException, match="read-only"):
@@ -405,7 +401,7 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
         assert_allclose(geom.get_friction_torsional(), friction_torsional, tol=gs.EPS)
         assert_allclose(geom.get_friction_rolling(), friction_rolling, tol=gs.EPS)
     # The link surface colors the visual geoms of the body, the visual geom options the cap of the selected material
-    # over it, and the entity selection by name the capsule of the child link
+    # over it, and the entity selection by ordinal the capsule of the child link
     vgeoms_color = {
         "torus": (1.0, 0.0, 0.0),
         "top_cap": (0.0, 1.0, 0.0),

@@ -402,6 +402,9 @@ class Resolution:
     # The names and asset material names of every visual geom, which the visual geom options of the entity select on
     vgeoms_name: list[str] = field(default_factory=list)
     vgeoms_material_name: list[str] = field(default_factory=list)
+    # The counterparts of 'n_geoms' and 'geoms_start' for the visual geoms, which a 'gs.VGeomIndex.at' selection counts
+    n_vgeoms: int | None = None
+    vgeoms_start: int = 0
 
 
 @dataclass
@@ -791,6 +794,7 @@ class KinematicEntityDescription(EntityDescription):
 
     def _load_primitive(self, morph, resolution: Resolution, load_geom_only_for_heterogeneous=False):
         resolution.n_geoms, resolution.geoms_start = None, 0
+        resolution.n_vgeoms, resolution.vgeoms_start = None, 0
         if morph.fixed:
             joint_type = gs.JOINT_TYPE.FIXED
             n_qs = 0
@@ -893,6 +897,7 @@ class KinematicEntityDescription(EntityDescription):
 
     def _load_mesh(self, morph, resolution: Resolution, load_geom_only_for_heterogeneous=False):
         resolution.n_geoms, resolution.geoms_start = None, 0
+        resolution.n_vgeoms, resolution.vgeoms_start = None, 0
         # Load meshes
         meshes = gs.Mesh.from_morph_surface(morph, self.surface)
 
@@ -1285,13 +1290,15 @@ class KinematicEntityDescription(EntityDescription):
         # Exclude joints with 0 dofs to align with Mujoco
         links_j_infos = [[j_info for j_info in link_j_infos if j_info["n_dofs"] > 0] for link_j_infos in links_j_infos]
 
-        # A 'gs.GeomIndex.at' selection counts the collision geoms of the whole morph (see '_resolve_geoms')
-        resolution.n_geoms = sum(
-            bool(morph.collision and (g_info["contype"] or g_info["conaffinity"]))
+        # A 'gs.GeomIndex.at' or 'gs.VGeomIndex.at' selection counts the geoms of the whole morph (see '_resolve_geoms')
+        is_col = [
+            bool(g_info["contype"] or g_info["conaffinity"])
             for link_g_infos in links_g_infos
             for g_info in link_g_infos
-        )
-        resolution.geoms_start = 0
+        ]
+        resolution.n_geoms = sum(is_col) if morph.collision else 0
+        resolution.n_vgeoms = len(is_col) - sum(is_col) if morph.visualization else 0
+        resolution.geoms_start, resolution.vgeoms_start = 0, 0
         return l_infos, links_j_infos, links_g_infos, eqs_info
 
     def _load_scene(self, morph, resolution: Resolution):
@@ -1596,6 +1603,9 @@ class KinematicEntityDescription(EntityDescription):
         vgeoms_material_name = [g_info["vmesh"].metadata.get("material_name", "") for g_info in vg_infos]
         resolution.vgeoms_name += vgeoms_name
         resolution.vgeoms_material_name += vgeoms_material_name
+        vgeoms_start = resolution.vgeoms_start
+        n_vgeoms = len(vg_infos) if resolution.n_vgeoms is None else resolution.n_vgeoms
+        resolution.vgeoms_start += len(vg_infos)
         if vg_infos:
             link_name = link_path[-1]
             entity_vgeoms_surface, link_surface, link_vgeoms_surface = (
@@ -1604,20 +1614,23 @@ class KinematicEntityDescription(EntityDescription):
                 [None] * len(vg_infos),
             )
             surfaces_options = [
-                (entity_vgeoms_surface, vgeom_index, vgeom_options)
+                (entity_vgeoms_surface, vgeom_index, vgeom_options, vgeoms_start, n_vgeoms)
                 for vgeom_index, vgeom_options in self.options.vgeoms.items()
             ]
             for link_index, link_options in self.options.links.items():
                 if link_index.matches(link_path):
-                    surfaces_options.append((link_surface, None, link_options))
+                    surfaces_options.append((link_surface, None, link_options, 0, 1))
                     surfaces_options.extend(
-                        (link_vgeoms_surface, vgeom_index, vgeom_options)
+                        (link_vgeoms_surface, vgeom_index, vgeom_options, 0, len(vg_infos))
                         for vgeom_index, vgeom_options in link_options.vgeoms.items()
                     )
-            for surfaces, vgeom_index, options in surfaces_options:
+            for surfaces, vgeom_index, options, start, n in surfaces_options:
+                # Resolved before the surface is checked, so that an ordinal out of range raises whatever the options
+                targets_idx = (
+                    [0] if vgeom_index is None else vgeom_index.resolve(vgeoms_name, vgeoms_material_name, start, n)
+                )
                 if options.surface is None:
                     continue
-                targets_idx = [0] if vgeom_index is None else vgeom_index.resolve(vgeoms_name, vgeoms_material_name)
                 for i_target in targets_idx:
                     if surfaces[i_target] is not None:
                         target = (
