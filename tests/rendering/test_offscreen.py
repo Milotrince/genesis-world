@@ -372,9 +372,9 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     assert_allclose(colors_variant[:, 2], colors_drawn[:, 2], atol=2.0)
     # Refused inputs: a variant the texture does not declare, a value that is neither a variant nor pixels, pixels on a
     # texture without batched variant, or on one with several where the environment shows none of them, a number of
-    # variants matching neither one nor the environments, an HDR image, drawn or batched, a map, a visual geom or an
-    # entity without dynamic texture, a selection matching no visual geom, and an ordinal out of range of an entity of
-    # several links
+    # variants matching neither one nor the environments, an HDR image, drawn or batched, a batched image of more than 4
+    # channels, a map, a visual geom or an entity without dynamic texture, a selection matching no visual geom, and an
+    # ordinal out of range of an entity of several links
     with pytest.raises(gs.GenesisException, match="No variant is named"):
         screen_vgeom.set_texture("green")
     with pytest.raises(gs.GenesisException, match="integer position"):
@@ -395,6 +395,8 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
         screen_vgeom.set_texture(gs.textures.ImageTexture(image_path=str(hdr_path), encoding="linear"))
     with pytest.raises(gs.GenesisException, match="no HDR image"):
         gs.textures.ImageTexture(image_path=[str(hdr_path)], encoding="linear", is_batched=True)
+    with pytest.raises(gs.GenesisException, match="1 to 4 channels"):
+        gs.textures.ImageTexture(image_array=np.zeros((2, 4, 4, 5), dtype=np.uint8), is_batched=True)
     with pytest.raises(gs.GenesisException, match="diffuse map"):
         lamp_vgeom.set_texture(0, texture_map_type=gs.TEXTURE_MAP_TYPE.DIFFUSE)
     with pytest.raises(gs.GenesisException, match="no dynamic texture"):

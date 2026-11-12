@@ -12,7 +12,7 @@ from genesis.engine.materials.base import Material
 from genesis.typing import FrozenDictType, ValidFloat
 
 from .indices import GeomIndex, LinkIndex, VertexIndex, VGeomIndex
-from .morphs import Mesh, Morph, Primitive
+from .morphs import Morph
 from .options import Options
 from .solvers import FEMOptions, KinematicOptions, MPMOptions, PBDOptions, RigidOptions, SPHOptions
 from .surfaces import Surface

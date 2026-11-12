@@ -255,6 +255,8 @@ class ImageTexture(Texture, SerializationMixin):
         elif is_batched:
             height, width = max((image.shape[:2] for image in images_array), key=lambda shape: shape[0] * shape[1])
             n_channels = max(image.shape[-1] if image.ndim == 3 else 1 for image in images_array)
+            if n_channels > 4:
+                gs.raise_exception(f"A batched image texture takes images of 1 to 4 channels, got {n_channels}.")
             mode = ("L", "LA", "RGB", "RGBA")[n_channels - 1]
             for i, image in enumerate(images_array):
                 if image.ndim == 3 and image.shape[-1] == 1:
