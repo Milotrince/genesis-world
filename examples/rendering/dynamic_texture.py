@@ -56,7 +56,7 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
     """
     Paint with the left mouse button on the visual geoms drawing a dynamic texture in their diffuse map.
 
-    The paint goes to the entities whose options set use_visual_raycasting=True and whose dynamic texture holds one
+    The paint goes to the entities whose material sets use_visual_raycasting=True and whose dynamic texture holds one
     batched variant, in the environment under the cursor. It covers the image this environment shows, then shows the
     batched variant, so showing another variant hides it, and painting over that one starts afresh from it.
 
@@ -265,7 +265,9 @@ def main():
                     variants=variants,
                 ),
             ),
-            use_visual_raycasting=True,
+            material=gs.materials.Rigid(
+                use_visual_raycasting=True,
+            ),
         ),
     )
     # A white board standing behind the duck, its texture coordinates spanning the image once
@@ -287,7 +289,9 @@ def main():
                 ),
                 double_sided=True,
             ),
-            use_visual_raycasting=True,
+            material=gs.materials.Rigid(
+                use_visual_raycasting=True,
+            ),
         ),
     )
     if args.vis:
