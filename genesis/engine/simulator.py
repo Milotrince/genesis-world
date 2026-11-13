@@ -1,5 +1,5 @@
 import weakref
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from typing import TYPE_CHECKING
 
 import torch
@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from genesis.engine.entities.base_entity import Entity, EntityDescription
     from genesis.engine.scene import Scene
     from genesis.options.scene import SceneOptions
+    from genesis.options.surfaces import Surface
 
 
 def restore_checkpoints(solvers_checkpoints: Iterable[tuple["Solver", SolverCheckpoint]]) -> None:
@@ -150,34 +151,24 @@ class Simulator(RBC):
 
     def _add_entity(
         self,
-        morph: Morph | None = None,
-        material=None,
-        surface=None,
-        visualize_contact=False,
+        morph: Morph | Sequence[Morph] | None = None,
+        surface: "Surface | None" = None,
         name: str | None = None,
+        options: "gs.entities.BaseEntity | None" = None,
         desc: "EntityDescription | None" = None,
-    ):
+    ) -> "Entity":
         if desc is not None:
-            material = desc.material
-        if visualize_contact and not isinstance(material, gs.materials.Rigid):
-            gs.raise_exception("'visualize_contact' only applies to rigid entities.")
-        if isinstance(material, gs.materials.Hybrid):
-            # Note that adding to solver is handled in the hybrid entity
-            entity = HybridEntity(self.n_entities, self.scene, material, morph, surface, name=name)
+            options = desc.options
+        if isinstance(options, gs.entities.Hybrid):
+            # A hybrid entity adds its parts to the scene itself, as entities of their own
+            entity = HybridEntity(self.n_entities, self.scene, morph, surface, options, name)
         else:
-            # Several solvers may declare a class the material belongs to, since 'Rigid' derives from 'Kinematic'. The
-            # one declaring the most derived class simulates it (see 'Solver.material_cls').
-            solver = None
-            for candidate in self._solvers:
-                if candidate.material_cls is None or not isinstance(material, candidate.material_cls):
-                    continue
-                if solver is None or issubclass(candidate.material_cls, solver.material_cls):
-                    solver = candidate
-            if solver is None:
-                gs.raise_exception(f"No solver simulates entities of material {type(material).__name__}.")
-            entity = solver.add_entity(
-                self.n_entities, material, morph, surface, visualize_contact, name=name, desc=desc
-            )
+            for solver in self._solvers:
+                if isinstance(solver._options, options._solver_options_cls):
+                    break
+            else:
+                gs.raise_exception(f"No solver simulates entities of options {type(options).__name__}.")
+            entity = solver.add_entity(self.n_entities, morph, surface, options, name, desc)
         self._entities.append(entity)
         if entity.desc is not None:
             self.scene._desc.entities.append(entity.desc)

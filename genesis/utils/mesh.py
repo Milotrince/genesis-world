@@ -624,6 +624,7 @@ def postprocess_collision_geoms(
             float("nan") if friction is None else float(friction),
             float("nan") if density is None else float(density),
             np.zeros(0) if sol_params is None else np.ascontiguousarray(sol_params, dtype=np.float64),
+            g_info.get("geom_options"),
             np.ascontiguousarray(g_info.get("pos", gu.zero_pos()), dtype=np.float64),
             np.ascontiguousarray(g_info.get("quat", gu.identity_quat()), dtype=np.float64),
         ]
@@ -789,7 +790,10 @@ def _postprocess_collision_geoms_impl(
                     first_g_info = g_infos[fusion_group[0]]
                     if (
                         first_g_info["type"] not in (gs.GEOM_TYPE.PLANE, gs.GEOM_TYPE.TERRAIN)
-                        and all(first_g_info.get(name) == g_info.get(name) for name in ("contype", "conaffinity"))
+                        and all(
+                            first_g_info.get(name) == g_info.get(name)
+                            for name in ("contype", "conaffinity", "geom_options")
+                        )
                         and all(
                             np.allclose(first_g_info.get(name, np.nan), g_info.get(name, np.nan), equal_nan=True)
                             # A fused mesh carries a single density, so geoms with different authored densities must

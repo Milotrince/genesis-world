@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 import numpy as np
 import torch
 
@@ -9,6 +11,12 @@ import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
 from genesis.engine.entities.particle_entity import ParticleEntity
+from genesis.options.morphs import Morph
+from genesis.options.surfaces import Surface
+
+if TYPE_CHECKING:
+    from genesis.engine.scene import Scene
+    from genesis.engine.solvers.pbd_solver import PBDSolver
 
 
 class PBDBaseEntity(ParticleEntity):
@@ -103,8 +111,6 @@ class PBDTetEntity(PBDBaseEntity):
         The simulation scene this entity is part of.
     solver : Solver
         The PBD solver instance managing this entity.
-    material : Material
-        Material model defining physical properties such as density and compliance.
     morph : Morph
         Morph object specifying shape and initial transform (position and rotation).
     surface : Surface
@@ -125,31 +131,31 @@ class PBDTetEntity(PBDBaseEntity):
 
     def __init__(
         self,
-        scene,
-        solver,
-        material,
-        morph,
-        surface,
-        particle_size,
-        idx,
-        particle_start,
-        edge_start,
-        vvert_start,
-        vface_start,
+        scene: "Scene",
+        solver: "PBDSolver",
+        morph: Morph,
+        surface: Surface,
+        particle_size: float,
+        idx: int,
+        particle_start: int,
+        edge_start: int,
+        vvert_start: int,
+        vface_start: int,
+        options: "gs.entities.PBD",
         name: str | None = None,
-    ):
+    ) -> None:
         super().__init__(
             scene,
             solver,
-            material,
             morph,
             surface,
             particle_size,
             idx,
             particle_start,
-            vvert_start,
-            vface_start,
+            vvert_start=vvert_start,
+            vface_start=vface_start,
             name=name,
+            options=options,
         )
         self._edge_start = edge_start
 
@@ -231,8 +237,6 @@ class PBD2DEntity(PBDTetEntity):
         The simulation scene this entity is part of.
     solver : Solver
         The PBD solver instance managing this entity.
-    material : Material
-        Material model defining physical properties such as density and compliance.
     morph : Morph
         Morph object specifying shape and initial transform (position and rotation).
     surface : Surface
@@ -255,24 +259,23 @@ class PBD2DEntity(PBDTetEntity):
 
     def __init__(
         self,
-        scene,
-        solver,
-        material,
-        morph,
-        surface,
-        particle_size,
-        idx,
-        particle_start,
-        edge_start,
-        inner_edge_start,
-        vvert_start,
-        vface_start,
+        scene: "Scene",
+        solver: "PBDSolver",
+        morph: Morph,
+        surface: Surface,
+        particle_size: float,
+        idx: int,
+        particle_start: int,
+        edge_start: int,
+        inner_edge_start: int,
+        vvert_start: int,
+        vface_start: int,
+        options: "gs.entities.PBD",
         name: str | None = None,
-    ):
+    ) -> None:
         super().__init__(
             scene,
             solver,
-            material,
             morph,
             surface,
             particle_size,
@@ -282,6 +285,7 @@ class PBD2DEntity(PBDTetEntity):
             vvert_start,
             vface_start,
             name=name,
+            options=options,
         )
 
         self._inner_edge_start = inner_edge_start
@@ -346,8 +350,6 @@ class PBD3DEntity(PBDTetEntity):
         The simulation scene this entity is part of.
     solver : Solver
         The PBD solver instance managing this entity.
-    material : Material
-        Material model defining physical properties such as density and compliance.
     morph : Morph
         Morph object specifying shape and initial transform (position and rotation).
     surface : Surface
@@ -370,24 +372,23 @@ class PBD3DEntity(PBDTetEntity):
 
     def __init__(
         self,
-        scene,
-        solver,
-        material,
-        morph,
-        surface,
-        particle_size,
-        idx,
-        particle_start,
-        edge_start,
-        elem_start,
-        vvert_start,
-        vface_start,
+        scene: "Scene",
+        solver: "PBDSolver",
+        morph: Morph,
+        surface: Surface,
+        particle_size: float,
+        idx: int,
+        particle_start: int,
+        edge_start: int,
+        elem_start: int,
+        vvert_start: int,
+        vface_start: int,
+        options: "gs.entities.PBD",
         name: str | None = None,
-    ):
+    ) -> None:
         super().__init__(
             scene,
             solver,
-            material,
             morph,
             surface,
             particle_size,
@@ -397,6 +398,7 @@ class PBD3DEntity(PBDTetEntity):
             vvert_start,
             vface_start,
             name=name,
+            options=options,
         )
 
         self._elem_start = elem_start
@@ -477,8 +479,6 @@ class PBDParticleEntity(PBDBaseEntity):
         The simulation scene this entity is part of.
     solver : Solver
         The PBD solver instance managing this entity.
-    material : Material
-        Material model defining physical properties such as density and compliance.
     morph : Morph
         Morph object specifying shape and initial transform (position and rotation).
     surface : Surface
@@ -492,10 +492,28 @@ class PBDParticleEntity(PBDBaseEntity):
     """
 
     def __init__(
-        self, scene, solver, material, morph, surface, particle_size, idx, particle_start, name: str | None = None
-    ):
+        self,
+        scene: "Scene",
+        solver: "PBDSolver",
+        morph: Morph,
+        surface: Surface,
+        particle_size: float,
+        idx: int,
+        particle_start: int,
+        options: "gs.entities.PBD",
+        name: str | None = None,
+    ) -> None:
         super().__init__(
-            scene, solver, material, morph, surface, particle_size, idx, particle_start, need_skinning=False, name=name
+            scene,
+            solver,
+            morph,
+            surface,
+            particle_size,
+            idx,
+            particle_start,
+            need_skinning=False,
+            name=name,
+            options=options,
         )
 
     def _add_particles_to_solver(self):
@@ -503,8 +521,8 @@ class PBDParticleEntity(PBDBaseEntity):
             self._particle_start,
             is_active=self.active,
             material_type=int(self._solver.MATERIAL.LIQUID),
-            mass=self._material.rho,
-            rho_rest=self._material.rho,
+            mass=self.material.rho,
+            rho_rest=self.material.rho,
             mu_s=0.0,
             mu_k=0.0,
             air_resistance=0.0,
@@ -530,8 +548,6 @@ class PBDFreeParticleEntity(PBDBaseEntity):
         The simulation scene this entity is part of.
     solver : Solver
         The PBD solver instance managing this entity.
-    material : Material
-        Material model defining physical properties such as density and compliance.
     morph : Morph
         Morph object specifying shape and initial transform (position and rotation).
     surface : Surface
@@ -545,10 +561,28 @@ class PBDFreeParticleEntity(PBDBaseEntity):
     """
 
     def __init__(
-        self, scene, solver, material, morph, surface, particle_size, idx, particle_start, name: str | None = None
-    ):
+        self,
+        scene: "Scene",
+        solver: "PBDSolver",
+        morph: Morph,
+        surface: Surface,
+        particle_size: float,
+        idx: int,
+        particle_start: int,
+        options: "gs.entities.PBD",
+        name: str | None = None,
+    ) -> None:
         super().__init__(
-            scene, solver, material, morph, surface, particle_size, idx, particle_start, need_skinning=False, name=name
+            scene,
+            solver,
+            morph,
+            surface,
+            particle_size,
+            idx,
+            particle_start,
+            need_skinning=False,
+            name=name,
+            options=options,
         )
 
     def _add_particles_to_solver(self):
@@ -556,8 +590,8 @@ class PBDFreeParticleEntity(PBDBaseEntity):
             self._particle_start,
             is_active=self.active,
             material_type=int(self._solver.MATERIAL.PARTICLE),
-            mass=self._material.rho,
-            rho_rest=self._material.rho,
+            mass=self.material.rho,
+            rho_rest=self.material.rho,
             mu_s=0.0,
             mu_k=0.0,
             air_resistance=0.0,

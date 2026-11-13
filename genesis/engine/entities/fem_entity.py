@@ -1,5 +1,6 @@
 from functools import wraps
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
@@ -11,10 +12,16 @@ import genesis.utils.element as eu
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
 from genesis.engine.entities.rigid_entity import RigidLink
+from genesis.options.morphs import Morph
+from genesis.options.surfaces import Surface
 from genesis.repr_base import RBC
 from genesis.utils.misc import broadcast_tensor, tensor_to_array, unique_rows
 
 from .base_entity import Entity
+
+if TYPE_CHECKING:
+    from genesis.engine.scene import Scene
+    from genesis.engine.solvers.fem_solver import FEMSolver
 
 
 class FEMVisGeom(RBC):
@@ -127,8 +134,6 @@ class FEMEntity(Entity):
         The simulation scene that this entity belongs to.
     solver : Solver
         The physics solver instance used for simulation.
-    material : Material
-        The material properties defining elasticity, density, etc.
     morph : Morph
         The morph specification that defines the entity's shape.
     surface : Surface
@@ -149,20 +154,20 @@ class FEMEntity(Entity):
 
     def __init__(
         self,
-        scene,
-        solver,
-        material,
-        morph,
-        surface,
-        idx,
-        v_start=0,
-        el_start=0,
-        s_start=0,
-        vvert_start=0,
-        vface_start=0,
+        scene: "Scene",
+        solver: "FEMSolver",
+        morph: Morph,
+        surface: Surface,
+        idx: int,
+        options: "gs.entities.FEM",
+        v_start: int = 0,
+        el_start: int = 0,
+        s_start: int = 0,
+        vvert_start: int = 0,
+        vface_start: int = 0,
         name: str | None = None,
-    ):
-        super().__init__(idx, scene, morph, solver, material, surface, name=name)
+    ) -> None:
+        super().__init__(idx, scene, morph, solver, surface, name=name, options=options)
 
         self._v_start = v_start  # offset for vertex index of elements
         self._el_start = el_start  # offset for element index
@@ -353,6 +358,26 @@ class FEMEntity(Entity):
         if not init_positions.shape[0] > 0:
             gs.raise_exception("Entity has zero vertices.")
 
+        # The vertex options select vertices as the morph states them, relative to its position before its rotation.
+        verts_pos_morph = verts - self._morph.pos
+        verts_is_fixed = {}
+        conflict_verts_idx = set()
+        for vertex_index, vertex_options in self._options.vertices.items():
+            if "is_fixed" in vertex_options.model_fields_set:
+                for i_v in vertex_index.resolve(verts_pos_morph):
+                    if i_v in verts_is_fixed:
+                        conflict_verts_idx.add(i_v)
+                    else:
+                        verts_is_fixed[i_v] = vertex_options.is_fixed
+        if conflict_verts_idx:
+            gs.logger.warning(
+                f"Two selections of equal specificity give 'is_fixed' of vertices "
+                f"{sorted(map(int, conflict_verts_idx))} of entity '{self.name}'. The first one applies."
+            )
+        self._fixed_verts_idx_local = np.array(
+            sorted(i_v for i_v, is_fixed in verts_is_fixed.items() if is_fixed), dtype=gs.np_int
+        )
+
         self.init_positions = torch.tensor(init_positions, dtype=gs.tc_float, device=gs.device)
         self.init_positions_COM_offset = torch.tensor(
             init_positions - (verts_COM + offset_shift), dtype=gs.tc_float, device=gs.device
@@ -428,7 +453,7 @@ class FEMEntity(Entity):
         else:
             elems_np = self.elems.astype(gs.np_int, copy=False)
             self._solver.add_elements(
-                material=self._material,
+                material=self.material,
                 v_start=self._v_start,
                 el_start=self._el_start,
                 s_start=self._s_start,

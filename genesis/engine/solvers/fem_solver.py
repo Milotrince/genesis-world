@@ -37,7 +37,10 @@ from genesis.engine.solvers.rigid.data import LinksState
 from genesis.engine.state_change import StateChange, mutates
 from genesis.engine.states.solvers import SolverCheckpoint
 from genesis.grad.bridge import custom_backward, no_grad
+from genesis.options.morphs import Morph
 from genesis.options.solvers import FEMOptions
+from genesis.options.surfaces import Surface
+from genesis.typing import IndexType
 from genesis.utils.data import (
     ENVS,
     Config,
@@ -75,6 +78,7 @@ from .base_solver import (
 )
 
 if TYPE_CHECKING:
+    from genesis.engine.entities.base_entity import EntityDescription
     from genesis.engine.scene import Scene
     from genesis.engine.simulator import Simulator
 
@@ -566,7 +570,6 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
     # Its whole state lives in the arrays 'data' yields (see 'CheckpointMixin')
     is_checkpointable = True
 
-    material_cls = FEM.Base
     is_differentiable = True
 
     # ------------------------------------------------------------------------------------
@@ -802,12 +805,20 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
                     continue
                 array.from_numpy(values.astype(gs.np_float if array.dtype == gs.qd_float else gs.np_int, copy=False))
 
+            # The vertices fixed by vertex options take slots on top of 'max_vertex_constraints'
+            self._max_vertex_constraints = self._options.max_vertex_constraints + sum(
+                entity._fixed_verts_idx_local.size for entity in self._entities
+            )
             # Laid out environment-first like the arrays of the solve, whose blocks read the vertices of an environment
             self.vertex_constraints = FEMVertexConstraints(
                 sizes=dict(vertices=self.n_vertices, constraint_slots=self._max_vertex_constraints, envs=self._B),
                 env_first=True,
             )
             kernel_clear_vertex_constraints(self.vertex_constraints)
+
+            for entity in self._entities:
+                if entity._fixed_verts_idx_local.size > 0:
+                    self._set_vertex_constraints(entity._fixed_verts_idx_local + entity._v_start)
 
         self._build_gravity(self.fem_info.gravity)
 
@@ -823,12 +834,17 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
         return self.n_elements > 0
 
     def add_entity(
-        self, idx, material, morph, surface, visualize_contact=False, name: str | None = None, desc=None
+        self,
+        idx: int,
+        morph: Morph,
+        surface: Surface,
+        options: "gs.entities.FEM",
+        name: str | None = None,
+        desc: "EntityDescription | None" = None,
     ) -> "FEMEntity":
         entity = FEMEntity(
             scene=self._scene,
             solver=self,
-            material=material,
             morph=morph,
             surface=surface,
             idx=idx,
@@ -838,6 +854,7 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
             vvert_start=self.n_vverts,
             vface_start=self.n_vfaces,
             name=name,
+            options=options,
         )
         self._entities.append(entity)
         return entity
@@ -1180,8 +1197,14 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
     @gs.assert_built
     @mutates(StateChange.MODEL)
     def set_vertex_constraints(
-        self, verts_idx=None, target_poss=None, link_idx=-1, is_soft_constraint=False, stiffness=0.0, envs_idx=None
-    ):
+        self,
+        verts_idx: IndexType | None = None,
+        target_poss: np.typing.ArrayLike | torch.Tensor | None = None,
+        link_idx: int = -1,
+        is_soft_constraint: bool = False,
+        stiffness: float = 0.0,
+        envs_idx: IndexType | None = None,
+    ) -> None:
         """
         Constrain some vertices to target positions, or to follow a rigid link.
 
@@ -1203,6 +1226,18 @@ class FEMSolver(GravityMixin, TimeBasedMixin, Solver):
         envs_idx : None | int | array_like, shape (M,), optional
             The indices of the environments to set. If None, all environments will be considered. Defaults to None.
         """
+        self._set_vertex_constraints(verts_idx, target_poss, link_idx, is_soft_constraint, stiffness, envs_idx)
+
+    def _set_vertex_constraints(
+        self,
+        verts_idx: IndexType | None = None,
+        target_poss: np.typing.ArrayLike | torch.Tensor | None = None,
+        link_idx: int = -1,
+        is_soft_constraint: bool = False,
+        stiffness: float = 0.0,
+        envs_idx: IndexType | None = None,
+    ) -> None:
+        """Constrain some vertices (see 'set_vertex_constraints'), also before the scene is built."""
         # Imported here to avoid a circular dependency (see 'substep_pre_coupling')
         from genesis.engine.couplers import IPCCoupler
 
