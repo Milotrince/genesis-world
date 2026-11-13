@@ -396,6 +396,11 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
         )
     with pytest.raises(gs.GenesisException, match="its own opacity"):
         gs.surfaces.Default(diffuse_texture=gs.textures.DynamicTexture(resolution=(4, 4)), opacity=0.5)
+    surface = gs.surfaces.Default(
+        diffuse_texture=gs.textures.DynamicTexture(resolution=(4, 4)),
+        emissive_texture=gs.textures.ColorTexture(color=(0.1, 0.2, 0.3, 0.5)),
+    )
+    assert surface.opacity_texture is None
     with pytest.raises(gs.GenesisException, match="read-only"):
         screen.options.surface.emissive_texture.variants["red"].color = (0.0, 1.0, 0.0)
     with pytest.raises(gs.GenesisException, match="diffuse map"):

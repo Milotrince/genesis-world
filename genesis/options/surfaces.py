@@ -254,6 +254,9 @@ class Surface(Options):
             tex = emissive.check_dim(3)
             if opacity is None and tex is not None:
                 opacity = tex
+        # The image of a dynamic texture holds its own opacity, so the alpha of the emission is dropped
+        if isinstance(texture, DynamicTexture):
+            return None
         return opacity
 
 
