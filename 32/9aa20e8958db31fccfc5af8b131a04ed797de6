@@ -1,0 +1,24 @@
+genesis/utils/gltf.py
+  s_3d9051caeb9168::t_4ee0741c890ca1 345-350,468-471
+  s_3d9051caeb9168::t_192e01af5f292a 104
+genesis/utils/urdf.py
+  s_3d9051caeb9168::t_4ee0741c890ca1 209-210,212-217
+genesis/ext/urdfpy/urdf.py
+  s_3d9051caeb9168::t_192e01af5f292a 594-595
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "329aa20e8958db31fccfc5af8b131a04ed797de6",
+  "prompts": {},
+  "sessions": {
+    "s_3d9051caeb9168": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84a538a5-bef4-4fef-b0aa-8772595b7610",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
