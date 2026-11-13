@@ -1626,8 +1626,11 @@ class KinematicEntityDescription(EntityDescription):
                             if vgeom_index is None
                             else f"visual geom {i_target} of link '{link_name}'"
                         )
-                        gs.raise_exception(f"Two selections of equal specificity give 'surface' of {target}.")
-                    surfaces[i_target] = options.surface
+                        gs.logger.warning(
+                            f"Two selections of equal specificity give 'surface' of {target}. The first one applies."
+                        )
+                    else:
+                        surfaces[i_target] = options.surface
             for g_info, entity_surface, link_vgeom_surface in zip(vg_infos, entity_vgeoms_surface, link_vgeoms_surface):
                 surface = next(
                     (

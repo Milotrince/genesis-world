@@ -296,6 +296,7 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
                 ),
                 links={
                     gs.LinkIndex.named("box_baselink"): gs.options.Link(
+                        surface=gs.surfaces.Default(),
                         geoms={
                             gs.GeomIndex.at(0): gs.options.Geom(
                                 friction=2.0,
@@ -305,10 +306,14 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
                             ),
                         },
                     ),
+                    gs.LinkIndex.named("box*"): gs.options.Link(
+                        surface=gs.surfaces.Rough(),
+                    ),
                 },
             )
         )
     assert "equal specificity give 'friction'" in caplog.text
+    assert "equal specificity give 'surface'" in caplog.text
     with pytest.raises(gs.GenesisException, match="selects no valid geom"):
         scene.add_entity(
             options=gs.entities.Rigid(
@@ -323,17 +328,6 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
     with pytest.raises(gs.GenesisException, match="No collision geom of the entity"):
         scene.add_entity(
             options=arm.options.model_copy(update={"geoms": {gs.GeomIndex.named("leg*"): gs.options.Geom()}})
-        )
-    with pytest.raises(gs.GenesisException, match="equal specificity"):
-        scene.add_entity(
-            options=arm.options.model_copy(
-                update={
-                    "links": {
-                        gs.LinkIndex.named("arm*"): gs.options.Link(surface=gs.surfaces.Default()),
-                        gs.LinkIndex.named("arm2"): gs.options.Link(surface=gs.surfaces.Rough()),
-                    }
-                }
-            )
         )
     with pytest.raises(gs.GenesisException, match="No visual geom of the entity matches"):
         scene.add_entity(
