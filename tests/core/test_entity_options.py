@@ -51,8 +51,36 @@ def test_reject_material_for_solver():
         gs.entities.MPM(morph=gs.morphs.Sphere(), material=gs.materials.FEM.Elastic())
     with pytest.raises(gs.GenesisException, match="gs.entities.Rigid"):
         gs.entities.Kinematic(morph=gs.morphs.Sphere(), material=gs.materials.Rigid())
-    with pytest.raises(gs.GenesisException, match="the density, the friction and the geoms"):
+    with pytest.raises(gs.GenesisException, match="the density, the friction, the geoms and the solver options"):
         gs.entities.Kinematic(morph=gs.morphs.Sphere(), links={gs.LinkIndex.named("*"): gs.options.Link(friction=1.0)})
+    # A field the material and the options give different values is refused, while equal values are not
+    with pytest.raises(gs.GenesisException, match="'coup_friction' is given both"):
+        gs.entities.Rigid(
+            morph=gs.morphs.Sphere(),
+            material=gs.materials.Rigid(coup_friction=0.3),
+            solver_options=gs.options.RigidEntitySolverOptions(coup_friction=0.2),
+        )
+    with pytest.raises(gs.GenesisException, match="'gravity_compensation' is given both"):
+        gs.entities.Rigid(
+            morph=gs.morphs.Sphere(),
+            material=gs.materials.Rigid(gravity_compensation=1.0),
+            gravity_compensation=0.5,
+        )
+    with pytest.raises(gs.GenesisException, match="requires a coupled link"):
+        gs.entities.Rigid(
+            morph=gs.morphs.Sphere(),
+            solver_options=gs.options.RigidEntitySolverOptions(needs_coup=False, coup_type="ipc_only"),
+        )
+    with pytest.raises(gs.GenesisException, match="requires coup_type='two_way_soft_constraint'"):
+        gs.entities.Rigid(
+            morph=gs.morphs.Sphere(),
+            solver_options=gs.options.RigidEntitySolverOptions(coup_type="external_articulation"),
+            links={
+                gs.LinkIndex.named("*"): gs.options.Link(
+                    solver_options=gs.options.RigidLinkSolverOptions(needs_coup=False),
+                )
+            },
+        )
 
     # A subclass a user declares admits the materials of its base, which the shorthand keeps giving to the base
     class UserRigid(gs.entities.Rigid):
@@ -63,6 +91,56 @@ def test_reject_material_for_solver():
     assert type(scene.add_entity(gs.morphs.Sphere()).options) is gs.entities.Rigid
     with pytest.raises(gs.GenesisException, match="either entity options"):
         scene.add_entity(morph=gs.morphs.Sphere(), options=gs.entities.Rigid(morph=gs.morphs.Sphere()))
+
+
+@pytest.mark.required
+def test_material_entity_fields():
+    # The fields of a rigid material that state options of the entity set those options
+    options = gs.entities.Rigid(
+        morph=gs.morphs.Sphere(),
+        material=gs.materials.Rigid(
+            friction=0.5,
+            use_visual_raycasting=True,
+            gravity_compensation=0.5,
+            coup_friction=0.3,
+            sdf_cell_size=0.01,
+            coup_links=("arm[1]", "hand"),
+            coup_collision_links=("hand",),
+        ),
+        solver_options=gs.options.RigidEntitySolverOptions(
+            coup_friction=0.3,
+        ),
+    )
+    assert options.use_visual_raycasting
+    assert_allclose(options.gravity_compensation, 0.5, tol=gs.EPS)
+    assert options.solver_options == gs.options.RigidEntitySolverOptions(
+        needs_coup=False,
+        coup_friction=0.3,
+        enable_coup_collision=False,
+        sdf_cell_size=0.01,
+    )
+    # The links of the given names alone couple and collide, each name matched literally
+    assert dict(options.links) == {
+        gs.LinkIndex.named("arm[[]1]", "hand"): gs.options.Link(
+            solver_options=gs.options.RigidLinkSolverOptions(
+                needs_coup=True,
+            ),
+        ),
+        gs.LinkIndex.named("hand"): gs.options.Link(
+            solver_options=gs.options.RigidLinkSolverOptions(
+                enable_coup_collision=True,
+            ),
+        ),
+    }
+    # The material keeps the values it was given, and options rebuilt from their own fields stay the same
+    assert_allclose(options.material.coup_friction, 0.3, tol=gs.EPS)
+    assert gs.entities.Rigid(**{name: getattr(options, name) for name in options.model_fields_set}) == options
+    assert gs.entities.Kinematic(
+        morph=gs.morphs.Sphere(),
+        material=gs.materials.Kinematic(
+            use_visual_raycasting=True,
+        ),
+    ).use_visual_raycasting
 
 
 @pytest.mark.required

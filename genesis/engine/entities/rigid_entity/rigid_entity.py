@@ -1707,10 +1707,8 @@ class RigidEntity(KinematicEntity):
 
     def _add_heterogeneous_variant(self, link, v_link):
         # Add collision geometries
-        coup_links = self.material.coup_links
         for g_desc in v_link.geoms:
-            needs_coup = self.material.needs_coup and (coup_links is None or link.name in coup_links)
-            link._add_geom(g_desc, needs_coup=needs_coup)
+            link._add_geom(g_desc, needs_coup=link.desc.needs_coup)
 
         # Add visual geoms and record vgeom range via parent
         super()._add_heterogeneous_variant(link, v_link)
@@ -1772,10 +1770,10 @@ class RigidEntity(KinematicEntity):
         # Make sure that the entity is not object
         if (
             isinstance(self.sim.coupler, IPCCoupler)
-            and self.material.coup_type == "ipc_only"
+            and self._options.solver_options.coup_type == "ipc_only"
             and any(l_desc.is_robot for l_desc in self._desc.links)
         ):
-            gs.raise_exception("`RigidMaterial.coup_type='ipc_only'` only supported by rigid non-articulated objects.")
+            gs.raise_exception("coup_type='ipc_only' is only supported by rigid non-articulated objects.")
 
         super()._load_model()
 
@@ -1857,10 +1855,8 @@ class RigidEntity(KinematicEntity):
         # Add visual geometries
         for g_desc in l_desc.vgeoms:
             link._add_vgeom(g_desc)
-        coup_links = self.material.coup_links
         for g_desc in l_desc.geoms:
-            needs_coup = self.material.needs_coup and (coup_links is None or link.name in coup_links)
-            link._add_geom(g_desc, needs_coup=needs_coup)
+            link._add_geom(g_desc, needs_coup=l_desc.needs_coup)
 
         return link, joints
 
@@ -2370,10 +2366,12 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type is not None and self.base_link.is_fixed:
-            gs.raise_exception(
-                "This method is only supported by `RigidMaterial.coup_type=None` for fixed-based rigid entities."
-            )
+        if (
+            isinstance(self.sim.coupler, IPCCoupler)
+            and self._options.solver_options.coup_type is not None
+            and self.base_link.is_fixed
+        ):
+            gs.raise_exception("This method is only supported by coup_type=None for fixed-based rigid entities.")
         super().set_pos(pos, envs_idx, zero_velocity=zero_velocity, relative=relative, skip_forward=skip_forward)
 
     @gs.assert_built
@@ -2399,10 +2397,12 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type is not None and self.base_link.is_fixed:
-            gs.raise_exception(
-                "This method is only supported by `RigidMaterial.coup_type=None` for fixed-based rigid entities."
-            )
+        if (
+            isinstance(self.sim.coupler, IPCCoupler)
+            and self._options.solver_options.coup_type is not None
+            and self.base_link.is_fixed
+        ):
+            gs.raise_exception("This method is only supported by coup_type=None for fixed-based rigid entities.")
         super().set_quat(quat, envs_idx, zero_velocity=zero_velocity, relative=relative, skip_forward=skip_forward)
 
     @gs.assert_built
@@ -2460,8 +2460,11 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type == "external_articulation":
-            gs.raise_exception("This method is not supported by `RigidMaterial.coup_type='external_articulation'`.")
+        if (
+            isinstance(self.sim.coupler, IPCCoupler)
+            and self._options.solver_options.coup_type == "external_articulation"
+        ):
+            gs.raise_exception("This method is not supported by coup_type='external_articulation'.")
         super().set_qpos(qpos, qs_idx_local, envs_idx, zero_velocity=zero_velocity, skip_forward=skip_forward)
 
     @gs.assert_built
@@ -2638,8 +2641,11 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type == "external_articulation":
-            gs.raise_exception("This method is not supported by `RigidMaterial.coup_type='external_articulation'`.")
+        if (
+            isinstance(self.sim.coupler, IPCCoupler)
+            and self._options.solver_options.coup_type == "external_articulation"
+        ):
+            gs.raise_exception("This method is not supported by coup_type='external_articulation'.")
         super().set_dofs_position(position, dofs_idx_local, envs_idx, zero_velocity=zero_velocity)
 
     # ------------------------------------------------------------------------------------
@@ -2662,7 +2668,7 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type == "ipc_only":
+        if isinstance(self.sim.coupler, IPCCoupler) and self._options.solver_options.coup_type == "ipc_only":
             gs.raise_exception("This method is not supported for `coup_type='ipc_only'` entities.")
 
         dofs_idx = self._get_global_idx(dofs_idx_local, self.n_dofs, self._dof_start, unsafe=True)
@@ -2684,7 +2690,7 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type == "ipc_only":
+        if isinstance(self.sim.coupler, IPCCoupler) and self._options.solver_options.coup_type == "ipc_only":
             gs.raise_exception("This method is not supported for `coup_type='ipc_only'` entities.")
 
         dofs_idx = self._get_global_idx(dofs_idx_local, self.n_dofs, self._dof_start, unsafe=True)
@@ -2707,7 +2713,7 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type == "ipc_only":
+        if isinstance(self.sim.coupler, IPCCoupler) and self._options.solver_options.coup_type == "ipc_only":
             gs.raise_exception("This method is not supported for `coup_type='ipc_only'` entities.")
 
         dofs_idx = self._get_global_idx(dofs_idx_local, self.n_dofs, self._dof_start, unsafe=True)
@@ -2731,7 +2737,7 @@ class RigidEntity(KinematicEntity):
         """
         from genesis.engine.couplers import IPCCoupler
 
-        if isinstance(self.sim.coupler, IPCCoupler) and self.material.coup_type == "ipc_only":
+        if isinstance(self.sim.coupler, IPCCoupler) and self._options.solver_options.coup_type == "ipc_only":
             gs.raise_exception("This method is not supported for `coup_type='ipc_only'` entities.")
 
         dofs_idx = self._get_global_idx(dofs_idx_local, self.n_dofs, self._dof_start, unsafe=True)
@@ -3381,7 +3387,7 @@ class RigidEntity(KinematicEntity):
     @property
     def gravity_compensation(self):
         """Apply a force to compensate gravity. A value of 1 will make a zero-gravity behavior. Default to 0"""
-        return self.material.gravity_compensation
+        return self._options.gravity_compensation
 
     @property
     def vert_start(self):

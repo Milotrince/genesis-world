@@ -120,7 +120,6 @@ def test_robot_grasp_fem(coup_type, show_viewer):
     franka_links_idx = {link.idx for link in franka.links}
     franka_ipc_links_idx = franka_links_idx.intersection(ipc_links_idx)
     if coup_type == "two_way_soft_constraint":
-        assert coupler._coup_links.get(franka) == franka_finger_links
         assert franka_ipc_links_idx == franka_finger_links_idx
     else:
         assert franka_finger_links_idx.issubset(franka_ipc_links_idx)

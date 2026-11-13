@@ -455,19 +455,12 @@ class Collider:
         ipc_only_link_idxs = set()
         if isinstance(self._solver.sim.coupler, IPCCoupler):
             for entity in self._solver._entities:
-                if not entity.material.needs_coup:
-                    continue
-                mode = entity.material.coup_type
+                mode = entity.options.solver_options.coup_type
                 if mode is None:
                     continue
                 if mode == "ipc_only":
                     ipc_only_link_idxs.update(l.idx for l in entity.links)
-                link_filter_names = entity.material.coup_links
-                if mode == "two_way_soft_constraint" and link_filter_names is not None:
-                    for name in link_filter_names:
-                        ipc_delegated_link_idxs.add(entity.get_link(name=name).idx)
-                else:
-                    ipc_delegated_link_idxs.update(l.idx for l in entity.links)
+                ipc_delegated_link_idxs.update(l.idx for l in entity.links if l.desc.needs_coup)
 
         # Pre-compute per-geom properties into numpy arrays for vectorized filtering
         geom_link_idx = np.array([g.link.idx for g in geoms], dtype=np.int32)

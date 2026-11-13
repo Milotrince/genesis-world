@@ -29,7 +29,7 @@ def has_articulation_dofs(entity: "RigidEntity") -> bool:
 
 
 def default_coup_type(entity: "RigidEntity") -> "CoupType":
-    """Auto-select coup_type when material.coup_type is None. See has_articulation_dofs."""
+    """Auto-select the coupling type of an entity whose solver options leave 'coup_type' to None. See has_articulation_dofs."""
     if has_articulation_dofs(entity):
         if entity.base_link.is_fixed:
             return "external_articulation"
