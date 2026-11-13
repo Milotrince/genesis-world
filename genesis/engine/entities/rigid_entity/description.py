@@ -23,9 +23,8 @@ import trimesh
 
 import genesis as gs
 from genesis.constants import EQUALITY_TYPE, GEOM_TYPE, JOINT_TYPE
-from genesis.engine.materials.base import Material
 from genesis.engine.mesh import InertialProperties
-from genesis.options.entities import get_entity_options_cls
+from genesis.options.entities import RigidEntitySolverOptions, get_entity_options_cls
 from genesis.options.indices import get_links_path
 from genesis.options.morphs import Morph
 from genesis.options.options import Options
@@ -84,14 +83,20 @@ class SignedDistanceFieldDescription:
     """Whether the grid carries the gradient of the field."""
 
     @classmethod
-    def from_geometry(cls, mesh: "gs.Mesh", geom_type: GEOM_TYPE, material: Material, is_primitive: bool) -> Self:
-        """Resolve the grid sampling the signed distance field (SDF) of a geometry, at the resolution its material asks.
+    def from_geometry(
+        cls,
+        mesh: "gs.Mesh",
+        geom_type: GEOM_TYPE,
+        solver_options: RigidEntitySolverOptions,
+        is_primitive: bool,
+    ) -> Self:
+        """Resolve the grid sampling the signed distance field (SDF) of a geometry, at the resolution its entity asks.
 
         The grid extends past the bounding box of the geometry by a margin along each axis. Its cells have the size the
-        material asks, refined further to fit 2 across the width of a convex geometry or the thinnest walls of a closed
-        non-convex one, and clipped along each axis to the minimum and maximum resolutions of the material. A primitive
-        caps the maximum resolution at 32, which resolves its shape exactly whatever its size. A terrain carries no
-        gradient, since it derives its gradient from its height field instead.
+        solver options ask, refined further to fit 2 across the width of a convex geometry or the thinnest walls of a
+        closed non-convex one, and clipped along each axis to the minimum and maximum resolutions of the solver
+        options. A primitive caps the maximum resolution at 32, which resolves its shape exactly whatever its size. A
+        terrain carries no gradient, since it derives its gradient from its height field instead.
         """
         # The vertices are a trimesh array subclass, which the grid parameters derived from them would carry into an
         # exported description
@@ -101,8 +106,8 @@ class SignedDistanceFieldDescription:
         # The cell size is anisotropic, each axis being sized to its own extent, so a thin slab gets fine resolution
         # perpendicular to its surface without bloating the cell count along its long axes. A uniform cell size would
         # leave primitive-vs-mesh contacts noisy whenever the smallest dimension of the primitive is below it.
-        cell_size_lower = grid_size / ((32 if is_primitive else material.sdf_max_res) - 1)
-        cell_size_upper = grid_size / max(material.sdf_min_res - 1, 2)
+        cell_size_lower = grid_size / ((32 if is_primitive else solver_options.sdf_max_res) - 1)
+        cell_size_upper = grid_size / max(solver_options.sdf_min_res - 1, 2)
         # A thin convex geom, such as a piece of the convex decomposition of a thin shell, fits 2 cells across its
         # width, so that the queries near its faces resolve the side they lie on. A non-convex geom tunnels when the
         # cell is coarser than its thinnest wall (its area-weighted p25 thickness), on all three axes: the certified
@@ -113,7 +118,7 @@ class SignedDistanceFieldDescription:
         # an open mesh through its holes, and the mesh it probes stands for this collision mesh, so both share their
         # watertightness.
         sdf_tmesh = mesh.metadata.get("sdf_mesh", mesh.trimesh)
-        cell_size_target = material.sdf_cell_size
+        cell_size_target = solver_options.sdf_cell_size
         if mesh.is_convex:
             convex_width = mu.get_convex_width(
                 np.ascontiguousarray(sdf_tmesh.vertices), np.ascontiguousarray(sdf_tmesh.faces)
@@ -245,6 +250,7 @@ class KinematicLinkDescription:
     offset_quat: np.ndarray = field(default_factory=gu.identity_quat)
     is_robot: bool = False
     is_aligned: bool = False
+    use_visual_raycasting: bool = False
     joints: list["RigidJointDescription"] = field(default_factory=list)
     vgeoms: list[RigidVisGeomDescription] = field(default_factory=list)
 
@@ -267,6 +273,8 @@ class RigidLinkDescription(KinematicLinkDescription):
     inertia: np.ndarray | None
     mass: float | None
     invweight: np.ndarray
+    needs_coup: bool = True
+    enable_coup_collision: bool = True
     geoms: list[RigidGeomDescription] = field(default_factory=list)
     contact_exclusions: list[str] = field(default_factory=list)
 
@@ -1488,6 +1496,31 @@ class KinematicEntityDescription(EntityDescription):
         link_path = l_info.get("path", (l_info["name"],))
         cg_infos, vg_infos = self._resolve_geoms(morph, g_infos, l_info["is_robot"], link_path, resolution)
 
+        # The link options override the raycasting and the coupling of the entity, the first of two selections giving
+        # one field applying
+        link_fields = {}
+        conflicts = []
+        for link_index, link_options in self.options.links.items():
+            if link_index.matches(link_path):
+                fields = dict(link_options.solver_options or {})
+                fields["use_visual_raycasting"] = link_options.use_visual_raycasting
+                for name, value in fields.items():
+                    if value is None:
+                        continue
+                    if name in link_fields:
+                        conflicts.append(f"'{name}'")
+                    else:
+                        link_fields[name] = value
+        if conflicts:
+            gs.logger.warning(
+                f"Two selections of equal specificity give {', '.join(conflicts)} of link '{link_path[-1]}'. The first "
+                "one applies."
+            )
+        l_info["use_visual_raycasting"] = link_fields.get("use_visual_raycasting", self.options.use_visual_raycasting)
+        if isinstance(self.options, gs.entities.Rigid):
+            for name in ("needs_coup", "enable_coup_collision"):
+                l_info[name] = link_fields.get(name, getattr(self.options.solver_options, name))
+
         # Carry the morph pose offset into root links and align them to their collision-geometry COM/principal axes.
         inertial_info = self._align_link(l_info, j_infos, cg_infos, vg_infos, morph, resolution)
 
@@ -1509,6 +1542,7 @@ class KinematicEntityDescription(EntityDescription):
             offset_quat=l_info["offset_quat"],
             is_robot=bool(l_info["is_robot"]),
             is_aligned=l_info["is_aligned"],
+            use_visual_raycasting=l_info["use_visual_raycasting"],
             joints=[description_from_info(RigidJointDescription, j_info) for j_info in j_infos],
             vgeoms=[description_from_info(RigidVisGeomDescription, vg_info) for vg_info in vg_infos],
         )
@@ -1569,7 +1603,9 @@ class KinematicEntityDescription(EntityDescription):
             conflicts = []
             for fields, options, target in fields_options:
                 for name, value in options.model_dump(
-                    exclude={"geoms", "surface", "vgeoms"}, exclude_unset=True, exclude_none=True
+                    exclude={"geoms", "surface", "vgeoms", "solver_options", "use_visual_raycasting"},
+                    exclude_unset=True,
+                    exclude_none=True,
                 ).items():
                     if name in fields:
                         conflicts.append(f"'{name}' of {target}")
@@ -1950,7 +1986,7 @@ class RigidEntityDescription(KinematicEntityDescription):
                     sdf=SignedDistanceFieldDescription.from_geometry(
                         g_info["mesh"],
                         g_info["type"],
-                        self.material,
+                        self.options.solver_options,
                         is_primitive=isinstance(self.morphs[0], gs.morphs.Primitive),
                     ),
                 )
@@ -2078,6 +2114,7 @@ class RigidEntityDescription(KinematicEntityDescription):
             offset_quat=l_info["offset_quat"],
             is_robot=bool(l_info["is_robot"]),
             is_aligned=l_info["is_aligned"],
+            use_visual_raycasting=l_info["use_visual_raycasting"],
             joints=[description_from_info(RigidJointDescription, j_info) for j_info in j_infos],
             vgeoms=[description_from_info(RigidVisGeomDescription, vg_info) for vg_info in vg_infos],
             inertial_pos=inertial.com,
@@ -2085,6 +2122,8 @@ class RigidEntityDescription(KinematicEntityDescription):
             inertia=inertial.inertia,
             mass=inertial.mass,
             invweight=invweight,
+            needs_coup=l_info["needs_coup"],
+            enable_coup_collision=l_info["enable_coup_collision"],
             geoms=self._describe_geoms(cg_infos),
             contact_exclusions=l_info.get("contact_exclusions", []),
         )

@@ -119,9 +119,6 @@ def test_link_filter_strict():
     base_link = robot.get_link("base")
     moving_link = robot.get_link("moving")
 
-    assert robot in coupler._coup_links
-    assert coupler._coup_links[robot] == {moving_link}
-
     ipc_links_idx = get_ipc_rigid_links_idx(scene, env_idx=0)
     assert moving_link.idx in ipc_links_idx
     assert base_link.idx not in ipc_links_idx
@@ -341,13 +338,6 @@ def test_coup_collision_links():
     scene.build()
     assert scene.sim is not None
 
-    # Verify the collision settings were applied
-    coupler = cast("IPCCoupler", scene.sim.coupler)
-    collision_settings = coupler._coupling_collision_settings[robot]
-    base_link = robot.get_link("base")
-    moving_link = robot.get_link("moving")
-
-    # "base" should be disabled (not in coup_collision_links), "moving" should not be in the disabled dict
-    assert base_link in collision_settings
-    assert collision_settings[base_link] is False
-    assert moving_link not in collision_settings
+    # The link named in coup_collision_links alone collides in the IPC coupler
+    assert not robot.get_link("base").desc.enable_coup_collision
+    assert robot.get_link("moving").desc.enable_coup_collision

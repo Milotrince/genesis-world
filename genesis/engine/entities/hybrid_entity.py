@@ -87,14 +87,19 @@ class HybridEntity(Entity):
 
         if isinstance(morph, gs.morphs.URDF):
             # set up rigid part
-            if material.use_default_coupling:
-                gs.logger.info("Use default coupling in hybrid. Overwrite `needs_coup` in rigid material to True")
-                material_rigid.needs_coup = True
-            else:
-                gs.logger.info("Use default coupling in hybrid. Overwrite `needs_coup` in rigid material to False")
-                material_rigid.needs_coup = False
-
-            part_rigid = scene.add_entity(material=material_rigid, morph=morph, surface=surface_rigid)
+            # The default coupling decides whether the rigid part couples, whatever its material states
+            fields_rigid = {name: getattr(material_rigid, name) for name in material_rigid.model_fields_set}
+            fields_rigid.pop("needs_coup", None)
+            part_rigid = scene.add_entity(
+                options=gs.entities.Rigid(
+                    morph=morph,
+                    surface=surface_rigid,
+                    material=type(material_rigid)(**fields_rigid),
+                    solver_options=gs.options.RigidEntitySolverOptions(
+                        needs_coup=material.use_default_coupling,
+                    ),
+                ),
+            )
 
             # get rigid part in world coords
             augment_link_world_coords(part_rigid)

@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Annotated, Any, Literal
+import glob
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal
 
 from pydantic import Field, StrictBool, model_validator
 
@@ -24,8 +25,6 @@ class Rigid(Kinematic["RigidEntity"]):
 
     Parameters
     ----------
-    use_visual_raycasting : bool, optional
-        See Kinematic. Default is False.
     rho : float or None, optional
         The density of the material used to estimate mass if necessary. When None, the default depends on context:
         1000 kg/m^3 if MuJoCo compatibility is enabled (``RigidOptions.enable_mujoco_compatibility``),
@@ -43,53 +42,32 @@ class Rigid(Kinematic["RigidEntity"]):
         the torsional coefficient. Only effective when rolling friction is enabled at the scene level (see
         'RigidOptions.enable_rolling_friction'). If None, parsed from file when available (MJCF), otherwise 0.0001.
         Default is None.
-    needs_coup : bool, optional
-        Whether the material participates in coupling with other solvers. Default is True.
-    coup_friction : float, optional
-        Friction used during coupling. Must be non-negative. Default is 0.1.
-    coup_softness : float, optional
-        Softness of coupling interaction. Must be non-negative. Default is 0.002.
-    coup_restitution : float, optional
-        Restitution coefficient in collision coupling. Should be between 0 and 1. Default is 0.0. The coupling with SPH
-        liquids depends on none of these three parameters.
-    sdf_cell_size : float, optional
-        Cell size in SDF grid in meters. Defines grid resolution. Default is 0.005.
-    sdf_min_res : int, optional
-        Minimum resolution of the SDF grid. Must be at least 16. Default is 32.
-    sdf_max_res : int, optional
-        Maximum resolution of the SDF grid. Must be >= sdf_min_res. Default is 128.
-    gravity_compensation : float, optional
-        Compensation factor for gravity. 1.0 cancels gravity. Default is 0.
-    coup_type : str or None, optional
-        Coupling mode for this entity. Only used by the IPC coupler. Requires ``needs_coup=True``.
-        If None, auto-selected based on entity type: ``'external_articulation'`` for fixed-base
-        articulated robots, ``'two_way_soft_constraint'`` for floating-base robots, and
-        ``'ipc_only'`` for non-articulated objects. Valid values:
-          - 'two_way_soft_constraint': Two-way soft coupling.
-          - 'external_articulation': Joint-level coupling for articulated bodies. Joint positions will be coupled at
-            the DOF level.
-          - 'ipc_only': IPC controls entity, transforms copied to Genesis (one-way). Only supported by rigid
-            non-articulated objects.
-        Default is None.
-    coup_links : tuple of str or None, optional
-        Tuple of link names to include in coupling. When set, only the named links participate
-        in coupling; other links are excluded. Only supported with needs_coup=True and
-        ``two_way_soft_constraint`` type in IPC. Default is None.
-    enable_coup_collision : bool, optional
-        Whether coupler collision is enabled for this entity's links. Only used by the IPC coupler.
-        Unlike ``needs_coup=False`` (which removes the entity from the coupler entirely), setting this to
-        False keeps the entity in the coupler for coupling forces but disables contact response. Default is True.
-    coup_collision_links : tuple of str or None, optional
-        Tuple of link names whose geoms participate in coupler collision. Only used by the IPC coupler.
-        Only effective when ``enable_coup_collision=True``. If None, all coupled links have collision.
-        When set, only the named links get coupler collision; other links are marked no-collision.
-        Default is None.
-    contact_resistance : float or None, optional
-        IPC coupling contact resistance/stiffness override for this entity. ``None`` means use
-        ``IPCCouplerOptions.contact_resistance``. Default is None.
+    use_visual_raycasting, gravity_compensation : optional
+        Deprecated, see ``gs.entities.Rigid``.
+    needs_coup, coup_friction, coup_softness, coup_restitution, sdf_cell_size, sdf_min_res, sdf_max_res, coup_type,
+    enable_coup_collision, contact_resistance : optional
+        Deprecated, see ``gs.options.RigidEntitySolverOptions``.
+    coup_links, coup_collision_links : tuple of str or None, optional
+        Deprecated. The links of these names alone are coupled, or collide in the IPC coupler, through the solver
+        options of their link options (see ``gs.options.RigidLinkSolverOptions``).
     """
 
-    use_visual_raycasting: StrictBool = False
+    _entity_options_name: ClassVar[str] = "gs.entities.Rigid"
+    _entity_names: ClassVar[tuple[str, ...]] = ("use_visual_raycasting", "gravity_compensation")
+    _solver_options_names: ClassVar[tuple[str, ...]] = (
+        "needs_coup",
+        "coup_friction",
+        "coup_softness",
+        "coup_restitution",
+        "sdf_cell_size",
+        "sdf_min_res",
+        "sdf_max_res",
+        "coup_type",
+        "coup_links",
+        "enable_coup_collision",
+        "coup_collision_links",
+        "contact_resistance",
+    )
 
     rho: ValidFloat | None = None
     friction: Annotated[ValidFloat, Field(ge=0.01, le=5.0)] | None = None
@@ -109,20 +87,14 @@ class Rigid(Kinematic["RigidEntity"]):
     coup_collision_links: StrArrayType | None = None
     contact_resistance: PositiveFloat | None = None
 
-    @model_validator(mode="before")
-    @classmethod
-    def _resolve_defaults(cls, data: dict) -> dict:
-        # ipc_only entities have their dynamics fully controlled by IPC (gravity + collision).
-        # Genesis gravity must be disabled to avoid double-counting.
-        if data.get("coup_type") == "ipc_only":
-            grav_comp = data.get("gravity_compensation")
-            if grav_comp is not None and grav_comp != 0.0:
-                gs.raise_exception(
-                    "`gravity_compensation` must be 0 with coup_type='ipc_only'. "
-                    "IPC controls gravity for ipc_only entities."
-                )
-            data["gravity_compensation"] = 0.0
-        return data
+    @model_validator(mode="after")
+    def _check_ipc_only_gravity(self) -> "Rigid":
+        # IPC applies gravity to an entity it simulates alone, so the gravity of Genesis would count twice
+        if self.coup_type == "ipc_only" and abs(self.gravity_compensation) > gs.EPS:
+            gs.raise_exception(
+                "`gravity_compensation` must be 0 with coup_type='ipc_only'. IPC controls gravity for ipc_only entities."
+            )
+        return self
 
     def model_post_init(self, context: Any) -> None:
         if self.coup_type is not None and not self.needs_coup:
@@ -149,5 +121,17 @@ class Rigid(Kinematic["RigidEntity"]):
         if self.sdf_min_res > self.sdf_max_res:
             gs.raise_exception("`sdf_min_res` must be smaller than or equal to `sdf_max_res`.")
 
-        if self.coup_restitution != 0:
-            gs.logger.warning("Non-zero `coup_restitution` could lead to instability. Use with caution.")
+    def get_entity_options_fields(self) -> dict[str, Any]:
+        fields = super().get_entity_options_fields()
+        solver_fields = fields.pop("solver_options", {})
+        links_solver_fields = []
+        for field_name, flag_name in (("coup_links", "needs_coup"), ("coup_collision_links", "enable_coup_collision")):
+            links_name = solver_fields.pop(field_name, None)
+            if links_name is not None:
+                solver_fields[flag_name] = False
+                links_solver_fields.append((tuple(map(glob.escape, links_name)), flag_name))
+        if solver_fields:
+            fields["solver_options"] = solver_fields
+        if links_solver_fields:
+            fields["links_solver_options"] = links_solver_fields
+        return fields

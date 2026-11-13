@@ -810,10 +810,10 @@ class KinematicSolver(Solver):
         """
         vgeom_enabled = torch.zeros(self.n_vgeoms_, dtype=gs.tc_bool, device=gs.device)
         for entity in self.entities:
-            if not entity.material.use_visual_raycasting:
-                continue
-            for vgeom in entity.vgeoms:
-                vgeom_enabled[vgeom.idx] = 1
+            for link in entity.links:
+                if link.desc.use_visual_raycasting:
+                    for vgeom in link.vgeoms:
+                        vgeom_enabled[vgeom.idx] = 1
         self._vfaces_raycast_mask = vgeom_enabled[qd_to_torch(self.dyn_info.vfaces.vgeom_idx)]
 
     def _init_entity_fields(self):

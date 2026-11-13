@@ -30,8 +30,8 @@ class RaycastContext(SharedSensorContext):
     """
     Per-simulator raycast targets, shared across sensor types that cast rays.
 
-    Holds the targets of each active solver: the collision geoms of a rigid solver, and the visual geoms opted into
-    ``material.use_visual_raycasting`` (see get_raycast_targets).
+    Holds the targets of each active solver: the collision geoms of a rigid solver, and the visual geoms of the links
+    opted into 'use_visual_raycasting' (see get_raycast_targets).
     """
 
     def __init__(self, sim):
@@ -139,8 +139,8 @@ class RaycasterSensor(
             )
         if not self._shared_context.targets:
             gs.raise_exception(
-                "Raycaster sensor has no geometry to raycast against: rigid_solver is inactive and no entity "
-                "has material.use_visual_raycasting=True."
+                "Raycaster sensor has no geometry to raycast against: rigid_solver is inactive and no link sets "
+                "use_visual_raycasting=True."
             )
 
         self._shared_metadata.patterns.append(self._options.pattern)

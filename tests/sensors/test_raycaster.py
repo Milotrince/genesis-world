@@ -279,7 +279,8 @@ def test_against_visual(tmp_path, show_viewer, n_envs, kin_raycastable):
     #     visual mesh (including set_vverts overrides, which survive step() until set_vverts(None) hands control
     #     back to FK). When False the kinematic entity is completely ignored by the raycaster.
     #   - cam_rigid -> RigidEntity whose visual mesh (sphere radius 0.2) is intentionally different from its collision
-    #     mesh (capsule radius 0.05). With use_visual_raycasting=True the depth must match the visual sphere.
+    #     mesh (capsule radius 0.05). With use_visual_raycasting=True on its link the depth must match the visual
+    #     sphere.
     urdf_path = tmp_path / "vis_diff.urdf"
     urdf_path.write_text(
         textwrap.dedent(
@@ -320,9 +321,7 @@ def test_against_visual(tmp_path, show_viewer, n_envs, kin_raycastable):
                 fixed=True,
                 enable_custom_vverts=True,
             ),
-            material=gs.materials.Kinematic(
-                use_visual_raycasting=kin_raycastable,
-            ),
+            use_visual_raycasting=kin_raycastable,
         ),
     )
     scene.add_entity(
@@ -332,9 +331,11 @@ def test_against_visual(tmp_path, show_viewer, n_envs, kin_raycastable):
                 pos=(0.0, 0.0, 1.5),
                 fixed=True,
             ),
-            material=gs.materials.Rigid(
-                use_visual_raycasting=True,
-            ),
+            links={
+                gs.LinkIndex.named("root"): gs.options.Link(
+                    use_visual_raycasting=True,
+                ),
+            },
         ),
     )
     cam_kin = scene.add_sensor(

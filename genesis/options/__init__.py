@@ -1,4 +1,4 @@
-from .entities import Geom, Link, Vertex, VGeom
+from .entities import Geom, Link, RigidEntitySolverOptions, RigidLinkSolverOptions, Vertex, VGeom
 from .misc import CoacdOptions, FoamOptions
 from .profiling import ProfilingOptions
 from .scene import SceneOptions
@@ -30,6 +30,8 @@ __all__ = [
     "MPMOptions",
     "PBDOptions",
     "ProfilingOptions",
+    "RigidEntitySolverOptions",
+    "RigidLinkSolverOptions",
     "RigidOptions",
     "SAPCouplerOptions",
     "SceneOptions",

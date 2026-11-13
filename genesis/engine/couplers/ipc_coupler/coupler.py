@@ -192,8 +192,6 @@ class IPCCoupler(ErrnoMixin, CheckpointMixin, RBC):
 
         # ==== Entity Coupling Configuration ====
         self._coup_type_by_entity: dict["RigidEntity", COUPLING_TYPE] = {}
-        self._coup_links: dict["RigidEntity", set["RigidLink"]] = {}  # Used for "two_way_soft_constraint"
-        self._coupling_collision_settings: dict["RigidEntity", dict["RigidLink", bool]] = {}
         self._entities_by_coup_type: dict[COUPLING_TYPE, list["RigidEntity"]] = {}
 
         # ==== ABD Geometry & State ====
@@ -257,16 +255,18 @@ class IPCCoupler(ErrnoMixin, CheckpointMixin, RBC):
             self._init_ipc_gui()
 
     def _setup_coupling_config(self):
-        """Read coup_type, coup_links, and collision settings from entity materials."""
+        """Resolve the coupling type of each coupled rigid entity, and check the options the IPC coupler refuses."""
         assert gs.logger is not None
 
         entity: "RigidEntity"
         for i_e, entity in enumerate(cast(list["RigidEntity"], self.rigid_solver.entities)):
-            if not entity.material.needs_coup:
+            links_needs_coup = [link.desc.needs_coup for link in entity.links]
+            if not any(links_needs_coup):
                 continue
-            coup_type = entity.material.coup_type
+            coup_type = entity.options.solver_options.coup_type
             if coup_type is None:
-                coup_type = default_coup_type(entity)
+                # Coupling some links of the entity without the others takes the one coupling that supports it
+                coup_type = "two_way_soft_constraint" if not all(links_needs_coup) else default_coup_type(entity)
 
             self._coup_type_by_entity[entity] = coup_type = getattr(COUPLING_TYPE, coup_type.upper())
             if coup_type == COUPLING_TYPE.EXTERNAL_ARTICULATION:
@@ -302,25 +302,6 @@ class IPCCoupler(ErrnoMixin, CheckpointMixin, RBC):
                     f"Entity '{entity.name}' sets friction on a link or geom. IPC contacts use the friction of the "
                     "material, so this friction only applies to contacts handled by the rigid solver."
                 )
-
-            # Resolve link filter from material
-            link_filter_names = entity.material.coup_links
-            if link_filter_names is not None:
-                self._coup_links[entity] = set(map(entity.get_link, link_filter_names))
-                gs.logger.debug(f"Rigid entity {i_e}: IPC link filter set to {len(link_filter_names)} link(s)")
-
-            # Resolve collision settings from material
-            if not entity.material.enable_coup_collision:
-                # Disable collision for all links
-                self._coupling_collision_settings[entity] = {link: False for link in entity.links}
-                gs.logger.debug(f"Rigid entity {i_e}: IPC collision disabled for all links")
-            elif entity.material.coup_collision_links is not None:
-                # Positive filter: only named links get collision, others disabled
-                allowed = set(entity.material.coup_collision_links)
-                self._coupling_collision_settings[entity] = {
-                    link: False for link in entity.links if link.name not in allowed
-                }
-                gs.logger.debug(f"Rigid entity {i_e}: IPC collision limited to {allowed}")
 
         # Categorize entities by coupling type
         for entity, coup_type in self._coup_type_by_entity.items():
@@ -481,11 +462,8 @@ class IPCCoupler(ErrnoMixin, CheckpointMixin, RBC):
             if coup_type is None:
                 continue
 
-            # Link filter for two_way_soft_constraint
-            if coup_type == COUPLING_TYPE.TWO_WAY_SOFT_CONSTRAINT:
-                link_filter = self._coup_links.get(entity)
-                if link_filter is not None and link not in link_filter:
-                    continue
+            if not link.desc.needs_coup:
+                continue
 
             target_link = find_target_link_for_fixed_merge(link)
             target_groups.setdefault(target_link, []).append(link)
@@ -577,7 +555,7 @@ class IPCCoupler(ErrnoMixin, CheckpointMixin, RBC):
                     self._ipc_subscenes[env_idx].apply_to(rigid_link_geom)
 
                 # Apply per-entity contact element or no-collision marker
-                if self._coupling_collision_settings.get(entity, {}).get(target_link, True):
+                if target_link.desc.enable_coup_collision:
                     if entity not in self._ipc_abd_contacts:
                         abd_contact = self._ipc_contact_tabular.create(f"abd_contact_{i_e}")
                         self._ipc_abd_contacts[entity] = abd_contact
@@ -759,8 +737,8 @@ class IPCCoupler(ErrnoMixin, CheckpointMixin, RBC):
             resistance = entity.material.contact_resistance or self.options.contact_resistance
             contact_infos.append((elem, friction, resistance, False))
         for entity, elem in self._ipc_abd_contacts.items():
-            friction = entity.material.coup_friction
-            resistance = entity.material.contact_resistance or self.options.contact_resistance
+            friction = entity.options.solver_options.coup_friction
+            resistance = entity.options.solver_options.contact_resistance or self.options.contact_resistance
             contact_infos.append((elem, friction, resistance, True))
 
         # Register entity-entity pairs (upper triangle including self-pairs)
@@ -773,8 +751,8 @@ class IPCCoupler(ErrnoMixin, CheckpointMixin, RBC):
 
         # Register per-plane ground contact pairs
         for entity, ground_elem in self._ipc_ground_contacts.items():
-            plane_friction = entity.material.coup_friction
-            plane_resistance = entity.material.contact_resistance or self.options.contact_resistance
+            plane_friction = entity.options.solver_options.coup_friction
+            plane_resistance = entity.options.solver_options.contact_resistance or self.options.contact_resistance
             for elem, friction, resistance, is_abd in contact_infos:
                 friction_ground = geometric_mean(friction, plane_friction)
                 resistance_ground = harmonic_mean(resistance, plane_resistance)
