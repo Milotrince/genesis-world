@@ -1,0 +1,28 @@
+genesis/utils/serialization.py
+  s_ec1962963f1d21::t_fe45549f3da6ca 250,271,277,388
+  s_ec1962963f1d21::t_68f102299f8b88 31
+genesis/repr_base.py
+  s_ec1962963f1d21::t_fe45549f3da6ca 8-14,17-34,44
+  s_ec1962963f1d21::t_f44d232c06b419 15-16
+tests/rigid/test_serialization.py
+  s_ec1962963f1d21::t_f44d232c06b419 522,543
+genesis/options/entities.py
+  s_ec1962963f1d21::t_e286484b85211b 37-38,47,209,212,521-522,524-525
+  s_ec1962963f1d21::t_ed2bdcec78b487 116-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4283ca2ef92903af3e8e94ee8105b37a4e922d7d",
+  "prompts": {},
+  "sessions": {
+    "s_ec1962963f1d21": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cadd8ae9-41a6-4e47-aad1-49be5fffd081",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
