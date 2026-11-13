@@ -1,0 +1,68 @@
+genesis/__init__.py
+  s_ec1962963f1d21::t_a2dffa6464076a 515
+.github/contributing/ARCHITECTURE.md
+  s_ec1962963f1d21::t_a2dffa6464076a 126
+  s_ec1962963f1d21::t_939441e3a59613 122
+genesis/options/indices.py
+  s_ec1962963f1d21::t_a2dffa6464076a 57,129,195,211,231
+  s_ec1962963f1d21::t_93f39d330b3aff 199-201
+  s_ec1962963f1d21::t_2ae51f64970fce 9,27-28
+  s_ec1962963f1d21::t_4b6c162c0c9350 4,19-23,29-54,56,60,63-68,95-96,163-167,184-185,225,227-229,248-249
+  s_ec1962963f1d21::t_4e3d9f4d43b579 12,150,152
+  s_ec1962963f1d21::t_3122242caac618 125-128,130,198
+  s_ec1962963f1d21::t_40803d0ebcc209 136-137
+tests/deformable/test_fem.py
+  s_ec1962963f1d21::t_4e3d9f4d43b579 644-646
+  s_ec1962963f1d21::t_a2dffa6464076a 661-662,678,680-682,689
+  s_ec1962963f1d21::t_e44f866699dd76 663,679,685,688,690-691
+  s_ec1962963f1d21::t_6e3fc7b234adcb 660,673
+genesis/options/entities.py
+  s_ec1962963f1d21::t_58b7e6f955d9da 411
+  s_ec1962963f1d21::t_4e3d9f4d43b579 12,138-140,151,162-164,242,310
+  s_ec1962963f1d21::t_a2dffa6464076a 15,35,130,198,284,346,348,356,359,361,363,371,373,398,405,408,410,414,421,450,460
+  s_ec1962963f1d21::t_f4f1229c9dc730 195-196,224-227,397,435
+  s_ec1962963f1d21::t_40803d0ebcc209 314-315
+  s_ec1962963f1d21::t_d6f696256fbd76 131-132,150,161,165,176-178,190-192,205,229,234-235,238-241,243-248,258,261-262,266-268,305-306,309,316,347,349,362,364-365,372,374,455-456,458
+  s_ec1962963f1d21::t_3122242caac618 521
+  s_ec1962963f1d21::t_8d73827fdf2b49 3,7
+  s_ec1962963f1d21::t_e5d1fd93092dfe 302-304,413,422-423,461,463-464,466-467
+  s_ec1962963f1d21::t_fbd4cd1d4a3ddb 436
+genesis/engine/entities/base_entity.py
+  s_ec1962963f1d21::t_8d73827fdf2b49 54-55,63
+genesis/engine/entities/rigid_entity/description.py
+  s_ec1962963f1d21::t_a2dffa6464076a 1217,1499
+  s_ec1962963f1d21::t_ac21661b342aba 1473-1474
+  s_ec1962963f1d21::t_40803d0ebcc209 1475
+examples/deformable/fem_hard_and_soft_constraint.py
+  s_ec1962963f1d21::t_a2dffa6464076a 59,88
+tests/rendering/test_imgui_overlay.py
+  s_ec1962963f1d21::t_a2dffa6464076a 331
+tests/parsers/test_usd.py
+  s_ec1962963f1d21::t_a2dffa6464076a 575
+genesis/engine/solvers/fem_solver.py
+  s_ec1962963f1d21::t_062e664ac80a78 818-841
+tests/core/test_entity_options.py
+  s_ec1962963f1d21::t_6e3fc7b234adcb 171
+  s_ec1962963f1d21::t_2638d383ed5ca8 77-79,108,172-174
+  s_ec1962963f1d21::t_a2dffa6464076a 75-76,80-81,93,110-114,116,127-129,146-147,149,151,159-163,170,175,196,198,200,204,206,210,214
+  s_ec1962963f1d21::t_4e3d9f4d43b579 195,199
+  s_ec1962963f1d21::t_e44f866699dd76 197
+examples/rigid/franka_cube.py
+  s_ec1962963f1d21::t_a2dffa6464076a 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "333e4eb8535e1991abbf5bff76a43b03757e498c",
+  "prompts": {},
+  "sessions": {
+    "s_ec1962963f1d21": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cadd8ae9-41a6-4e47-aad1-49be5fffd081",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
