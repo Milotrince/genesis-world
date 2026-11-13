@@ -51,6 +51,8 @@ def test_reject_material_for_solver():
         gs.entities.MPM(morph=gs.morphs.Sphere(), material=gs.materials.FEM.Elastic())
     with pytest.raises(gs.GenesisException, match="gs.entities.Rigid"):
         gs.entities.Kinematic(morph=gs.morphs.Sphere(), material=gs.materials.Rigid())
+    with pytest.raises(gs.GenesisException, match="the density, the friction and the geoms"):
+        gs.entities.Kinematic(morph=gs.morphs.Sphere(), links={gs.LinkIndex.named("*"): gs.options.Link(friction=1.0)})
 
     # A subclass a user declares admits the materials of its base, which the shorthand keeps giving to the base
     class UserRigid(gs.entities.Rigid):
@@ -158,6 +160,16 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
                     },
                 ),
                 gs.LinkIndex.named("body"): gs.options.Link(
+                    surface=gs.surfaces.Default(
+                        color=(1.0, 0.0, 0.0),
+                    ),
+                    vgeoms={
+                        gs.VGeomIndex.named("top_cap"): gs.options.VGeom(
+                            surface=gs.surfaces.Default(
+                                color=(0.0, 1.0, 0.0),
+                            ),
+                        ),
+                    },
                     geoms={
                         gs.GeomIndex.named("tor*"): gs.options.Geom(
                             friction=0.7,
@@ -179,6 +191,13 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
                 ),
                 gs.GeomIndex.at(4): gs.options.Geom(
                     friction_rolling=0.001,
+                ),
+            },
+            vgeoms={
+                gs.VGeomIndex.at(4): gs.options.VGeom(
+                    surface=gs.surfaces.Default(
+                        color=(0.0, 0.0, 1.0),
+                    ),
                 ),
             },
         ),
@@ -231,10 +250,24 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
                     gs.GeomIndex.at(slice(0, 1)): gs.options.Geom(),
                     gs.GeomIndex.named("box*"): gs.options.Geom(),
                 },
+                surface=gs.surfaces.Default(
+                    color=(1.0, 0.0, 0.0),
+                ),
+                vgeoms={
+                    gs.VGeomIndex.at(0): gs.options.VGeom(
+                        surface=gs.surfaces.Emission(
+                            emissive=(0.0, 1.0, 0.0),
+                        ),
+                    ),
+                },
             ),
         },
         geoms={
             gs.GeomIndex.named("*"): gs.options.Geom(),
+        },
+        vgeoms={
+            gs.VGeomIndex.at([True]): gs.options.VGeom(),
+            gs.VGeomIndex.named("box*"): gs.options.VGeom(),
         },
     )
     fem_options = gs.entities.FEM(
@@ -263,6 +296,7 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
                 ),
                 links={
                     gs.LinkIndex.named("box_baselink"): gs.options.Link(
+                        surface=gs.surfaces.Default(),
                         geoms={
                             gs.GeomIndex.at(0): gs.options.Geom(
                                 friction=2.0,
@@ -272,10 +306,14 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
                             ),
                         },
                     ),
+                    gs.LinkIndex.named("box*"): gs.options.Link(
+                        surface=gs.surfaces.Rough(),
+                    ),
                 },
             )
         )
     assert "equal specificity give 'friction'" in caplog.text
+    assert "equal specificity give 'surface'" in caplog.text
     with pytest.raises(gs.GenesisException, match="selects no valid geom"):
         scene.add_entity(
             options=gs.entities.Rigid(
@@ -291,6 +329,12 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
         scene.add_entity(
             options=arm.options.model_copy(update={"geoms": {gs.GeomIndex.named("leg*"): gs.options.Geom()}})
         )
+    with pytest.raises(gs.GenesisException, match="No visual geom of the entity matches"):
+        scene.add_entity(
+            options=mixed_geoms_body.options.model_copy(
+                update={"vgeoms": {gs.VGeomIndex.named("lcd"): gs.options.VGeom()}}
+            )
+        )
     with pytest.raises(gs.GenesisException, match="links_to_keep"):
         scene.add_entity(
             options=arm.options.model_copy(update={"links": {gs.LinkIndex.named("arm3"): gs.options.Link()}})
@@ -299,6 +343,8 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
         scene.add_entity(
             options=arm.options.model_copy(update={"geoms": {gs.GeomIndex.at(2): gs.options.Geom(friction=1.0)}})
         )
+    with pytest.raises(gs.GenesisException, match="selects no valid geom among 2"):
+        scene.add_entity(options=arm.options.model_copy(update={"vgeoms": {gs.VGeomIndex.at(2): gs.options.VGeom()}}))
 
     scene.build(n_envs=2)
     with pytest.raises(gs.GenesisException, match="read-only"):
@@ -347,3 +393,14 @@ def test_selection_precedence(tmp_path, caplog, show_viewer, tol, two_box_free_m
             assert_allclose(geom.get_friction(), friction, tol=gs.EPS)
         assert_allclose(geom.get_friction_torsional(), friction_torsional, tol=gs.EPS)
         assert_allclose(geom.get_friction_rolling(), friction_rolling, tol=gs.EPS)
+    # The link surface colors the visual geoms of the body, the visual geom options the cap they name over it, and the
+    # entity selection by ordinal the capsule of the child link
+    vgeoms_color = {
+        "torus": (1.0, 0.0, 0.0),
+        "top_cap": (0.0, 1.0, 0.0),
+        "bottom_cap": (1.0, 0.0, 0.0),
+        "ring": (1.0, 0.0, 0.0),
+        "tip": (0.0, 0.0, 1.0),
+    }
+    for vgeom in mixed_geoms_body.vgeoms:
+        assert_allclose(vgeom.surface.get_rgba().color[:3], vgeoms_color[vgeom.metadata["name"]], tol=gs.EPS)

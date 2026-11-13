@@ -399,6 +399,11 @@ class Resolution:
     geoms_start: int = 0
     # Paths of the links to which the link or geom options give a density
     links_path_with_density: set[tuple[str, ...]] = field(default_factory=set)
+    # The names of every visual geom, which the visual geom options of the entity select on
+    vgeoms_name: list[str] = field(default_factory=list)
+    # The counterparts of 'n_geoms' and 'geoms_start' for the visual geoms, which a 'gs.VGeomIndex.at' selection counts
+    n_vgeoms: int | None = None
+    vgeoms_start: int = 0
 
 
 @dataclass
@@ -501,12 +506,12 @@ class KinematicEntityDescription(EntityDescription):
         )
         resolution = Resolution(solver_options, enable_mujoco_compatibility)
         desc._load_morph(morphs[0], resolution)
+        links_path = get_links_path(
+            [l_desc.name for l_desc in desc.links], [l_desc.parent_idx for l_desc in desc.links]
+        )
+        for link_index in options.links:
+            link_index.resolve(links_path)
         if isinstance(options, gs.entities.Rigid):
-            links_path = get_links_path(
-                [l_desc.name for l_desc in desc.links], [l_desc.parent_idx for l_desc in desc.links]
-            )
-            for link_index in options.links:
-                link_index.resolve(links_path)
             geoms_index = [
                 *options.geoms,
                 *(i_g for link_options in options.links.values() for i_g in link_options.geoms),
@@ -517,6 +522,16 @@ class KinematicEntityDescription(EntityDescription):
                         f"No collision geom of the entity matches {list(geom_index.names)}. Existing geoms: "
                         f"{resolution.geoms_name}."
                     )
+        vgeoms_index = [
+            *options.vgeoms,
+            *(i_vg for link_options in options.links.values() for i_vg in link_options.vgeoms),
+        ]
+        for vgeom_index in vgeoms_index:
+            if vgeom_index.names is not None and not any(map(vgeom_index.matches, resolution.vgeoms_name)):
+                gs.raise_exception(
+                    f"No visual geom of the entity matches {list(vgeom_index.names)}. Existing visual geoms: "
+                    f"{resolution.vgeoms_name}."
+                )
         return desc
 
     def _load_morph(self, morph: Morph, resolution: Resolution):
@@ -771,6 +786,7 @@ class KinematicEntityDescription(EntityDescription):
 
     def _load_primitive(self, morph, resolution: Resolution, load_geom_only_for_heterogeneous=False):
         resolution.n_geoms, resolution.geoms_start = None, 0
+        resolution.n_vgeoms, resolution.vgeoms_start = None, 0
         if morph.fixed:
             joint_type = gs.JOINT_TYPE.FIXED
             n_qs = 0
@@ -873,6 +889,7 @@ class KinematicEntityDescription(EntityDescription):
 
     def _load_mesh(self, morph, resolution: Resolution, load_geom_only_for_heterogeneous=False):
         resolution.n_geoms, resolution.geoms_start = None, 0
+        resolution.n_vgeoms, resolution.vgeoms_start = None, 0
         # Load meshes
         meshes = gs.Mesh.from_morph_surface(morph, self.surface)
 
@@ -1265,19 +1282,26 @@ class KinematicEntityDescription(EntityDescription):
         # Exclude joints with 0 dofs to align with Mujoco
         links_j_infos = [[j_info for j_info in link_j_infos if j_info["n_dofs"] > 0] for link_j_infos in links_j_infos]
 
-        # A 'gs.GeomIndex.at' selection counts the collision geoms of the whole morph (see '_resolve_geoms')
-        resolution.n_geoms = sum(
-            bool(morph.collision and (g_info["contype"] or g_info["conaffinity"]))
+        # A 'gs.GeomIndex.at' or 'gs.VGeomIndex.at' selection counts the geoms of the whole morph (see '_resolve_geoms')
+        is_col = [
+            bool(g_info["contype"] or g_info["conaffinity"])
             for link_g_infos in links_g_infos
             for g_info in link_g_infos
-        )
-        resolution.geoms_start = 0
+        ]
+        resolution.n_geoms = sum(is_col) if morph.collision else 0
+        resolution.n_vgeoms = len(is_col) - sum(is_col) if morph.visualization else 0
+        resolution.geoms_start, resolution.vgeoms_start = 0, 0
         return l_infos, links_j_infos, links_g_infos, eqs_info
 
     def _load_scene(self, morph, resolution: Resolution):
         l_infos, links_j_infos, links_g_infos, _eqs_info = self._parse_scene(morph, resolution)
 
         # Add (link, joints, geoms) tuples sequentially
+        links_path = get_links_path(
+            [l_info["name"] for l_info in l_infos], [l_info["parent_idx"] for l_info in l_infos]
+        )
+        for l_info, link_path in zip(l_infos, links_path):
+            l_info["path"] = link_path
         for l_info, link_j_infos, link_g_infos in zip(l_infos, links_j_infos, links_g_infos):
             self._resolve_link(l_info, link_j_infos, link_g_infos, morph, resolution)
 
@@ -1544,7 +1568,9 @@ class KinematicEntityDescription(EntityDescription):
                             fields_options.append((link_geoms_fields[i_g], geom_options, target))
             conflicts = []
             for fields, options, target in fields_options:
-                for name, value in options.model_dump(exclude={"geoms"}, exclude_unset=True, exclude_none=True).items():
+                for name, value in options.model_dump(
+                    exclude={"geoms", "surface", "vgeoms"}, exclude_unset=True, exclude_none=True
+                ).items():
                     if name in fields:
                         conflicts.append(f"'{name}' of {target}")
                     else:
@@ -1559,6 +1585,60 @@ class KinematicEntityDescription(EntityDescription):
                     g_info["geom_options"] = gs.options.Geom(**geom_fields)
                     if g_info["geom_options"].rho is not None:
                         resolution.links_path_with_density.add(link_path)
+
+        # A surface from the visual geom or link options replaces the parsed one, and keeps the asset and entity
+        # textures for the maps it leaves unset (see 'Mesh.set_surface'). The ranks follow the collision geoms above.
+        vgeoms_name = [g_info["vmesh"].metadata.get("name", "") for g_info in vg_infos]
+        resolution.vgeoms_name += vgeoms_name
+        vgeoms_start = resolution.vgeoms_start
+        n_vgeoms = len(vg_infos) if resolution.n_vgeoms is None else resolution.n_vgeoms
+        resolution.vgeoms_start += len(vg_infos)
+        if vg_infos:
+            link_name = link_path[-1]
+            entity_vgeoms_surface, link_surface, link_vgeoms_surface = (
+                [None] * len(vg_infos),
+                [None],
+                [None] * len(vg_infos),
+            )
+            surfaces_options = [
+                (entity_vgeoms_surface, vgeom_index, vgeom_options, vgeoms_start, n_vgeoms)
+                for vgeom_index, vgeom_options in self.options.vgeoms.items()
+            ]
+            for link_index, link_options in self.options.links.items():
+                if link_index.matches(link_path):
+                    surfaces_options.append((link_surface, None, link_options, 0, 1))
+                    surfaces_options.extend(
+                        (link_vgeoms_surface, vgeom_index, vgeom_options, 0, len(vg_infos))
+                        for vgeom_index, vgeom_options in link_options.vgeoms.items()
+                    )
+            for surfaces, vgeom_index, options, start, n in surfaces_options:
+                # Resolved before the surface is checked, so that an ordinal out of range raises whatever the options
+                targets_idx = [0] if vgeom_index is None else vgeom_index.resolve(vgeoms_name, start, n)
+                if options.surface is None:
+                    continue
+                for i_target in targets_idx:
+                    if surfaces[i_target] is not None:
+                        target = (
+                            f"link '{link_name}'"
+                            if vgeom_index is None
+                            else f"visual geom {i_target} of link '{link_name}'"
+                        )
+                        gs.logger.warning(
+                            f"Two selections of equal specificity give 'surface' of {target}. The first one applies."
+                        )
+                    else:
+                        surfaces[i_target] = options.surface
+            for g_info, entity_surface, link_vgeom_surface in zip(vg_infos, entity_vgeoms_surface, link_vgeoms_surface):
+                surface = next(
+                    (
+                        surface
+                        for surface in (link_vgeom_surface, link_surface[0], entity_surface)
+                        if surface is not None
+                    ),
+                    None,
+                )
+                if surface is not None:
+                    g_info["vmesh"].set_surface(surface)
 
         # Post-process all collision meshes at once.
         # Destroying the original geometries should be avoided if possible as it will change the way objects

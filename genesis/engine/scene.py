@@ -24,11 +24,13 @@ from pydantic import BaseModel
 import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
+from genesis.constants import TEXTURE_MAP_TYPE
 from genesis.engine.entities.base_entity import Entity, EntityDescription
 from genesis.engine.entities.rigid_entity import KinematicEntity
 from genesis.engine.force_fields import ForceField
 from genesis.engine.materials.base import Material
 from genesis.engine.states.solvers import SimState, SimulatorCheckpoint
+from genesis.engine.texture import Texture
 from genesis.options import (
     BaseCouplerOptions,
     FEMOptions,
@@ -48,6 +50,7 @@ from genesis.options.morphs import Morph
 from genesis.options.recorders import RecorderOptions, TrajectoryFile
 from genesis.options.renderers import RendererOptions
 from genesis.options.surfaces import Surface
+from genesis.options.textures import ColorTexture, DynamicTexture, ImageTexture
 from genesis.recorders import RecorderManager
 from genesis.recorders.trajectory import Trajectory, save_checkpoint
 from genesis.repr_base import RBC
@@ -261,6 +264,7 @@ class Scene(RBC):
 
         # emitters
         self._emitters = gs.List()
+        self._dynamic_textures: list[Texture] = []
 
         self._uid = gs.UID()
         self._is_built = False
@@ -545,9 +549,9 @@ class Scene(RBC):
                 )
             if options.name is not None:
                 gs.raise_exception("A stage adds several entities, so its options take no name.")
-            if isinstance(options, gs.entities.Rigid) and (options.links or options.geoms):
+            if options.links or options.vgeoms or (isinstance(options, gs.entities.Rigid) and options.geoms):
                 gs.raise_exception(
-                    "A stage adds entities of different links, so its options take no link or geom options."
+                    "A stage adds entities of different links, so its options take no link, geom or visual geom options."
                 )
             morph = options.morph
         if not isinstance(morph, gs.morphs.USD):
@@ -949,6 +953,35 @@ class Scene(RBC):
         with gs.logger.timer(f"Building scene ~~~<{self._uid}>~~~..."):
             self._parallelize(n_envs, env_spacing, n_envs_per_row, center_envs_at_origin)
 
+            # Create one dynamic texture per map of a visual geom that its surface fills with one. They come before the
+            # simulator builds, since the camera sensors build with it and every renderer binds to them as it builds.
+            for entity in self.entities:
+                if isinstance(entity, KinematicEntity):
+                    for vgeom in entity.vgeoms:
+                        surface_textures = dict(vgeom.surface)
+                        for texture_map_type, field_name in (
+                            (TEXTURE_MAP_TYPE.DIFFUSE, "diffuse_texture"),
+                            (TEXTURE_MAP_TYPE.EMISSIVE, "emissive_texture"),
+                        ):
+                            options = surface_textures.get(field_name)
+                            if isinstance(options, DynamicTexture):
+                                if entity.morph.enable_custom_vverts:
+                                    gs.raise_exception(
+                                        "A dynamic texture cannot be drawn on an entity with custom visual vertices, "
+                                        f"got '{entity.name}'."
+                                    )
+                                texture = Texture(self, options, texture_map_type, vgeom)
+                                self._dynamic_textures.append(texture)
+                                vgeom._dynamic_textures.append(texture)
+                elif any(
+                    isinstance(texture, DynamicTexture)
+                    or (isinstance(texture, (ColorTexture, ImageTexture)) and texture.is_batched)
+                    for _, texture in entity.surface
+                ):
+                    gs.raise_exception(
+                        f"Only rigid and kinematic entities draw a dynamic or batched texture, got '{entity.name}'."
+                    )
+
             with namespace(self._namespace):
                 self._sim.build()
 
@@ -1057,6 +1090,9 @@ class Scene(RBC):
         if envs_idx is None:
             self._recorder_manager.record(self._sim.cur_step_global)
         self._recorder_manager.reset(envs_idx)
+        # The dynamic textures reset first, so that the viewer the reset repaints shows their initial variants
+        for texture in self._dynamic_textures:
+            texture.reset(envs_idx)
         self._reset(state, envs_idx=envs_idx)
 
     def _reset(self, state: SimState | None = None, *, envs_idx=None, keep_init: bool = False):
@@ -2109,6 +2145,11 @@ class Scene(RBC):
     def emitters(self):
         """All the emitters in the scene."""
         return self._emitters
+
+    @property
+    def dynamic_textures(self) -> list[Texture]:
+        """The runtime state of the dynamic textures of the scene, one per map of a visual geom, once it is built."""
+        return self._dynamic_textures
 
     @property
     def rigid_solver(self):

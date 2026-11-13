@@ -505,6 +505,7 @@ from .constants import (
     contact_resolution,
     broadphase_traversal,
     link_ref_frame,
+    TEXTURE_MAP_TYPE,
 )
 
 from .utils.uid import UID
@@ -518,7 +519,7 @@ from .options import sensors
 from .options import renderers
 from .options import surfaces
 from .options import textures
-from .options.indices import GeomIndex, LinkIndex, VertexIndex
+from .options.indices import GeomIndex, LinkIndex, VertexIndex, VGeomIndex
 
 from .datatypes import List
 
