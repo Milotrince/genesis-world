@@ -226,12 +226,16 @@ class ImageTexture(Texture, SerializationMixin):
                 if not is_batched:
                     gs.raise_exception("An image texture takes one image per entry with 'is_batched=True' alone.")
                 images_array = list(image_array)
+                if not images_array:
+                    gs.raise_exception("A batched image texture takes at least one image.")
             else:
                 images_array = [image_array]
             # Normalize image arrays
             for i, image in enumerate(images_array):
                 if not isinstance(image, np.ndarray):
                     gs.raise_exception("`image_array` needs to be a numpy array.")
+                if image.ndim not in (2, 3):
+                    gs.raise_exception(f"An image is an array of 2 or 3 dimensions, got {image.ndim}.")
                 if image.dtype != np.uint8:
                     if np.issubdtype(image.dtype, np.floating):
                         if image.max() <= 1.0:

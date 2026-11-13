@@ -148,11 +148,25 @@ class Surface(Options):
 
     @model_validator(mode="after")
     def _check_dynamic_textures(self) -> Self:
-        for name, value in self:
+        fields = dict(self)
+        for name, value in fields.items():
             if isinstance(value, DynamicTexture) and name not in ("diffuse_texture", "emissive_texture"):
                 gs.raise_exception(
                     f"A dynamic texture fills 'diffuse_texture' or 'emissive_texture' alone, got '{name}'."
                 )
+            # The renderers draw per environment the color, the opacity packed with it and the emission alone
+            if (
+                isinstance(value, (ColorTexture, ImageTexture))
+                and value.is_batched
+                and name not in (self._color_target, "opacity_texture", "emissive_texture")
+            ):
+                gs.raise_exception(
+                    f"A batched texture fills '{self._color_target}', 'opacity_texture' or 'emissive_texture' alone, "
+                    f"got '{name}'."
+                )
+        # The image of a dynamic texture holds its own opacity
+        if isinstance(fields[self._color_target], DynamicTexture) and fields.get("opacity_texture") is not None:
+            gs.raise_exception("A dynamic texture holds its own opacity, so 'opacity_texture' cannot be given with it.")
         return self
 
     @property

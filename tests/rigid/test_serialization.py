@@ -173,7 +173,7 @@ def test_export_and_load_rigid(
                         color=(0.0, 0.5, 0.0),
                     ),
                     gs.textures.ColorTexture(
-                        color=(0.0, 0.5, 0.0),
+                        color=(0.5, 0.0, 0.0),
                         is_batched=True,
                     ),
                 ),

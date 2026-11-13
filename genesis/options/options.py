@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, ValidationError
@@ -130,6 +131,8 @@ class Options(RBC, BaseModel):
             options._is_read_only = True
             for name in type(options).model_fields:
                 value = getattr(options, name)
+                if isinstance(value, Mapping):
+                    value = tuple(value.values())
                 options_stack.extend(
                     item for item in (value if isinstance(value, tuple) else (value,)) if isinstance(item, Options)
                 )

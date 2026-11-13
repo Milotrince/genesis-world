@@ -386,6 +386,18 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
         gs.textures.ImageTexture(image_path=[str(hdr_path)], encoding="linear", is_batched=True)
     with pytest.raises(gs.GenesisException, match="1 to 4 channels"):
         gs.textures.ImageTexture(image_array=np.zeros((2, 4, 4, 5), dtype=np.uint8), is_batched=True)
+    with pytest.raises(gs.GenesisException, match="at least one image"):
+        gs.textures.ImageTexture(image_array=[], is_batched=True)
+    with pytest.raises(gs.GenesisException, match="2 or 3 dimensions"):
+        gs.textures.ImageTexture(image_array=[np.zeros(4, dtype=np.uint8)], is_batched=True)
+    with pytest.raises(gs.GenesisException, match="batched texture fills"):
+        gs.surfaces.Default(
+            normal_texture=gs.textures.ColorTexture(color=((0.5, 0.5, 1.0), (0.5, 0.5, 1.0)), is_batched=True)
+        )
+    with pytest.raises(gs.GenesisException, match="its own opacity"):
+        gs.surfaces.Default(diffuse_texture=gs.textures.DynamicTexture(resolution=(4, 4)), opacity=0.5)
+    with pytest.raises(gs.GenesisException, match="read-only"):
+        screen.options.surface.emissive_texture.variants["red"].color = (0.0, 1.0, 0.0)
     with pytest.raises(gs.GenesisException, match="diffuse map"):
         lamp_vgeom.set_texture(0, texture_map_type=gs.TEXTURE_MAP_TYPE.DIFFUSE)
     with pytest.raises(gs.GenesisException, match="no dynamic texture"):

@@ -1090,9 +1090,10 @@ class Scene(RBC):
         if envs_idx is None:
             self._recorder_manager.record(self._sim.cur_step_global)
         self._recorder_manager.reset(envs_idx)
-        self._reset(state, envs_idx=envs_idx)
+        # The dynamic textures reset first, so that the viewer the reset repaints shows their initial variants
         for texture in self._dynamic_textures:
             texture.reset(envs_idx)
+        self._reset(state, envs_idx=envs_idx)
 
     def _reset(self, state: SimState | None = None, *, envs_idx=None, keep_init: bool = False):
         if self._is_built:

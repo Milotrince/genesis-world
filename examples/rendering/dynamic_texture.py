@@ -214,7 +214,7 @@ class TexturePainterPlugin(RaycasterViewerPlugin):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--vis", action="store_true", help="Show visualization GUI")
-    parser.add_argument("-n", "--n_envs", type=int, default=4, help="Number of parallel environments")
+    parser.add_argument("-b", "--num-envs", type=int, default=4, help="Number of parallel environments")
     args = parser.parse_args()
 
     gs.init(backend=gs.cpu)
@@ -296,13 +296,13 @@ def main():
     )
     if args.vis:
         scene.viewer.add_plugin(TexturePainterPlugin())
-    scene.build(n_envs=args.n_envs, env_spacing=(0.5, 0.5))
+    scene.build(n_envs=args.num_envs, env_spacing=(0.5, 0.5))
 
     # The variants cycled through, the paint being shown by painting alone
     variants_name = tuple(name for name, texture in variants.items() if not texture.is_batched)
 
     # The variant each environment shows is offset by the index of the environment
-    envs_idx = np.arange(max(args.n_envs, 1))
+    envs_idx = np.arange(max(args.num_envs, 1))
     i_variant = 0
     is_running = True
 
