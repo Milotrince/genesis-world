@@ -158,9 +158,8 @@ class _NamedOrdinalIndex(_OrdinalIndex):
 
     @model_validator(mode="after")
     def _check_single_selection(self) -> Self:
-        # Every field of a geom selection is one way of selecting, so exactly one of them holds a value
-        if sum(value is not None for value in self.__dict__.values()) != 1:
-            gs.raise_exception(f"{type(self).__name__} takes one of {', '.join(type(self).model_fields)}.")
+        if sum(selection is not None for selection in (self.ordinals, self.mask, self.span, self.names)) != 1:
+            gs.raise_exception(f"{type(self).__name__} takes one of ordinals, a mask, a span and names.")
         return self
 
     @classmethod
