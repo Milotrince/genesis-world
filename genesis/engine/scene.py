@@ -953,8 +953,8 @@ class Scene(RBC):
         with gs.logger.timer(f"Building scene ~~~<{self._uid}>~~~..."):
             self._parallelize(n_envs, env_spacing, n_envs_per_row, center_envs_at_origin)
 
-            # The dynamic textures, one for each map of a visual geom that a surface fills with one, which every
-            # renderer binds to as it builds, the camera sensors building with the simulator
+            # Create one dynamic texture per map of a visual geom that its surface fills with one. They come before the
+            # simulator builds, since the camera sensors build with it and every renderer binds to them as it builds.
             for entity in self.entities:
                 if isinstance(entity, KinematicEntity):
                     for vgeom in entity.vgeoms:

@@ -65,8 +65,7 @@ class Texture(object):
 
         self._texid = None
         self._is_transparent = False
-        # The images of the layers of a texture array written since its last upload, which the host keeps until then
-        # alone (see 'set_layers')
+        # The layers written by 'set_layers' and not uploaded yet, held only on the host until the next upload
         self._pending_layers: dict[int, np.ndarray] = {}
 
     @property

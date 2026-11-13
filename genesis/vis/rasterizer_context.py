@@ -44,16 +44,12 @@ class RigidNodeBatch(NamedTuple):
 
 @dataclass
 class LayeredTextureBinding:
-    """The node drawing a geom whose texture in one map holds several images, and the texture array holding them.
+    """The texture array of one map of a geom holding several images, and the node sampling it.
 
-    The texture is a dynamic texture ('texture'), or a batched texture of the surface of the geom ('texture' None),
-    which acts as a single variant that never switches. The array holds the images of each variant in turn: the entries
-    of a variant, or one image per rendered environment for a batched variant of a dynamic texture, which pixels are
-    drawn in. Environment i shows entry i modulo the number of entries. 'variants_envs_layer' holds the layer each
-    environment of the scene samples for each variant, -1 for one not rendered. The node samples the array through the
-    material texture it binds, the base color or the emissive ('is_base_color'). 'node' holds the node the geom was
-    last bound through, so that a node drawn anew is bound again, and 'subscriber' the variant switches still to show,
-    None for a batched texture.
+    'texture' is the dynamic texture, or None for a static batched texture of the surface. 'variants_envs_layer' holds
+    the array layer each environment samples for each variant, -1 for an environment not rendered. 'node' is the node
+    the array was last bound to, so that a rebuilt node is bound again. 'subscriber' collects the pending variant
+    switches, None for a static batched texture.
     """
 
     geom_uid: int

@@ -23,9 +23,9 @@ TextureValueType = int | str | Sequence[int | str] | np.ndarray | torch.Tensor |
 
 
 class Texture:
-    """The variant each environment shows for the dynamic texture of one map of a visual geom, and its renderers.
+    """Runtime state of the dynamic texture of one map of a visual geom: the variant each environment shows.
 
-    Genesis holds the active variant indices alone: the position of the variant each environment shows. The renderers
+    Genesis holds only the active variant indices, the position of the variant each environment shows. The renderers
     hold the pixels, each under the same contract:
 
     - at build, it allocates the entries of each variant ('options.get_variants_image(texture_map_type)'), a batched
@@ -108,13 +108,13 @@ class Texture:
         'texture' is either variants or pixels. A variant is given by position or by name, one for all the selected
         environments, or a sequence of them, one per selected environment. Pixels are a ``ColorTexture``, an
         ``ImageTexture``, or an RGB or RGBA array of shape (height, width, channels) for all the selected environments
-        or (len(envs_idx), height, width, channels) for one each. They are drawn in the batched variant each selected
-        environment shows, or in the only batched variant of the texture for an environment showing another one, which
-        the environment then shows.
+        or (len(envs_idx), height, width, channels) for one each. Pixels go into the batched variant the environment
+        shows. An environment showing another variant switches to the only batched variant of the texture, which
+        receives the pixels.
 
-        An array holds uint8 values, or floats on the scale where 1 stands for 255. In the diffuse map, they are sRGB
-        values clamped between 0 and 1. In the emissive map, they are linear values clamped at 0 alone, so that an
-        emission may exceed 1.
+        An array holds uint8 values, or floats where 1.0 stands for 255. In the diffuse map, the floats are sRGB values
+        clamped to [0, 1]. In the emissive map, they are linear values clamped only below at 0, so that an emission may
+        exceed 1.
         """
         envs_idx = tensor_to_array(self._scene._sanitize_envs_idx(envs_idx))
         if isinstance(texture, (ColorTexture, ImageTexture)):
@@ -146,13 +146,12 @@ class Texture:
             is_active_batched = variants_is_batched[active_variants_idx]
             if len(batched_variants_idx) > 1 and not is_active_batched.all():
                 gs.raise_exception(
-                    "A dynamic texture with several batched variants is drawn in environments showing one of them "
-                    "alone."
+                    "Pixels are drawn on a dynamic texture with several batched variants only in environments that "
+                    "show one of them."
                 )
             variants_idx = np.where(is_active_batched, active_variants_idx, batched_variants_idx[0])
 
-            # Torch warns on wrapping a read-only array, such as an image read from a file, which the copy below
-            # never writes
+            # torch.as_tensor warns on a read-only array, such as an image read from a file
             if isinstance(texture, np.ndarray) and not texture.flags.writeable:
                 texture = texture.copy()
             image = torch.as_tensor(texture, device=gs.device)

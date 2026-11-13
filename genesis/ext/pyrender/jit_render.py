@@ -537,9 +537,9 @@ class JITRenderer:
         self.pose = np.zeros((n, 4, 4), np.float32)
         # 0: flags, bit i set for texture slot i, and bit i + 8 for one that is a texture array, 1-7: texture id
         self.textures = np.zeros((n, 8), np.int32)
-        # The layer of the base color (0) and of the emissive (1) texture array each rendered environment samples, for
-        # the primitives sampling a texture array alone (see 'Primitive.texture_layers'), and the row of each primitive
-        # in it, -1 for one sampling none
+        # Row i of texture_layers holds, for each rendered environment, the layer of the base color (0) and emissive (1)
+        # texture arrays that a layered primitive samples (see 'Primitive.texture_layers').
+        # texture_layers_idx maps each primitive to its row, or -1 for a primitive sampling no texture array.
         is_layered = np.array([primitive.texture_layers is not None for primitive in primitive_list], np.bool_)
         self.texture_layers_idx = np.full(n, -1, np.int32)
         self.texture_layers_idx[is_layered] = np.arange(np.count_nonzero(is_layered))
@@ -869,8 +869,8 @@ class JITRenderer:
                         "diffuse_texture",
                         "specular_glossiness_texture",
                     ]
-                    # A sampler the draw leaves unset reads unit 0, which a texture array would make two sampler types
-                    # read, an invalid draw
+                    # An unset sampler reads unit 0. Keep texture arrays off unit 0, since a sampler2D and a
+                    # sampler2DArray reading one unit make the draw invalid.
                     if tf >> 8 and active_texture == 0:
                         active_texture = 1
                     for i in range(7):

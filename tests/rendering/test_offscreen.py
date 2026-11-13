@@ -202,14 +202,8 @@ def test_emissive_composites(base_plus_emissive_glb, show_viewer, renderer):
 
 @pytest.mark.required
 def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
-    # Three horizontal planes seen from above under flat ambient light, each showing one dynamic texture:
-    #  - screen: an emissive texture switching between two named colors per environment, drawn as the color of an
-    #    Emission surface.
-    #  - label: a diffuse texture drawn per environment, given through the options of the visual geom, which starts as
-    #    the texture the plane asset gives, as a plain plane beside it shows, in the batched variant it starts on.
-    #  - lamp: an emissive texture drawn with one image for every environment, added on top of a dark red base color,
-    #    which starts as the checkerboard of no texture.
-    # A camera sensor renders through a rasterizer of its own, so it uploads the drawings independently of the camera.
+    # The camera sensor renders through a rasterizer of its own, so it receives the drawn pixels independently of the
+    # camera.
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
             camera_pos=(0.0, 0.0, 4.0),
@@ -370,11 +364,6 @@ def test_dynamic_texture(tmp_path, show_viewer, png_snapshot):
     lamp_vgeom.set_texture(np.array([[[0.0, ((128 / 255 + 0.055) / 1.055) ** 2.4, 0.0]]]))
     colors_drawn = get_colors(camera.render(rgb=True)[0])
     assert_allclose(colors_variant[:, 2], colors_drawn[:, 2], atol=2.0)
-    # Refused inputs: a variant the texture does not declare, a value that is neither a variant nor pixels, pixels on a
-    # texture without batched variant, or on one with several where the environment shows none of them, a number of
-    # variants matching neither one nor the environments, an HDR image, drawn or batched, a batched image of more than 4
-    # channels, a map, a visual geom or an entity without dynamic texture, a selection matching no visual geom, and an
-    # ordinal out of range of an entity of several links
     with pytest.raises(gs.GenesisException, match="No variant is named"):
         screen_vgeom.set_texture("green")
     with pytest.raises(gs.GenesisException, match="integer position"):

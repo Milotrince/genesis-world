@@ -79,8 +79,8 @@ class ColorTexture(Texture):
         batched texture takes one such list per entry, or a single one for all of them. Default is (1.0, 1.0, 1.0).
     is_batched : bool, optional
         Whether each environment shows its own entry, environment i showing entry i modulo the number of entries. Each
-        renderer holds every entry, and as a variant of a ``DynamicTexture``, which pixels are drawn in, one image per
-        environment it renders. Default is False.
+        renderer stores every entry. As a variant of a ``DynamicTexture``, a batched texture instead stores one image
+        per rendered environment, which ``set_texture`` draws pixels into. Default is False.
     """
 
     color: LaxFArrayType | FGridType = (1.0, 1.0, 1.0)
@@ -152,8 +152,8 @@ class ImageTexture(Texture, SerializationMixin):
     is_batched : bool, optional
         Whether each environment shows its own entry, environment i showing entry i modulo the number of entries. The
         entries are resized to the resolution of the largest one, so that each costs the memory of the largest image.
-        Each renderer holds every entry, and as a variant of a ``DynamicTexture``, which pixels are drawn in, one image
-        per environment it renders. Default is False.
+        Each renderer stores every entry. As a variant of a ``DynamicTexture``, a batched texture instead stores one
+        image per rendered environment, which ``set_texture`` draws pixels into. Default is False.
     """
 
     image_path: str | StrArrayType | None = None
@@ -581,15 +581,15 @@ class AssetTexture(_ImagelessTexture):
     """
     The texture the asset gives the map of a surface holding a dynamic texture, as a variant of that dynamic texture.
 
-    It stands in the 'variants' of a ``DynamicTexture`` alone, and resolves when the entity is added: to the image or
+    It is valid only in the 'variants' of a ``DynamicTexture``, and resolves when the entity is added: to the image or
     the color the asset gives the map, or to no texture where it gives none. Each visual geom drawing the dynamic
     texture resolves it to the texture its own asset material gives, so one declaration serves several materials.
 
     Parameters
     ----------
     is_batched : bool, optional
-        Whether each environment holds its own copy of the texture of the asset, which pixels are drawn in (see
-        ``ImageTexture``). Default is False.
+        Whether each environment holds its own copy of the texture of the asset, which ``set_texture`` draws pixels
+        into (see ``ImageTexture``). Default is False.
     """
 
     is_batched: StrictBool = False
@@ -653,11 +653,11 @@ class DynamicTexture(_ImagelessTexture):
 
     It fills the diffuse or the emissive map of a surface, and requires a mesh with texture coordinates. Each parallel
     environment shows one of a fixed set of variants declared here. A variant whose texture is batched holds one image
-    per environment, which pixels are drawn in at runtime. Once the scene is built, ``vgeom.set_texture`` shows a
+    per environment, which ``set_texture`` draws pixels into at runtime. Once the scene is built, ``vgeom.set_texture`` shows a
     variant or draws pixels in each environment, and ``vgeom.get_texture`` returns the variant each environment shows.
-    Each visual geom drawing the texture switches and draws on its own, while ``entity.set_texture`` sets the visual
+    Each visual geom showing the texture switches and draws on its own, while ``entity.set_texture`` sets the visual
     geoms it selects at once and ``entity.get_vgeoms`` finds them by the selection that declared the texture. Each
-    renderer holds the pixels it draws, and only the rasterizer draws a dynamic texture yet.
+    renderer holds its own copy of the pixels, and only the rasterizer renders a dynamic texture yet.
 
     The variants and drawn pixels are RGBA images, whose format the map sets. The diffuse map holds 8-bit sRGB values,
     the alpha channel standing for the opacity in place of the opacity of the surface. The emissive map holds 16-bit
@@ -672,8 +672,9 @@ class DynamicTexture(_ImagelessTexture):
         The images an environment switches between, each a color or an image resized to 'resolution', an
         ``AssetTexture`` for the texture the asset gives the map, or None for no texture, which shows a black and
         magenta checkerboard. A mapping names them, so that they are shown by name as well as by position. The variants
-        are fixed once the scene is built, except the batched ones, which pixels are drawn in, each environment in its
-        own copy. A variant costs the memory of one image per visual geom drawing the texture and per renderer, or of
+        are fixed once the scene is built, except the batched ones, which take pixels drawn per environment, each
+        environment in its own copy. A variant costs the memory of one image per visual geom showing the texture and per
+        renderer, or of
         one image per environment for a batched one. Default is one variant with no texture.
     initial_variant : int | str, optional
         The variant every environment shows at build and after a reset, by position or by name. Default is 0.
@@ -697,7 +698,7 @@ class DynamicTexture(_ImagelessTexture):
     def resolve_asset_texture(self, asset_texture: Texture | None) -> "DynamicTexture":
         """Return a copy whose asset texture variants show the texture an asset gives the map.
 
-        A dynamic texture given as 'asset_texture' gives the texture its own asset texture variants show. A batched
+        If 'asset_texture' is itself a dynamic texture, the asset texture that one resolved to is used instead. A batched
         asset texture variant resolves to a batched copy of that texture. The texture itself is returned when it holds
         no asset texture variant, or when the asset gives no color and no image.
         """
@@ -739,7 +740,7 @@ class DynamicTexture(_ImagelessTexture):
 
     @property
     def variants_is_batched(self) -> tuple[bool, ...]:
-        """Whether each variant holds one image per environment, which pixels are drawn in."""
+        """Whether each variant holds one image per environment, which pixels can be drawn into."""
         return tuple(texture is not None and texture.is_batched for texture in self.variants_texture)
 
     def get_variants_idx(self, variants: "int | str | Sequence[int | str] | np.ndarray") -> np.ndarray:

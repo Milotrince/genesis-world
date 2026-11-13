@@ -1586,11 +1586,8 @@ class KinematicEntityDescription(EntityDescription):
                     if g_info["geom_options"].rho is not None:
                         resolution.links_path_with_density.add(link_path)
 
-        # The surface the visual geom and link options give a visual geom replaces the one it was parsed with, which
-        # fills the textures the given surface leaves unset with those of the asset and of the entity surface. The
-        # visual geom options of the entity rank below the link options, which rank below the visual geom options of the
-        # links, as for the collision geoms, and two selections of one rank giving a surface to one target raise an
-        # error.
+        # A surface from the visual geom or link options replaces the parsed one, and keeps the asset and entity
+        # textures for the maps it leaves unset (see 'Mesh.set_surface'). The ranks follow the collision geoms above.
         vgeoms_name = [g_info["vmesh"].metadata.get("name", "") for g_info in vg_infos]
         resolution.vgeoms_name += vgeoms_name
         vgeoms_start = resolution.vgeoms_start
