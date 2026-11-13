@@ -1,0 +1,57 @@
+tests/core/test_entity_options.py
+  s_ec1962963f1d21::t_7436101632d6e5 47,62,93,177-190
+.github/contributing/ARCHITECTURE.md
+  s_ec1962963f1d21::t_6860284bbfa8d6 122
+genesis/engine/entities/rigid_entity/rigid_entity.py
+  s_ec1962963f1d21::t_31b22d811d01ff 1655
+genesis/options/entities.py
+  s_ec1962963f1d21::t_2360a81bea0f04 379-381,383-386,388-392
+  s_ec1962963f1d21::t_4d42b331269477 4,52-75
+  s_ec1962963f1d21::t_6b5fce3cc7c3f8 76-77
+genesis/engine/scene.py
+  s_ec1962963f1d21::t_1a2de44d52d4ef 933-935
+  s_ec1962963f1d21::t_3e3b95049cf1cb 46,521-530,534-538,834
+  s_ec1962963f1d21::t_4d42b331269477 396,448,516-520
+genesis/engine/interactive_scene.py
+  s_ec1962963f1d21::t_235be41e1b5931 212-214,218-220,279,283-287,290
+  s_ec1962963f1d21::t_1a2de44d52d4ef 7
+genesis/options/indices.py
+  s_ec1962963f1d21::t_9c0ef174637935 73-79,143-144,146-147,150-152,158-159
+tests/rendering/test_imgui_overlay.py
+  s_ec1962963f1d21::t_df55d88caa67fa 431-440
+  s_ec1962963f1d21::t_f10791227fd5f2 84-87,321-327,329,331-332,381-382
+genesis/engine/entities/rigid_entity/description.py
+  s_ec1962963f1d21::t_31b22d811d01ff 423
+  s_ec1962963f1d21::t_6181d68db5d56b 2018
+  s_ec1962963f1d21::t_79ad2e1f573c4a 58-60,89,94-95,105,1813-1815,1845
+  s_ec1962963f1d21::t_72a805053d1b92 1401-1402
+  s_ec1962963f1d21::t_acf92715fc5697 597-600,674-675,809-810,813,905-906,909,1240-1243,1426,1453,1456-1457,1459-1488,1490-1533,1540,1647,1649,1779,1810-1811,1819-1822,1824-1825,1836
+  s_ec1962963f1d21::t_c0392b2ae11859 1489
+genesis/utils/mesh.py
+  s_ec1962963f1d21::t_e183c1f2178f7c 622-625,792,795-804
+genesis/ext/pyrender/overlay/plugin.py
+  s_ec1962963f1d21::t_1a2de44d52d4ef 312-313,827,841-844,983
+tests/deformable/test_fem.py
+  s_ec1962963f1d21::t_37f2a646badb8e 632-689,803-813
+  s_ec1962963f1d21::t_f9aed53c86ac3e 814
+genesis/engine/entities/base_entity.py
+  s_ec1962963f1d21::t_31b22d811d01ff 21,24
+genesis/engine/couplers/ipc_coupler/coupler.py
+  s_ec1962963f1d21::t_79a8a0d26d6be4 284,286-287
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3868624f7b65bb4f787e0493ad2bcd3630daa03a",
+  "prompts": {},
+  "sessions": {
+    "s_ec1962963f1d21": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cadd8ae9-41a6-4e47-aad1-49be5fffd081",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
