@@ -85,6 +85,8 @@ tests/rendering/test_offscreen.py
   s_cb41f35dc251b1::t_5302ac2a23dee5 203-238,257-258,261-262,264-311,313-334,336-406,409-410,412-557
   s_cb41f35dc251b1::t_0f0b6b814c9f7c 239-256,259-260,263,312,335,408,411
   s_cb41f35dc251b1::t_e48e6bd16d59c6 407
+.github/contributing/ARCHITECTURE.md
+  s_cb41f35dc251b1::t_f3779a72df5cf1 122
 ---
 {
   "schema_version": "authorship/3.0.0",
