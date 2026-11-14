@@ -1,0 +1,37 @@
+genesis/engine/entities/fem_entity.py
+  s_ec1962963f1d21::t_08206e2dacadd9 366-367,369
+genesis/options/entities.py
+  s_ec1962963f1d21::t_01140eb12d747f 370-371
+  s_ec1962963f1d21::t_ed5e59fe5896a5 321-322,369
+genesis/engine/entities/rigid_entity/description.py
+  s_ec1962963f1d21::t_08206e2dacadd9 1496,1499-1503,1508,1510
+genesis/options/indices.py
+  s_ec1962963f1d21::t_08206e2dacadd9 152,190-195,197,199-207
+  s_ec1962963f1d21::t_01140eb12d747f 223-227
+  s_ec1962963f1d21::t_ed5e59fe5896a5 133-139
+examples/rigid/franka_cube.py
+  s_ec1962963f1d21::t_ed5e59fe5896a5 37-39
+tests/core/test_entity_options.py
+  s_ec1962963f1d21::t_ed5e59fe5896a5 211
+  s_ec1962963f1d21::t_38eac40e2d8dc6 110-111
+tests/deformable/test_fem.py
+  s_ec1962963f1d21::t_ed5e59fe5896a5 689
+.github/contributing/ARCHITECTURE.md
+  s_ec1962963f1d21::t_ed5e59fe5896a5 122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9979486b356a58534445cb4c5cebac0898c5d3aa",
+  "prompts": {},
+  "sessions": {
+    "s_ec1962963f1d21": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cadd8ae9-41a6-4e47-aad1-49be5fffd081",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
