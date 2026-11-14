@@ -293,6 +293,7 @@ tests/rigid/test_kinematics.py
 tests/rigid/test_serialization.py
   s_ec1962963f1d21::t_cb8cbef88fc3f6 45-47,51-55,60-64,69-74,106-108,111-122,127-134,137,147-150,156-160,167-171,177-183,185-196,198-199,208-214,218-222,226-235,240-244,249-256,261-267,271-275,288-299,305-309,315-319,324-329,334-338,674-677
   s_ec1962963f1d21::t_2f3a95329c6c07 197
+  s_cb41f35dc251b1::t_22051f116129ac 135-136
 examples/tutorials/draw_debug.py
   s_ec1962963f1d21::t_cb8cbef88fc3f6 23-27
 tests/core/test_recorders.py
@@ -325,6 +326,8 @@ examples/sensors/tactile_franka.py
   s_ec1962963f1d21::t_cb8cbef88fc3f6 214-218,221-224,229-239,244-254
 tests/rendering/test_imgui_overlay.py
   s_ec1962963f1d21::t_cb8cbef88fc3f6 123-132,136-144,149-154,418-422,429-433
+tests/core/test_entity_options.py
+  s_cb41f35dc251b1::t_22051f116129ac 222-231
 ---
 {
   "schema_version": "authorship/3.0.0",
