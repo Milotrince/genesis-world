@@ -285,8 +285,8 @@ def primitive_to_particles(p_size, shape, size, sampler, inner_radius=0.0):
 
     The primitive is a box of extents size, a cylinder along z of diameter size[0] and height size[2], or a sphere of
     diameter size[0], hollowed out within inner_radius of the origin. The 'pbs' samplers sample the mesh of the
-    primitive and fall back to the 'random' sampler when they fail. The 'random' and 'regular' samplers fill the box
-    of extents size and keep the points inside the primitive.
+    primitive. The 'random' and 'regular' samplers fill the box of extents size and keep the points inside the
+    primitive.
     """
     assert shape in ("box", "cylinder", "sphere")
     if "pbs" in sampler:
@@ -296,12 +296,8 @@ def primitive_to_particles(p_size, shape, size, sampler, inner_radius=0.0):
             mesh = trimesh.creation.cylinder(radius=0.5 * size[0], height=size[2])
         else:
             mesh = trimesh.creation.icosphere(radius=0.5 * size[0])
-        try:
-            positions = trimesh_to_particles_pbs(mesh, p_size, sampler)
-        except gs.GenesisException:
-            sampler = "random"
-
-    if "pbs" not in sampler:
+        positions = trimesh_to_particles_pbs(mesh, p_size, sampler)
+    else:
         positions = _box_to_particles(p_size=p_size, pos=np.zeros(3), size=size, sampler=sampler)
         if shape == "cylinder":
             positions = positions[np.linalg.norm(positions[:, :2], axis=-1) <= 0.5 * size[0]]
