@@ -285,8 +285,7 @@ def primitive_to_particles(p_size, shape, size, sampler, inner_radius=0.0):
 
     The primitive is a box of extents size, a cylinder along z of diameter size[0] and height size[2], or a sphere of
     diameter size[0], hollowed out within inner_radius of the origin. The 'pbs' samplers sample the mesh of the
-    primitive. The 'random' and 'regular' samplers fill the box of extents size and keep the points inside the
-    primitive.
+    primitive. The 'random' and 'regular' samplers fill the box of extents size, keeping what lies in the primitive.
     """
     assert shape in ("box", "cylinder", "sphere")
     if "pbs" in sampler:
