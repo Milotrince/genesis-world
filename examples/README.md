@@ -44,17 +44,16 @@ Read these in order. Each one teaches one API.
 | `rube_goldberg.py` | A chain reaction through revolute, prismatic and spherical joints, with hibernation |
 | `bolt_nut_self_screw.py` | A nut screwing itself down a bolt through non-convex thread contact |
 | `screw_constraint.py` | A nut driven along a bolt by a screw constraint |
-| `closed_loop.py` | Closed-loop linkages from MJCF equality constraints |
-| `authored_decomp.py` | A ring-stacking toy with an authored convex decomposition |
-| `convex_decomposition.py`, `nonconvex_mesh.py` | Objects dropped into a non-convex tank |
-| `contact_manifold.py` | The multi-contact manifold of a box on a box |
+| `delta_robot.py` | A delta robot, a closed kinematic chain, sorting boxes off a conveyor |
+| `stack_rings.py` | A Franka stacking the rings of a toy with an authored convex decomposition |
+| `bin_picking.py` | A Franka picking household objects out of a non-convex bin, with fingers or suction |
 | `contype.py` | Contact filtering with contype and conaffinity bitmasks |
-| `pyramid.py`, `tower.py` | Stacking stability |
-| `friction_breakaway.py`, `rolling_coast.py`, `torsional_grasp.py` | Friction cones, rolling and torsional friction |
+| `jenga.py` | A Franka poking blocks out of a tower, with or without the contact patch |
+| `mini_golf.py` | A Franka putting on greens of different rolling friction |
+| `friction_breakaway.py`, `torsional_grasp.py` | Friction cones and torsional friction |
 | `diffik_controller.py` | A differential inverse kinematics controller built on the Jacobian |
 | `ik_shadow_hand.py` | Multi-link inverse kinematics on a Shadow Hand |
 | `merge_entities.py` | An arm and its hand loaded from separate files and merged |
-| `suction_cup.py` | A suction gripper made of a runtime weld constraint |
 | `kinematic_go2_ghost.py` | A kinematic ghost showing a reference motion |
 | `terrain_from_mesh.py`, `terrain_height_field.py`, `terrain_subterrain.py` | Height-field terrains |
 | `drone_fly_route.py` | A PID-controlled drone flying through waypoints |
