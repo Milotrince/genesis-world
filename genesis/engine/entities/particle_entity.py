@@ -13,7 +13,6 @@ import quadrants as qd
 import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.mesh as mu
-import genesis.utils.particle as pu
 from genesis.options.surfaces import Surface
 from genesis.utils.misc import broadcast_tensor
 
@@ -185,7 +184,7 @@ class ParticleEntity(Entity):
             particles = self._vmesh.particlize(self._particle_size, self.sampler)
             particles = particles.astype(gs.np_float, order="C", copy=False)
         elif isinstance(self._morph, gs.options.morphs.Nowhere):
-            particles = pu.nowhere_particles(self._morph.n_particles)
+            particles = np.tile(gu.nowhere(), (self._morph.n_particles, 1))
         else:
             gs.raise_exception(f"Unsupported morph: {self._morph}.")
 
