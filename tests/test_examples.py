@@ -18,13 +18,18 @@ IGNORE_SCRIPT_PATTERNS = {"*_train.py", "*_eval.py", "*_env.py", "behavior_cloni
 # Map example scripts or directories to their required optional dependencies.
 # Directory keys apply recursively to all scripts within that directory.
 EXAMPLE_DEPENDENCIES = {
-    "usd": ["pxr"],  # USD examples require the usd-core package (provides pxr module)
-    "ipc": ["uipc"],  # Requires pyuipc package (provides uipc module)
-    "single_franka_batch_render.py": ["gs_madrona"],
-    "demo.py": ["LuisaRenderPy"],
+    # USD examples require the usd-core package (provides pxr module)
+    "usd_fridge.py": ["pxr"],
+    "usd_kitchen.py": ["pxr"],
+    # IPC examples require the pyuipc package (provides uipc module)
+    "ipc_cloth_teleop.py": ["uipc"],
+    "ipc_franka_grasp_cube.py": ["uipc"],
+    "ipc_objects_falling.py": ["uipc"],
+    "batch_renderer_franka.py": ["gs_madrona"],
+    "raytracer_materials.py": ["LuisaRenderPy"],
 }
 # Examples running on a CUDA GPU alone, which the CPU fallback of 'gs.gpu' cannot stand in for
-CUDA_SCRIPT_NAMES = {"single_franka_batch_render.py"}
+CUDA_SCRIPT_NAMES = {"batch_renderer_franka.py"}
 
 TIMEOUT = 600
 

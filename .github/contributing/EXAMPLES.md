@@ -5,7 +5,7 @@ Location: `examples/`, one folder per feature area. Every script lives in a fold
 ## Running Examples
 
 ```bash
-uv run examples/tutorials/hello_genesis.py
+uv run examples/tutorials/01_hello_genesis.py
 uv run examples/rigid/wrecking_ball.py -v
 ```
 
@@ -97,20 +97,20 @@ Beyond it, two things matter most here:
 ## Key Examples
 
 ### Getting Started
-- `tutorials/hello_genesis.py` - Basic introduction
-- `tutorials/control_your_robot.py` - Robot control basics
-- `tutorials/parallel_simulation.py` - Batched environments
+- `tutorials/01_hello_genesis.py` - Basic introduction
+- `tutorials/03_control_your_robot.py` - Robot control basics
+- `tutorials/05_parallel_simulation.py` - Batched environments
 
 ### Robotics
 - `rigid/diffik_controller.py` - Differential inverse kinematics
 - `rigid/ik_shadow_hand.py` - Multi-link inverse kinematics
-- `rigid/domain_randomization.py` - Domain randomization
+- `parallel/domain_randomization.py` - Domain randomization
 
 ### Multi-Physics
-- `coupling/cloth_on_rigid.py` - Cloth-rigid coupling
-- `coupling/sph_rigid.py` - Fluid-rigid coupling
-- `coupling/sand_wheel.py` - Granular-rigid coupling
+- `multiphysics/rigid_pbd_cloth_drape.py` - Cloth-rigid coupling
+- `multiphysics/rigid_sph_cube.py` - Fluid-rigid coupling
+- `multiphysics/rigid_mpm_sand_wheel.py` - Granular-rigid coupling
 
 ### Training
-- `locomotion/go2_env.py` - Quadruped RL environment
-- `manipulation/grasp_env.py` - Grasping RL environment
+- `rl/go2_env.py` - Quadruped RL environment
+- `rl/grasp_env.py` - Grasping RL environment
