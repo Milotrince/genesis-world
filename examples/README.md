@@ -20,22 +20,21 @@ Read these in order. Each one teaches one API.
 | Example | Shows |
 |---|---|
 | `01_hello_genesis.py` | A Franka falling onto a plane, the minimal scene |
-| `02_visualization.py` | Cameras, rendering modes and video recording |
-| `03_control_your_robot.py` | Position, velocity and force control, gravity compensation and external wrenches |
-| `04_ik_motion_planning_grasp.py` | Inverse kinematics, motion planning and a grasp, with the link and geom selector |
-| `05_parallel_simulation.py` | Parallel environments and the selection of rendered environments |
+| `02_visualization.py` | A domino run filmed by a moving camera, with video recording and RGB, depth and segmentation images |
+| `03_control_your_robot.py` | Position, velocity and force control against setting the state, a Franka pushing a domino gently, then hard enough to start the run |
+| `04_pick_and_place.py` | Inverse kinematics, motion planning and grasping, a Franka standing dominoes up and knocking them over |
+| `05_parallel_simulation.py` | 512 domino runs with one spacing each, batched reads and the selection of rendered environments |
 | `06_batched_ik.py` | Inverse kinematics across parallel environments |
-| `07_position_control_comparison.py` | Position control against position-velocity control |
-| `08_draw_debug.py` | Debug drawing primitives |
-| `09_entity_name.py` | Naming entities and looking them up |
-| `10_ik_multilink.py` | Inverse kinematics on several links at once |
-| `11_mpm.py` | MPM elastic, plastic and liquid materials |
-| `12_pbd_cloth.py` | PBD cloth with pinned particles |
-| `13_sph_liquid.py` | SPH liquid |
-| `14_muscle.py` | MPM and FEM muscles |
-| `15_worm.py` | A soft worm crawling with muscle groups |
-| `16_hybrid_robot.py` | A robot with a rigid skeleton and a soft skin |
-| `17_interactive_debugging.py` | Inspecting a scene from an IPython shell |
+| `07_draw_debug.py` | Debug drawing primitives |
+| `08_entity_name.py` | Naming entities and looking them up |
+| `09_ik_multilink.py` | Inverse kinematics on several links at once |
+| `10_mpm.py` | MPM elastic, plastic and liquid materials |
+| `11_pbd_cloth.py` | PBD cloth with pinned particles |
+| `12_sph_liquid.py` | SPH liquid |
+| `13_muscle.py` | MPM and FEM muscles |
+| `14_worm.py` | A soft worm crawling with muscle groups |
+| `15_hybrid_robot.py` | A robot with a rigid skeleton and a soft skin |
+| `16_interactive_debugging.py` | Inspecting a scene from an IPython shell |
 
 ## rigid
 
