@@ -1,5 +1,14 @@
+"""A Franka arm and its hand, loaded from separate URDF or MJCF files, are merged into one articulation.
+
+The hand is attached to the arm before build, then both run through a short PD schedule. With the viewer (-v), drag
+the arm or the hand with the mouse, during the schedule and after it.
+"""
+
 import argparse
+import os
+
 import numpy as np
+
 import genesis as gs
 
 
@@ -15,17 +24,24 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--vis", action="store_true", help="Show visualization GUI")
     parser.add_argument("--comb", type=str, default="urdf2urdf", choices=COMB, help="Entities to merge")
+    parser.add_argument(
+        "-r", "--record", action="store_true", help="Record a video of the run to 'out/merge_entities.mp4'"
+    )
     args = parser.parse_args()
+    n_phase_steps = 250 if "PYTEST_VERSION" not in os.environ else 30
 
     gs.init(backend=gs.cpu)
+
+    camera_pos = (0, -3.5, 2.5)
+    camera_lookat = (0.0, 0.0, 0.5)
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
             dt=0.01,
         ),
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(0, -3.5, 2.5),
-            camera_lookat=(0.0, 0.0, 0.5),
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
             camera_fov=40,
         ),
         show_viewer=args.vis,
@@ -72,7 +88,23 @@ def main():
     print([link.name for link in hand.links])
     hand.attach(franka, "attachment")
 
+    camera = None
+    if args.record:
+        camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+            fov=40,
+        )
+
+    if args.vis:
+        scene.viewer.add_plugin(
+            gs.vis.viewer_plugins.MouseInteractionPlugin(),
+        )
+
     scene.build()
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/merge_entities.mp4", fps=round(1.0 / scene.dt))
 
     arm_joints_name = (
         "joint1",
@@ -120,35 +152,18 @@ def main():
     )
 
     # PD control
-    for i in range(750):
-        if i == 0:
-            franka.control_dofs_position(
-                np.array([1, 1, 0, 0, 0, 0, 0]),
-                arm_dofs_idx,
-            )
-            hand.control_dofs_position(
-                np.array([0.04, 0.04]),
-                gripper_dofs_idx,
-            )
-        elif i == 250:
-            franka.control_dofs_position(
-                np.array([-1, 0.8, 1, -2, 1, 0.5, -0.5]),
-                arm_dofs_idx,
-            )
-            hand.control_dofs_position(
-                np.array([0.0, 0.0]),
-                gripper_dofs_idx,
-            )
-        elif i == 500:
-            franka.control_dofs_position(
-                np.array([0, 0, 0, 0, 0, 0, 0]),
-                arm_dofs_idx,
-            )
-            hand.control_dofs_position(
-                np.array([0.04, 0.04]),
-                gripper_dofs_idx,
-            )
-
+    for arm_qpos, gripper_qpos in (
+        ([1, 1, 0, 0, 0, 0, 0], [0.04, 0.04]),
+        ([-1, 0.8, 1, -2, 1, 0.5, -0.5], [0.0, 0.0]),
+        ([0, 0, 0, 0, 0, 0, 0], [0.04, 0.04]),
+    ):
+        franka.control_dofs_position(arm_qpos, arm_dofs_idx)
+        hand.control_dofs_position(gripper_qpos, gripper_dofs_idx)
+        for _ in range(n_phase_steps):
+            scene.step()
+    if camera is not None:
+        camera.stop_recording()
+    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
         scene.step()
 
 

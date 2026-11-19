@@ -1,5 +1,11 @@
+import argparse
 import os
+
 import genesis as gs
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-v", "--vis", action="store_true", help="Show the interactive viewer")
+args = parser.parse_args()
 
 gs.init(backend=gs.cpu)
 
@@ -20,7 +26,7 @@ scene = gs.Scene(
         res=(960, 640),
         camera_fov=30,
     ),
-    show_viewer=True,
+    show_viewer=args.vis,
 )
 
 plane = scene.add_entity(
@@ -38,7 +44,7 @@ obj_elastic = scene.add_entity(
     ),
 )
 
-obj_sand = scene.add_entity(
+obj_liquid = scene.add_entity(
     spec=gs.entities.MPM(
         morph=gs.morphs.Box(
             pos=(0.0, 0.0, 0.25),

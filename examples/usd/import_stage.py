@@ -1,3 +1,8 @@
+"""Import a refrigerator from a USD stage, then sweep each of its joints between its limits with PD control.
+
+With the viewer (-v), drag the doors and drawers with the mouse, during the sweep and after it.
+"""
+
 import argparse
 import os
 
@@ -5,8 +10,8 @@ import numpy as np
 from huggingface_hub import snapshot_download
 
 import genesis as gs
-from genesis.utils.misc import tensor_to_array
 import genesis.utils.geom as gu
+from genesis.utils.misc import tensor_to_array
 
 
 class JointAnimator:
@@ -47,18 +52,26 @@ def main():
         help="Number of simulation steps",
     )
     parser.add_argument("-v", "--vis", action="store_true", help="Show visualization GUI")
+    parser.add_argument(
+        "-r", "--record", action="store_true", help="Record a video of the run to 'out/import_stage.mp4'"
+    )
     args = parser.parse_args()
 
     gs.init(backend=gs.cpu)
 
+    camera_pos = (4.0, 2.0, 2.5)
+    camera_lookat = (0.0, 0.0, 1.0)
+
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(4.0, 2.0, 2.5),
-            camera_lookat=(0.0, 0.0, 1.0),
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
             camera_fov=40,
         ),
+        profiling_options=gs.options.ProfilingOptions(
+            show_FPS=False,
+        ),
         show_viewer=args.vis,
-        show_FPS=False,
     )
 
     asset_path = snapshot_download(
@@ -80,11 +93,32 @@ def main():
         ),
     )
 
+    camera = None
+    if args.record:
+        camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+            fov=40,
+        )
+
+    if args.vis:
+        scene.viewer.add_plugin(
+            gs.vis.viewer_plugins.MouseInteractionPlugin(),
+        )
+
     scene.build()
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/import_stage.mp4", fps=round(1.0 / scene.dt))
 
     joint_animator = JointAnimator(scene)
 
     for _ in range(args.steps):
+        joint_animator.animate(scene)
+        scene.step()
+    if camera is not None:
+        camera.stop_recording()
+    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
         joint_animator.animate(scene)
         scene.step()
 

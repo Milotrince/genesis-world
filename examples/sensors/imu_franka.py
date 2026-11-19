@@ -1,3 +1,11 @@
+"""An IMU with noise, bias drift, delay and cross-axis coupling rides the hand of a Franka tracing a circle.
+
+The IMU reads the linear acceleration and the angular velocity of its mount point, and the plot (-v) shows the noisy
+readings against the ground truth. A green arrow draws the acceleration of the hand link from `get_links_acc`.
+
+With the viewer (-v), drag the arm with the mouse to shake the IMU, during the circle and after it.
+"""
+
 import argparse
 import os
 
@@ -14,9 +22,13 @@ def main():
     parser.add_argument("-v", "--vis", action="store_true", help="Show visualization GUI")
     parser.add_argument("-g", "--gpu", action="store_true", help="Run on GPU instead of CPU")
     parser.add_argument("-t", "--seconds", type=float, default=3, help="Number of seconds to simulate")
+    parser.add_argument("-r", "--record", action="store_true", help="Record a video of the run to 'out/imu_franka.mp4'")
     args = parser.parse_args()
 
     gs.init(backend=gs.gpu if args.gpu else gs.cpu)
+
+    camera_pos = (3.5, 0.0, 2.5)
+    camera_lookat = (0.0, 0.0, 0.5)
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
@@ -26,8 +38,8 @@ def main():
             show_world_frame=False,
         ),
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(3.5, 0.0, 2.5),
-            camera_lookat=(0.0, 0.0, 0.5),
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
             camera_fov=40,
         ),
         profiling_options=gs.options.ProfilingOptions(
@@ -93,7 +105,23 @@ def main():
         rec_options=gs.recorders.NPZFile(filename="out/imu_data.npz"),
     )
 
+    camera = None
+    if args.record:
+        camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+            fov=40,
+        )
+
+    if args.vis:
+        scene.viewer.add_plugin(
+            gs.vis.viewer_plugins.MouseInteractionPlugin(),
+        )
+
     scene.build()
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/imu_franka.mp4", fps=round(1.0 / args.dt))
 
     franka.set_dofs_kp(
         np.array([4500.0, 4500.0, 3500.0, 3500.0, 2000.0, 2000.0, 2000.0, 100.0, 100.0]),
@@ -110,10 +138,19 @@ def main():
     circle_radius = 0.15
     rate = np.deg2rad(2.0)
 
+    acc_arrow = None
     try:
         steps = int(args.seconds / args.dt) if "PYTEST_VERSION" not in os.environ else 5
         for i in tqdm(range(steps)):
             scene.step()
+
+            if acc_arrow is not None:
+                scene.clear_debug_object(acc_arrow)
+            acc_arrow = scene.draw_debug_arrow(
+                pos=end_effector.get_pos(),
+                vec=0.05 * franka.get_links_acc(end_effector.idx_local)[0],
+                color=(0.0, 1.0, 0.0, 0.8),
+            )
 
             # control franka to move in a circle and draw the target positions
             pos = circle_center + np.array([np.cos(i * rate), np.sin(i * rate), 0]) * circle_radius
@@ -124,6 +161,10 @@ def main():
             )
             franka.control_dofs_position(qpos[:-2], motors_dof)
             scene.draw_debug_sphere(pos, radius=0.01, color=(1.0, 0.0, 0.0, 0.5))
+        if camera is not None:
+            camera.stop_recording()
+        while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+            scene.step()
     except KeyboardInterrupt:
         gs.logger.info("Simulation interrupted, exiting.")
     finally:

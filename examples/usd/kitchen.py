@@ -7,9 +7,11 @@ Usage
     python examples/usd/kitchen.py --asset dishwasher
     python examples/usd/kitchen.py --vis              # interactive viewer (drag with the mouse)
     python examples/usd/kitchen.py --full --vis       # the whole kitchen scene
+    python examples/usd/kitchen.py -r kitchen.mp4     # save a video of the settle
 
-Headless, the scene runs a short bounded settle and exits. With ``-v``/``--vis`` it runs indefinitely in the
-interactive viewer with the MouseInteractionPlugin (drag entities with the mouse); press ``Esc`` to quit.
+Headless, the scene runs a short bounded settle and exits. With ``-v``/``--vis`` the same settle runs in the
+interactive viewer, which then stays open until it is closed or ``Esc`` is pressed. Drag the entities with the mouse,
+during the settle and after it.
 """
 
 import argparse
@@ -44,9 +46,15 @@ def main():
     parser.add_argument(
         "--collision", action="store_true", help="Visualize collision geometry instead of the visual meshes"
     )
+    parser.add_argument("-r", "--record", action="store_true", help="Record a video of the run to 'out/kitchen.mp4'")
     args = parser.parse_args()
 
     gs.init(backend=gs.cpu)
+
+    if args.full:
+        camera_pos, camera_lookat = (6.0, -6.0, 4.0), (0.0, 0.0, 1.0)
+    else:
+        camera_pos, camera_lookat = (1.5, -2.5, 1.5), (0.6, 0.0, 0.4)
 
     scene = gs.Scene(
         rigid_options=gs.options.RigidOptions(
@@ -54,6 +62,10 @@ def main():
         ),
         vis_options=gs.options.VisOptions(
             debug=args.collision,
+        ),
+        viewer_options=gs.options.ViewerOptions(
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
         ),
         profiling_options=gs.options.ProfilingOptions(
             show_FPS=False,
@@ -98,6 +110,14 @@ def main():
             )
         all_entities += entities
 
+    camera = None
+    if args.record:
+        camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+        )
+
     if args.vis:
         # Drag entities around with the mouse; the plugin must be attached before build.
         scene.viewer.add_plugin(
@@ -120,16 +140,6 @@ def main():
     gs.logger.info(f"Scene built successfully with {len(all_entities)} entities.")
 
     is_running = True
-
-    # The viewer runs until the window is closed (Esc); a headless run has no such terminator,
-    # so it is bounded to a finite settle. Under pytest both stop after a few steps.
-    if "PYTEST_VERSION" in os.environ:
-        horizon = 5
-    elif args.vis:
-        horizon = None
-    else:
-        horizon = 200
-
     if args.vis:
 
         def stop():
@@ -139,18 +149,17 @@ def main():
         scene.viewer.register_keybinds(
             Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
         )
+        gs.logger.info("Drag the entities with the mouse. Esc quits.")
 
-    try:
-        frame = 0
-        while is_running and (not args.vis or scene.viewer.is_alive()):
-            scene.step()
-            frame += 1
-            if horizon is not None and frame >= horizon:
-                break
-    except KeyboardInterrupt:
-        gs.logger.info("Simulation interrupted, exiting.")
-    finally:
-        gs.logger.info("Simulation finished.")
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/kitchen.mp4", fps=round(1.0 / scene.dt))
+    for _ in range(200 if "PYTEST_VERSION" not in os.environ else 5):
+        scene.step()
+    if camera is not None:
+        camera.stop_recording()
+
+    while args.vis and is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+        scene.step()
 
 
 if __name__ == "__main__":

@@ -6,9 +6,13 @@ Red Cube:   contype=1, conaffinity=1 (0001) -> collide with Plane and Blue Cube
 Green Cube: contype=2, conaffinity=2 (0010) -> collide with Plane and Blue Cube
 Blue Cube:  contype=3, conaffinity=3 (0011) -> collide with Plane, Red Cube, and Green Cube
 Dragon:     contype=4, conaffinity=4 (0100) -> collide with Plane only
+
+With the viewer (-v), drag the cubes and the dragon into each other with the mouse to see which pairs collide, during
+the drop and after it.
 """
 
 import argparse
+import os
 
 import genesis as gs
 
@@ -16,14 +20,18 @@ import genesis as gs
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--vis", action="store_true", help="Show visualization GUI")
+    parser.add_argument("-r", "--record", action="store_true", help="Record a video of the run to 'out/contype.mp4'")
     args = parser.parse_args()
 
     gs.init(backend=gs.cpu)
 
+    camera_pos = (0.5, -1.2, 0.8)
+    camera_lookat = (0.0, 0.0, 0.25)
+
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(0.0, -2, 1.5),
-            camera_lookat=(0.0, 0.0, 0.5),
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
             camera_fov=40,
         ),
         show_viewer=args.vis,
@@ -78,9 +86,29 @@ def main():
         ),
     )
 
-    scene.build()
+    camera = None
+    if args.record:
+        camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+            fov=40,
+        )
 
-    for i in range(1000):
+    if args.vis:
+        scene.viewer.add_plugin(
+            gs.vis.viewer_plugins.MouseInteractionPlugin(),
+        )
+
+    scene.build()
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/contype.mp4", fps=round(1.0 / scene.dt))
+
+    for _ in range(200 if "PYTEST_VERSION" not in os.environ else 90):
+        scene.step()
+    if camera is not None:
+        camera.stop_recording()
+    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
         scene.step()
 
 

@@ -1,8 +1,13 @@
+import argparse
 import os
 
 import numpy as np
 
 import genesis as gs
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-v", "--vis", action="store_true", help="Show the interactive viewer")
+args = parser.parse_args()
 
 gs.init(backend=gs.cpu)
 
@@ -15,7 +20,7 @@ scene = gs.Scene(
         camera_lookat=(0.0, 0.0, 0.5),
         camera_fov=30,
     ),
-    show_viewer=True,
+    show_viewer=args.vis,
 )
 
 plane = scene.add_entity(
@@ -24,6 +29,10 @@ plane = scene.add_entity(
 franka = scene.add_entity(
     gs.morphs.MJCF(
         file="xml/franka_emika_panda/panda.xml",
+    ),
+    # cancel the weight of the links, so the arm floats instead of falling once its motors stop pushing at the end
+    material=gs.materials.Rigid(
+        gravity_compensation=1.0,
     ),
 )
 scene.build()
@@ -40,6 +49,7 @@ joints_name = (
     "finger_joint2",
 )
 motors_dof_idx = [franka.get_joint(name).dofs_idx_local[0] for name in joints_name]
+hand_idx = franka.get_link("hand").idx_local
 
 franka.set_dofs_kp(
     kp=np.array([4500, 4500, 3500, 3500, 2000, 2000, 2000, 100, 100]),
@@ -98,6 +108,10 @@ for i in range(horizon):
             np.array([0, 0, 0, 0, 0, 0, 0, 0, 0]),
             motors_dof_idx,
         )
+    if i >= 1000:
+        # an external force pushes the hand sideways, applied over one step at a time
+        franka.apply_links_external_wrench(force=[0.0, 10.0, 0.0], links_idx_local=hand_idx)
+
     # This is the control force computed based on the given control command
     # If using force control, it's the same as the given control command
     print("control force:", franka.get_dofs_control_force(motors_dof_idx))

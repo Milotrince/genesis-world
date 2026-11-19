@@ -1,5 +1,12 @@
-import os
+"""Hard and soft vertex constraints on FEM entities: a blob held by a pinned patch and a soft spring, a cylinder pinned
+at one vertex, and a stiff cube dragged around a circle by one of its vertices.
+
+The red markers show the fixed vertices and the moving target of the dragged vertex. The constraints run under the
+default coupler or under the SAP coupler (--coupler sap). With the viewer (-v), drag the FEM entities with the mouse.
+"""
+
 import argparse
+import os
 
 import numpy as np
 import torch
@@ -16,10 +23,23 @@ def main():
     parser.add_argument("--substeps", type=int, default=1, help="Number of solver substeps per step")
     parser.add_argument("-t", "--seconds", type=float, default=5, help="Seconds to simulate")
     parser.add_argument("-v", "--vis", action="store_true", help="Show visualization GUI")
+    parser.add_argument("-g", "--gpu", action="store_true", help="Run on GPU instead of CPU")
+    parser.add_argument(
+        "--coupler", choices=("legacy", "sap"), default="legacy", help="Coupler solving the constraints and contacts"
+    )
+    parser.add_argument(
+        "-r",
+        "--record",
+        action="store_true",
+        help="Record a video of the run to 'out/fem_hard_and_soft_constraint.mp4'",
+    )
     args = parser.parse_args()
     args.seconds = 0.01 if "PYTEST_VERSION" in os.environ else args.seconds
 
-    gs.init(backend=gs.cpu)
+    gs.init(backend=gs.gpu if args.gpu else gs.cpu)
+
+    camera_pos = (-2.0, 3.0, 2.0)
+    camera_lookat = SCENE_POS + np.array([0.0, 0.0, -0.3])
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
@@ -31,6 +51,12 @@ def main():
         # needs, so the explicit solver cannot integrate this scene.
         fem_options=gs.options.FEMOptions(
             use_implicit_solver=True,
+        ),
+        coupler_options=gs.options.SAPCouplerOptions() if args.coupler == "sap" else gs.options.LegacyCouplerOptions(),
+        viewer_options=gs.options.ViewerOptions(
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
+            camera_fov=30,
         ),
         profiling_options=gs.options.ProfilingOptions(
             show_FPS=False,
@@ -92,18 +118,26 @@ def main():
     # Recording every simulation step would be far denser than any player needs, and the step size here is tiny.
     video_fps = min(100.0, 1.0 / args.dt)
 
-    cam = scene.add_camera(
-        res=(640, 480),
-        pos=(-2.0, 3.0, 2.0),
-        lookat=SCENE_POS + np.array([0.0, 0.0, -0.8]),
-        fov=30,
-        debug=True,
-    )
+    # A debug camera, so that the video shows the markers of the constraints.
+    camera = None
+    if args.record:
+        camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+            fov=30,
+            debug=True,
+        )
+
+    if args.vis:
+        scene.viewer.add_plugin(
+            gs.vis.viewer_plugins.MouseInteractionPlugin(),
+        )
 
     scene.build()
 
-    video_filename = f"out/fem_hard_soft_dt={args.dt}_substeps={args.substeps}.mp4"
-    cam.start_recording(save_to_filename=video_filename, fps=video_fps)
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/fem_hard_and_soft_constraint.mp4", fps=video_fps)
 
     pinned_idx = [0]
     circle_radius = 0.3
@@ -153,14 +187,14 @@ def main():
             cube.update_constraint_targets(pinned_idx, new_pos)
 
             scene.step()
-
+        if camera is not None:
+            camera.stop_recording()
+        while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+            scene.step()
     except KeyboardInterrupt:
         gs.logger.info("Simulation interrupted, exiting.")
     finally:
         gs.logger.info("Simulation finished.")
-
-        cam.stop_recording()
-        gs.logger.info(f"Saved video to {video_filename}")
 
 
 if __name__ == "__main__":

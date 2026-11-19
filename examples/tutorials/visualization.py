@@ -1,6 +1,12 @@
-import os
+import argparse
 import math
+import os
+
 import genesis as gs
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-v", "--vis", action="store_true", help="Show the interactive viewer")
+args = parser.parse_args()
 
 gs.init(backend=gs.cpu)
 
@@ -19,7 +25,7 @@ scene = gs.Scene(
         camera_fov=40,
     ),
     renderer=gs.renderers.Rasterizer(),
-    show_viewer=True,
+    show_viewer=args.vis,
 )
 
 plane = scene.add_entity(
@@ -34,7 +40,7 @@ cam = scene.add_camera(
     pos=(3.5, 0.0, 2.5),
     lookat=(0, 0, 0.5),
     fov=30,
-    GUI="PYTEST_VERSION" not in os.environ,
+    GUI=args.vis,
 )
 
 scene.build()

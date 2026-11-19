@@ -4,263 +4,213 @@ Example demonstrating camera sensors with different rendering backends.
 Creating cameras as sensors using add_sensor() with three backends
 Rasterizer, Raytracer and BatchRenderer.
 Test the attachment, add light, batch rendering functionalities.
+
+A backend whose optional dependency is missing is skipped: the Raytracer needs LuisaRenderPy, and the BatchRenderer
+needs gs_madrona and a CUDA GPU (-g). With the viewer (-v), drag the sphere or the box with the mouse.
 """
 
+import argparse
+import importlib.util
 import os
+from typing import NamedTuple
+
 import matplotlib.pyplot as plt
 import numpy as np
+
 import genesis as gs
+from genesis.options.sensors import BatchRendererCameraOptions, RasterizerCameraOptions, RaytracerCameraOptions
 from genesis.utils.misc import tensor_to_array
-from genesis.options.sensors import RasterizerCameraOptions, RaytracerCameraOptions, BatchRendererCameraOptions
 
-# The batch renderer compared here requires CUDA, so this example has no CPU backend to offer.
-gs.init(seed=0, precision="32", backend=gs.gpu, logging_level="info")
 
-# Try to import LuisaRenderPy to determine if raytracer is available
-try:
-    import LuisaRenderPy
+class CameraView(NamedTuple):
+    """A camera viewpoint, rendered by a camera sensor of every enabled backend."""
 
-    ENABLE_RAYTRACER = True
-    print("[ok] LuisaRenderPy available - Raytracer will be enabled")
-except ImportError:
-    ENABLE_RAYTRACER = False
-    print("[--] LuisaRenderPy not available - Raytracer will be disabled")
+    name: str
+    """Name of the view, which suffixes the name of each camera sensor and its PNGs."""
+    pos: tuple[float, float, float]
+    """Position of the camera, in the frame of the sphere when attached to it, in the world frame otherwise."""
+    lookat: tuple[float, float, float]
+    """Point the camera looks at."""
+    fov: float
+    """Vertical field of view, in degrees."""
+    is_attached: bool = False
+    """Whether the camera rides the sphere."""
+    offset_T: np.ndarray | None = None
+    """Pose of the camera relative to the sphere, which takes priority over the position offset."""
+    has_light: bool = False
+    """Whether the camera adds a point light above the scene."""
 
-try:
-    import gs_madrona
 
-    ENABLE_MADRONA = True
-    print("[ok] gs_madrona available - BatchRenderer will be enabled")
-except ImportError:
-    ENABLE_MADRONA = False
-    print("[--] gs_madrona not available - BatchRenderer will be disabled")
-ENABLE_MADRONA = ENABLE_MADRONA and (gs.backend == gs.cuda)
-# Choose renderer based on raytracer availability
-if ENABLE_RAYTRACER:
-    renderer = gs.renderers.RayTracer(
-        env_surface=gs.surfaces.Emission(
-            emissive_texture=gs.textures.ColorTexture(
-                color=(0.2, 0.3, 0.5),
-            ),
-        ),
-        env_radius=20.0,
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-v", "--vis", action="store_true", help="Show the interactive viewer")
+    parser.add_argument("-g", "--gpu", action="store_true", help="Run on GPU instead of CPU")
+    parser.add_argument("-s", "--steps", type=int, default=100, help="Number of simulation steps")
+    parser.add_argument(
+        "-o", "--output-dir", default="out/camera_as_sensor", help="Directory for the PNGs the camera sensors render"
     )
-else:
-    # Use Rasterizer as fallback renderer
-    renderer = gs.renderers.Rasterizer()
+    parser.add_argument(
+        "-r", "--record", action="store_true", help="Record a video of the run to 'out/camera_as_sensor.mp4'"
+    )
+    args = parser.parse_args()
+    if "PYTEST_VERSION" in os.environ:
+        args.steps = 11
 
-scene = gs.Scene(
-    renderer=renderer,
-    show_viewer=False,
-)
+    gs.init(seed=0, precision="32", backend=gs.gpu if args.gpu else gs.cpu, logging_level="info")
 
-plane = scene.add_entity(
-    morph=gs.morphs.Plane(),
-    surface=gs.surfaces.Rough(
-        color=(0.4, 0.4, 0.4),
-    ),
-)
+    enable_raytracer = importlib.util.find_spec("LuisaRenderPy") is not None
+    if not enable_raytracer:
+        gs.logger.info("LuisaRenderPy not available, skipping the Raytracer cameras.")
+    enable_batch_renderer = importlib.util.find_spec("gs_madrona") is not None and gs.backend == gs.cuda
+    if not enable_batch_renderer:
+        gs.logger.info("gs_madrona or a CUDA backend not available, skipping the BatchRenderer cameras.")
 
-sphere = scene.add_entity(
-    morph=gs.morphs.Sphere(
-        radius=0.5,
-        pos=(0.0, 0.0, 2.0),
-    ),
-    surface=gs.surfaces.Smooth(
-        color=(1.0, 0.5, 0.5),
-    ),
-)
+    env_surface = gs.surfaces.Emission(
+        emissive_texture=gs.textures.ColorTexture(
+            color=(0.2, 0.3, 0.5),
+        ),
+    )
+    if enable_raytracer:
+        renderer = gs.renderers.RayTracer(
+            env_surface=env_surface,
+            env_radius=20.0,
+        )
+    else:
+        renderer = gs.renderers.Rasterizer()
 
-box = scene.add_entity(
-    morph=gs.morphs.Box(
-        size=(0.3, 0.3, 0.3),
-        pos=(1.0, 1.0, 1.0),
-    ),
-    surface=gs.surfaces.Rough(
-        color=(0.5, 1.0, 0.5),
-    ),
-)
+    camera_pos = (3.0, -3.0, 2.5)
+    camera_lookat = (0.0, 0.0, 1.0)
 
-# Define common camera parameters
-CAMERA_COMMON_KWARGS = dict(
-    {
-        "up": (0.0, 0.0, 1.0),
-        "near": 0.1,
-        "far": 100.0,
-    }
-)
+    scene = gs.Scene(
+        viewer_options=gs.options.ViewerOptions(
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
+        ),
+        renderer=renderer,
+        show_viewer=args.vis,
+    )
 
-CAMERA_SENSORS_KWARGS = [
-    {
-        "name": "cam0",
-        "pos": (3.0, 0.0, 2.0),
-        "lookat": (0.0, 0.0, 1.0),
-        "fov": 60.0,
-        "attachment": None,  # No attachment
-        "lights": [{"pos": (2.0, 2.0, 5.0), "color": (1.0, 1.0, 1.0), "intensity": 1.0}],
-    },
-    {
-        "name": "cam1",
-        "pos": (0.0, 3.0, 2.0),
-        "lookat": (0.0, 0.0, 1.0),
-        "fov": 60.0,
-        "attachment": None,
-        "lights": [],
-    },
-    {
-        "name": "cam_attached",
-        "pos": (0.0, 0.0, 1.0),
-        "lookat": (0.0, 0.0, 0.0),
-        "fov": 70.0,
-        "attachment": {
-            "entity_idx": None,
-            "link_idx_local": 0,
-        },
-        "lights": [],
-    },
-    {
-        "name": "cam_offset_T",
-        "pos": (0.0, 0.0, 1.0),
-        "lookat": (0.0, 0.0, 0.0),
-        "fov": 70.0,
-        "attachment": {
-            "entity_idx": None,
-            "link_idx_local": 0,
-            "offset_T": np.eye(4),  # Identity transform for testing
-        },
-        "lights": [],
-    },
-]
+    plane = scene.add_entity(
+        morph=gs.morphs.Plane(),
+        surface=gs.surfaces.Rough(
+            color=(0.4, 0.4, 0.4),
+        ),
+    )
 
+    sphere = scene.add_entity(
+        morph=gs.morphs.Sphere(
+            radius=0.5,
+            pos=(0.0, 0.0, 2.0),
+        ),
+        surface=gs.surfaces.Smooth(
+            color=(1.0, 0.5, 0.5),
+        ),
+    )
 
-# Create camera configurations for all backends
-backends = [
-    ("rasterizer", RasterizerCameraOptions, True),  # Always enabled
-    ("raytracer", RaytracerCameraOptions, ENABLE_RAYTRACER),
-    ("batch_render", BatchRendererCameraOptions, ENABLE_MADRONA),
-]
+    box = scene.add_entity(
+        morph=gs.morphs.Box(
+            size=(0.3, 0.3, 0.3),
+            pos=(1.0, 1.0, 1.0),
+        ),
+        surface=gs.surfaces.Rough(
+            color=(0.5, 1.0, 0.5),
+        ),
+    )
 
-backend_configs = {}
-for backend_name, options_class, enabled in backends:
-    if not enabled:
-        continue
+    views = (
+        CameraView("cam0", pos=(3.0, 0.0, 2.0), lookat=(0.0, 0.0, 1.0), fov=60.0, has_light=True),
+        CameraView("cam1", pos=(0.0, 3.0, 2.0), lookat=(0.0, 0.0, 1.0), fov=60.0),
+        CameraView("cam_attached", pos=(0.0, 0.0, 1.0), lookat=(0.0, 0.0, 0.0), fov=70.0, is_attached=True),
+        CameraView(
+            "cam_offset_T", pos=(0.0, 0.0, 1.0), lookat=(0.0, 0.0, 0.0), fov=70.0, is_attached=True, offset_T=np.eye(4)
+        ),
+    )
+    res = (500, 600)
+    light_pos = (2.0, 2.0, 5.0)
 
-    configs = []
-    for camera_config in CAMERA_SENSORS_KWARGS:
-        name = f"{backend_name}_{camera_config['name']}"
-        res = (500, 600)
-
-        # Create options with common and backend-specific parameters
-        options_kwargs = {
-            "res": res,
-            "pos": camera_config["pos"],
-            "lookat": camera_config["lookat"],
-            "up": CAMERA_COMMON_KWARGS["up"],
-            "fov": camera_config["fov"],
-            "lights": camera_config["lights"],
-        }
-
-        # Handle attachment
-        attachment = camera_config["attachment"]
-        if attachment is not None:
-            # For attached cameras, set the entity_idx to the sphere's index
-            options_kwargs.update(
-                {
-                    "entity_idx": sphere.idx,
-                    "link_idx_local": attachment["link_idx_local"],
-                }
+    cameras = {}
+    for view in views:
+        cameras[f"rasterizer_{view.name}"] = scene.add_sensor(
+            RasterizerCameraOptions(
+                res=res,
+                pos=view.pos,
+                lookat=view.lookat,
+                fov=view.fov,
+                lights=[{"pos": light_pos, "color": (1.0, 1.0, 1.0), "intensity": 1.0}] if view.has_light else [],
+                offset_T=view.offset_T,
+                entity_idx=sphere.idx if view.is_attached else -1,
+                near=0.1,
             )
-            if "offset_T" in attachment:
-                options_kwargs["offset_T"] = attachment["offset_T"]
-
-        # Add backend-specific parameters
-        if options_class is RasterizerCameraOptions:
-            options_kwargs.update({"near": CAMERA_COMMON_KWARGS["near"], "far": CAMERA_COMMON_KWARGS["far"]})
-        elif options_class is RaytracerCameraOptions:
-            options_kwargs.update(
-                {
-                    "model": "pinhole",
-                    "spp": 64,
-                    "denoise": False,
-                }
-            )
-            if attachment is None:  # Only add env surface for non-attached cameras
-                options_kwargs.update(
-                    {
-                        "env_surface": gs.surfaces.Emission(
-                            emissive_texture=gs.textures.ColorTexture(color=(0.2, 0.3, 0.5)),
-                        ),
-                        "env_radius": 20.0,
-                    }
+        )
+    if enable_raytracer:
+        for view in views:
+            cameras[f"raytracer_{view.name}"] = scene.add_sensor(
+                RaytracerCameraOptions(
+                    res=res,
+                    pos=view.pos,
+                    lookat=view.lookat,
+                    fov=view.fov,
+                    lights=[{"pos": light_pos, "color": (10.0, 10.0, 10.0), "intensity": 1.0}]
+                    if view.has_light
+                    else [],
+                    offset_T=view.offset_T,
+                    entity_idx=sphere.idx if view.is_attached else -1,
+                    spp=64,
+                    env_surface=None if view.is_attached else env_surface,
+                    env_radius=20.0,
                 )
-        elif options_class is BatchRendererCameraOptions:
-            options_kwargs.update({"use_rasterizer": True})
-            if camera_config["lights"]:
-                adjusted_lights = [{**light, "directional": False} for light in camera_config["lights"]]
-                options_kwargs["lights"] = adjusted_lights
+            )
+    if enable_batch_renderer:
+        for view in views:
+            cameras[f"batch_render_{view.name}"] = scene.add_sensor(
+                BatchRendererCameraOptions(
+                    res=res,
+                    pos=view.pos,
+                    lookat=view.lookat,
+                    fov=view.fov,
+                    lights=(
+                        [{"pos": light_pos, "color": (1.0, 1.0, 1.0), "intensity": 1.0, "directional": False}]
+                        if view.has_light
+                        else []
+                    ),
+                    offset_T=view.offset_T,
+                    entity_idx=sphere.idx if view.is_attached else -1,
+                )
+            )
+    gs.logger.info(f"Camera sensors: {', '.join(cameras)}")
 
-        # Adjust lights for raytracer (different intensity/color)
-        if options_class is RaytracerCameraOptions and camera_config["lights"]:
-            adjusted_lights = [
-                {**light, "color": (10.0, 10.0, 10.0), "intensity": 1.0} for light in camera_config["lights"]
-            ]
-            options_kwargs["lights"] = adjusted_lights
-
-        options = options_class(**options_kwargs)
-        configs.append(
-            {
-                "name": name,
-                "options": options,
-                "attachment": camera_config["attachment"],
-            }
+    video_camera = None
+    if args.record:
+        video_camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
         )
 
-    backend_configs[backend_name] = configs
+    if args.vis:
+        scene.viewer.add_plugin(
+            gs.vis.viewer_plugins.MouseInteractionPlugin(),
+        )
+
+    scene.build(n_envs=1)
+
+    os.makedirs(args.output_dir, exist_ok=True)
+    if video_camera is not None:
+        video_camera.start_recording(save_to_filename="out/camera_as_sensor.mp4", fps=round(1.0 / scene.dt))
+
+    for i in range(args.steps):
+        scene.step()
+        if i % 10 == 0:
+            for cam_name, camera in cameras.items():
+                rgb = camera.read().rgb[0]
+                plt.imsave(os.path.join(args.output_dir, f"{cam_name}_step{i:03d}.png"), tensor_to_array(rgb))
+            gs.logger.info(f"Step {i}: saved {len(cameras)} images to '{args.output_dir}'")
+    if video_camera is not None:
+        video_camera.stop_recording()
+
+    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+        scene.step()
 
 
-cameras = {}
-
-for group_name, configs in backend_configs.items():
-    print(f"\n=== {group_name} Cameras ===")
-    for config in configs:
-        camera = scene.add_sensor(config["options"])
-        cameras[config["name"]] = camera
-
-    print(f"[ok] Created {len(configs)} {group_name.lower()} cameras")
-
-
-n_envs = 1
-scene.build(n_envs=n_envs)
-
-print("\n=== Identifying Attached Cameras ===")
-
-# Identify cameras that are configured to be attached
-attached_cameras = []
-for group_name, configs in backend_configs.items():
-    for config in configs:
-        if config["attachment"] is not None:
-            camera = cameras[config["name"]]
-            attached_cameras.append(camera)
-            print(f"[ok] {config['name']} is attached to sphere")
-
-print(f"[ok] Identified {len(attached_cameras)} attached cameras")
-
-os.makedirs("out/camera_as_sensor", exist_ok=True)
-
-for i in range(100):
-    scene.step()
-    # Render every 10 steps
-    if i % 10 == 0:
-        print(f"\n--- Step {i} ---")
-
-        camera_data = {}
-        for cam_name, camera in cameras.items():
-            data = camera.read()
-            camera_data[cam_name] = data
-            print(f"  {cam_name.replace('_', ' ').title()} RGB shape: {data.rgb.shape}")
-
-        for cam_name, data in camera_data.items():
-            rgb_data = data.rgb[0] if data.rgb.ndim > 3 else data.rgb
-            suffix = "_env0" if n_envs > 1 else ""
-            filename = f"out/camera_as_sensor/{cam_name}{suffix}_step{i:03d}.png"
-            plt.imsave(filename, tensor_to_array(rgb_data))
+if __name__ == "__main__":
+    main()

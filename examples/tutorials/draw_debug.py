@@ -1,10 +1,17 @@
-import time
+import argparse
 import os
+import time
+
 import numpy as np
+
 import genesis as gs
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-v", "--vis", action="store_true", help="Show the interactive viewer")
+    args = parser.parse_args()
+
     gs.init(backend=gs.cpu)
 
     # Scene setup
@@ -16,7 +23,7 @@ def main():
 
     scene = gs.Scene(
         viewer_options=viewer_options,
-        show_viewer=True,
+        show_viewer=args.vis,
     )
 
     # Add a plane for reference

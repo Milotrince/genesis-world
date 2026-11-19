@@ -1,4 +1,10 @@
+"""Franka arms grasp and lift a bottle in parallel environments, after planning a collision-free path to it.
+
+With the viewer (-v), drag the bottles or the arms with the mouse, during the grasp and after it.
+"""
+
 import argparse
+import os
 
 import numpy as np
 
@@ -8,15 +14,25 @@ import genesis as gs
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--vis", action="store_true", help="Show visualization GUI")
-    parser.add_argument("-b", "--num-envs", type=int, default=49, help="Number of parallel environments")
+    is_test = "PYTEST_VERSION" in os.environ
+    parser.add_argument(
+        "-b", "--num-envs", type=int, default=49 if not is_test else 2, help="Number of parallel environments"
+    )
+    parser.add_argument(
+        "-r", "--record", action="store_true", help="Record a video of the run to 'out/grasp_bottle.mp4'"
+    )
     args = parser.parse_args()
+    n_waypoints, n_settle_steps, n_grasp_steps, n_lift_steps = (300, 30, 100, 1000) if not is_test else (20, 10, 20, 20)
 
     # The 49 parallel grasps are the point of this example, so it needs a GPU.
     gs.init(backend=gs.gpu)
 
+    camera_pos = (3, -1, 1.5)
+    camera_lookat = (0.0, 0.0, 0.0)
+
     viewer_options = gs.options.ViewerOptions(
-        camera_pos=(3, -1, 1.5),
-        camera_lookat=(0.0, 0.0, 0.0),
+        camera_pos=camera_pos,
+        camera_lookat=camera_lookat,
         camera_fov=30,
     )
 
@@ -46,7 +62,22 @@ def main():
         gs.morphs.MJCF(file="xml/franka_emika_panda/panda.xml"),
     )
 
+    camera = None
+    if args.record:
+        camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+        )
+
+    if args.vis:
+        scene.viewer.add_plugin(
+            gs.vis.viewer_plugins.MouseInteractionPlugin(),
+        )
+
     scene.build(n_envs=args.num_envs, env_spacing=(1, 1))
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/grasp_bottle.mp4", fps=round(1.0 / scene.dt))
 
     motors_dof = np.arange(7)
     fingers_dof = np.arange(7, 9)
@@ -76,11 +107,11 @@ def main():
     )
     qpos[..., -2:] = 0.04
 
-    path = franka.plan_path(qpos)
+    path = franka.plan_path(qpos, num_waypoints=n_waypoints)
     for waypoint in path:
         franka.control_dofs_position(waypoint)
         scene.step()
-    for i in range(30):
+    for _ in range(n_settle_steps):
         scene.step()
 
     # reach
@@ -90,7 +121,7 @@ def main():
         quat=np.array([0, 1, 0, 0]) if args.num_envs == 0 else np.array([[0, 1, 0, 0]] * args.num_envs),
     )
     franka.control_dofs_position(qpos[..., :-2], motors_dof)
-    for i in range(100):
+    for _ in range(n_grasp_steps):
         scene.step()
 
     # grasp
@@ -98,7 +129,7 @@ def main():
     franka.control_dofs_position(
         np.array([0, 0]) if args.num_envs == 0 else np.array([[0, 0]] * args.num_envs), fingers_dof
     )  # you can use position control
-    for i in range(100):
+    for _ in range(n_grasp_steps):
         scene.step()
 
     # lift
@@ -111,7 +142,11 @@ def main():
     franka.control_dofs_force(
         np.array([-20, -20]) if args.num_envs == 0 else np.array([[-20, -20]] * args.num_envs), fingers_dof
     )  # can also use force control
-    for i in range(1000):
+    for _ in range(n_lift_steps):
+        scene.step()
+    if camera is not None:
+        camera.stop_recording()
+    while args.vis and scene.viewer.is_alive() and not is_test:
         scene.step()
 
 

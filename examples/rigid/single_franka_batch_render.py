@@ -1,4 +1,12 @@
+"""A Franka in several parallel environments, seen by cameras of the batch renderer, one of them attached to the arm.
+
+Each step, the script exports the images of one camera (or of every camera with --render-all-cameras) to the output
+directory. The batch renderer needs gs_madrona and a CUDA GPU. With the viewer (-v), drag the arm with the mouse.
+"""
+
 import argparse
+import os
+
 import numpy as np
 
 import genesis as gs
@@ -19,20 +27,30 @@ def main():
         "--use-rasterizer", action="store_true", help="Use the rasterizer instead of the batch renderer"
     )
     parser.add_argument("--use-fisheye", action="store_true", help="Use a fisheye camera model")
-    parser.add_argument("-d", "--debug", action="store_true", help="Dump per-camera debug images")
+    parser.add_argument(
+        "-r", "--record", action="store_true", help="Record a video of the run to 'out/single_franka_batch_render.mp4'"
+    )
     parser.add_argument("--seg-level", type=str, default="link", help="Granularity of the segmentation mask")
     args = parser.parse_args()
 
     # The batch renderer only runs on CUDA, so there is no CPU backend to offer here.
     gs.init(backend=gs.gpu)
 
+    camera_pos = (1.5, -0.5, 1.0)
+    camera_lookat = (0.0, 0.0, 0.5)
+
     scene = gs.Scene(
+        viewer_options=gs.options.ViewerOptions(
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
+        ),
         vis_options=gs.options.VisOptions(
             segmentation_level=args.seg_level,
         ),
         renderer=gs.options.renderers.BatchRenderer(
             use_rasterizer=args.use_rasterizer,
         ),
+        show_viewer=args.vis,
     )
 
     plane = scene.add_entity(
@@ -48,14 +66,16 @@ def main():
         visualize_contact=True,
     )
 
-    debug_cam = scene.add_camera(
-        res=(720, 1280),
-        pos=(1.5, -0.5, 1.0),
-        lookat=(0.0, 0.0, 0.5),
-        fov=60,
-        GUI=args.vis,
-        debug=True,
-    )
+    # A debug camera records the video, since the rasterizer renders it whatever the renderer of the scene.
+    video_camera = None
+    if args.record:
+        video_camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+            fov=60,
+            debug=True,
+        )
     cam_0 = scene.add_camera(
         res=(512, 512),
         pos=(1.5, 0.5, 1.5),
@@ -99,13 +119,18 @@ def main():
         attenuation=0.1,
     )
 
+    if args.vis:
+        scene.viewer.add_plugin(
+            gs.vis.viewer_plugins.MouseInteractionPlugin(),
+        )
+
     scene.build(n_envs=args.num_envs)
 
     # Create an image exporter
     exporter = FrameImageExporter(args.output_dir)
 
-    if args.debug:
-        debug_cam.start_recording(save_to_filename="out/batch_render_debug.mp4")
+    if video_camera is not None:
+        video_camera.start_recording(save_to_filename="out/single_franka_batch_render.mp4", fps=round(1.0 / scene.dt))
     for i in range(args.steps):
         scene.step()
         if args.render_all_cameras:
@@ -122,8 +147,11 @@ def main():
                 normal=False,
             )
             exporter.export_frame_single_camera(i, cam_1.idx, rgb=seg, depth=depth, segmentation=None, normal=normal)
-    if args.debug:
-        debug_cam.stop_recording()
+    if video_camera is not None:
+        video_camera.stop_recording()
+
+    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+        scene.step()
 
 
 if __name__ == "__main__":

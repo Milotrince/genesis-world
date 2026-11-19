@@ -134,7 +134,7 @@ def main():
         ),
         motors_dof_idx,
     )
-    print("=== set mass ===\n", franka.get_dofs_damping())
+    print("=== damping ===\n", franka.get_dofs_damping())
     original_mass = franka.get_mass()
     new_mass = original_mass * 2
     franka.set_mass(new_mass)

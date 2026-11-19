@@ -5,27 +5,36 @@ This directory contains examples of drone simulations using the Genesis framewor
 ## Available Examples
 
 ### 1. Interactive Drone (`interactive_drone.py`)
-A real-time interactive drone simulation where you can control the drone using keyboard inputs:
-- Up: Move Forward (North)
-- Down: Move Backward (South)
-- Left: Move Left (West)
-- Right: Move Right (East)
+An open-loop drone flight driven by differential rotor RPMs. Headless, it replays a short scripted sequence of key
+commands: climb, tilt forward and back, then turn left and back. With `-v`, the same sequence runs first, then you fly
+the drone with the keyboard:
+- Up: Tilt Forward (North)
+- Down: Tilt Backward (South)
+- Left: Turn Left
+- Right: Turn Right
 - Space: Increase Thrust (Accelerate)
 - Left Shift: Decrease Thrust (Decelerate)
 - ESC: Quit
 
 Run with:
 ```bash
-python interactive_drone.py
+python interactive_drone.py -v
 ```
 
-### 2. Automated Flight (`fly.py`)
-A pre-programmed drone flight simulation that follows a predefined trajectory stored in `fly_traj.pkl`.
+Add `-r out.mp4` to save a video of the run.
+
+### 2. Waypoint Flight (`fly_route.py`)
+A cascaded PID controller, written in the script, provides stable point-to-point flight without controlling each
+rotor. Its gains are tuned for controlled flight but not optimized. `fly_route.py` flies the drone through a
+route of three waypoints. With `-v`, the arrow keys move the target in the ground plane and K/J move it up and down,
+during the route and after it.
 
 Run with:
 ```bash
-python fly.py -v
+python fly_route.py -v
 ```
+
+Add `-r out.mp4` to save a video of the run.
 
 ### 3. Hover Environment (`hover_env.py`, `hover_train.py`, `hover_eval.py`)
 
@@ -77,17 +86,6 @@ during evaluation, try removing the `--record` option.
 
 For the latest updates, detailed documentation, and additional resources, visit this repository: [GenesisDroneEnv](https://github.com/KafuuChikai/GenesisDroneEnv).
 
-### 4. Quadcopter Controller (`quadcopter_controller.py` & `fly_route.py`)
-A PID-based controller to provide stable point-to-point flight without controlling each rotor. Parameters
-have been tuned for controlled flight but not optimized. Stored in `fly_route.py`. Run `fly_route.py` to
-test.
-
-Run with:
-
-```bash
-python fly_route.py
-```
-
 ## Technical Details
 
 - The drone model used is the Crazyflie 2.X (`urdf/drones/cf2x.urdf`)
@@ -98,7 +96,7 @@ python fly_route.py
 ## Controls Implementation
 
 The interactive drone uses differential RPM control:
-- Forward/Backward movement: Adjusts front/back rotor pairs
-- Left/Right movement: Adjusts left/right rotor pairs
-- All movements maintain a stable hover while creating directional thrust
+- Forward/Backward tilt: Adjusts front/back rotor pairs
+- Left/Right turn: Speeds up one diagonal rotor pair and slows the other
+- The control is open-loop: a tilt held then released leaves the drone rotating until the opposite key stops it
 - RPM changes are automatically clipped to safe ranges (0-25000 RPM)

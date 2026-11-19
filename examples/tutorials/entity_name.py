@@ -9,6 +9,7 @@ Demonstrates the Genesis entity naming system:
 """
 
 import argparse
+import os
 
 import genesis as gs
 
@@ -50,6 +51,8 @@ def main():
     )
     print(f"User name: '{ground.name}', URDF auto-name: '{robot.name}'")
 
+    scene.build()
+
     # Lookup by name
     retrieved = scene.get_entity(name="ground")
     print(f"Lookup by name: scene.get_entity(name='ground') -> {retrieved.name}")
@@ -61,6 +64,12 @@ def main():
 
     # List all entity names
     print(f"All entity names: {scene.entity_names}")
+
+    # A looked-up entity is the entity itself, so it queries the simulation like any other handle
+    horizon = 100 if "PYTEST_VERSION" not in os.environ else 5
+    for i in range(horizon):
+        scene.step()
+    print(f"Box position after {horizon} steps: {retrieved.get_pos()}")
 
 
 if __name__ == "__main__":

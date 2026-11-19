@@ -5,6 +5,8 @@ plane by a quarter turn and hold together by contact alone. The top link hangs t
 through an eye welded to a dense steel sphere. Every link is a non-convex mesh, so its collision geometry is
 convex-decomposed at build time. The whole chain starts pulled back as a straight line inclined from the vertical, so
 gravity alone swings the ball into the pile, whose cubes are free boxes stacked with a hairline gap.
+
+With the viewer (-v), drag any cube or the ball with the mouse, during the swing and after it.
 """
 
 import argparse
@@ -241,6 +243,11 @@ def main():
         ),
     )
 
+    if args.vis:
+        scene.viewer.add_plugin(
+            gs.vis.viewer_plugins.MouseInteractionPlugin(),
+        )
+
     scene.build()
 
     n_bodies = sum(1 for link in scene.rigid_solver.links if link.n_dofs > 0)
@@ -258,6 +265,9 @@ def main():
         plot_values["awake_bodies"][0] = n_bodies - qd_to_numpy(scene.rigid_solver.dyn_state.links.is_hibernated).sum()
     if camera is not None:
         camera.stop_recording()
+    # The viewer stays open once the swing is over, so the cubes can still be dragged around with the mouse.
+    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+        scene.step()
 
     step_times = step_times[n_window - 1 :]
     n_cubes = args.pile_width * args.pile_depth * args.pile_height
