@@ -1,7 +1,7 @@
 """Drag a sphere, a duck and a ring of boxes around with the mouse.
 
-Without the viewer, the objects are tossed into the air and fall back onto the ground. With the viewer (-v), the toss
-runs too, then the objects can be grabbed and dragged with the mouse, and Esc quits.
+The objects are first tossed into the air and fall back onto the ground. Then they can be grabbed and dragged with the
+mouse until the viewer closes, and Esc quits.
 """
 
 import argparse
@@ -23,7 +23,6 @@ def main():
         help="Grab entities by their visual mesh instead of their collision one",
     )
     parser.add_argument("-b", "--num-envs", type=int, default=1, help="Number of parallel environments")
-    parser.add_argument("-v", "--vis", action="store_true", help="Show the interactive viewer")
     parser.add_argument(
         "-r", "--record", action="store_true", help="Record a video of the run to 'out/mouse_interaction.mp4'"
     )
@@ -43,7 +42,7 @@ def main():
             camera_lookat=camera_lookat,
             camera_fov=40,
         ),
-        show_viewer=args.vis,
+        show_viewer=True,
     )
 
     scene.add_entity(
@@ -97,14 +96,13 @@ def main():
             fov=40,
         )
 
-    if args.vis:
-        scene.viewer.add_plugin(
-            gs.vis.viewer_plugins.MouseInteractionPlugin(
-                use_force=args.use_force,
-                color=(0.1, 0.6, 0.8, 0.6),
-                use_visual_geom=args.use_visual_geom,
-            )
+    scene.viewer.add_plugin(
+        gs.vis.viewer_plugins.MouseInteractionPlugin(
+            use_force=args.use_force,
+            color=(0.1, 0.6, 0.8, 0.6),
+            use_visual_geom=args.use_visual_geom,
         )
+    )
 
     scene.build(n_envs=args.num_envs)
 
@@ -114,11 +112,10 @@ def main():
         nonlocal is_running
         is_running = False
 
-    if args.vis:
-        scene.viewer.register_keybinds(
-            Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
-        )
-        gs.logger.info("Drag any object with the mouse, Esc quits.")
+    scene.viewer.register_keybinds(
+        Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
+    )
+    gs.logger.info("Drag any object with the mouse, Esc quits.")
 
     if camera is not None:
         camera.start_recording(save_to_filename="out/mouse_interaction.mp4", fps=30)
@@ -134,7 +131,7 @@ def main():
         camera.stop_recording()
 
     # The viewer stays open once the toss is over, so the objects can still be dragged around with the mouse.
-    while args.vis and is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+    while is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
         scene.step()
 
 

@@ -8,8 +8,8 @@ Demonstrates:
 - Custom user panels via register_panel()
 - Scene rebuild (add entities, change scale)
 
-The overlay needs the viewer (-v). Without it, and before the overlay takes over with it, a scripted sweep drives every
-joint of the Panda through its range.
+A scripted sweep first drives every joint of the Panda through its range, then the overlay takes over until the viewer
+closes.
 """
 
 import argparse
@@ -24,7 +24,6 @@ from genesis.ext.pyrender.overlay import ImGuiOverlayPlugin
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-v", "--vis", action="store_true", help="Show the interactive viewer with the ImGui overlay")
     parser.add_argument(
         "-r", "--record", action="store_true", help="Record a video of the run to 'out/imgui_joint_control.mp4'"
     )
@@ -41,9 +40,9 @@ def main():
         viewer_options=gs.options.ViewerOptions(
             camera_pos=camera_pos,
             camera_lookat=camera_lookat,
-            enable_gui=args.vis,
+            enable_gui=True,
         ),
-        show_viewer=args.vis,
+        show_viewer=True,
     )
     scene.add_entity(
         morph=gs.morphs.Plane(),
@@ -73,15 +72,14 @@ def main():
 
     scene.build()
 
-    if args.vis:
-        # Grab the auto-attached overlay to register a custom panel.
-        plugin = next(p for p in scene.viewer.plugins if isinstance(p, ImGuiOverlayPlugin))
+    # Grab the auto-attached overlay to register a custom panel.
+    plugin = next(p for p in scene.viewer.plugins if isinstance(p, ImGuiOverlayPlugin))
 
-        def custom_panel(imgui):
-            imgui.text("Custom Demo Panel")
-            imgui.text("This panel was registered via register_panel()")
+    def custom_panel(imgui):
+        imgui.text("Custom Demo Panel")
+        imgui.text("This panel was registered via register_panel()")
 
-        plugin.register_panel(custom_panel)
+    plugin.register_panel(custom_panel)
 
     # The sweep moves every joint between its limits, each one out of phase with the previous one.
     dofs_lower, dofs_upper = panda.get_dofs_limit()
@@ -100,7 +98,7 @@ def main():
 
     # step() honors the GUI: it advances only while playing, and applies a pending Rebuild Scene first. The viewer
     # paces the loop to real time (ViewerOptions.realtime_factor), so no manual sleep is needed here.
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+    while scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
         scene.step()
 
 

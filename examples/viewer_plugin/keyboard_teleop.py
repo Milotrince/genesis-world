@@ -1,7 +1,7 @@
 """A Franka grasps a cube, lifts it, carries it aside and drops it, driven by end-effector teleoperation commands.
 
-A scripted sequence of the same commands the keys issue runs the grasp. With the viewer (-v), the keyboard controls
-are registered once the scripted grasp ends, and then drive the robot for as long as the viewer stays open.
+A scripted sequence of the same commands the keys issue runs the grasp. The keyboard controls are registered once the
+scripted grasp ends, and then drive the robot for as long as the viewer stays open.
 
 Keyboard controls:
 Up        - Move forward (-x)
@@ -32,7 +32,6 @@ from genesis.vis.keybindings import Key, KeyAction, Keybind
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-v", "--vis", action="store_true", help="Show the interactive viewer")
     parser.add_argument(
         "-r", "--record", action="store_true", help="Record a video of the run to 'out/keyboard_teleop.mp4'"
     )
@@ -59,7 +58,7 @@ def main():
         profiling_options=gs.options.ProfilingOptions(
             show_FPS=False,
         ),
-        show_viewer=args.vis,
+        show_viewer=True,
     )
 
     scene.add_entity(
@@ -185,26 +184,25 @@ def main():
         is_running = False
 
     # The keys are registered once the scripted grasp is over, so that a key press cannot interfere with it.
-    if args.vis:
-        scene.viewer.register_keybinds(
-            Keybind("move_forward", Key.UP, KeyAction.HOLD, callback=move, args=((-dpos, 0, 0),)),
-            Keybind("move_back", Key.DOWN, KeyAction.HOLD, callback=move, args=((dpos, 0, 0),)),
-            Keybind("move_left", Key.LEFT, KeyAction.HOLD, callback=move, args=((0, -dpos, 0),)),
-            Keybind("move_right", Key.RIGHT, KeyAction.HOLD, callback=move, args=((0, dpos, 0),)),
-            Keybind("move_up", Key.K, KeyAction.HOLD, callback=move, args=((0, 0, dpos),)),
-            Keybind("move_down", Key.J, KeyAction.HOLD, callback=move, args=((0, 0, -dpos),)),
-            Keybind("rotate_ccw", Key.N, KeyAction.HOLD, callback=rotate, args=(drot,)),
-            Keybind("rotate_cw", Key.M, KeyAction.HOLD, callback=rotate, args=(-drot,)),
-            Keybind("reset_scene", Key.BACKSLASH, KeyAction.RELEASE, callback=reset_scene),
-            Keybind("close_gripper", Key.SPACE, KeyAction.PRESS, callback=toggle_gripper, args=(True,)),
-            Keybind("open_gripper", Key.SPACE, KeyAction.RELEASE, callback=toggle_gripper, args=(False,)),
-            Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
-        )
-        gs.logger.info(
-            "Keys: arrows move in x/y, K/J move up/down, N/M rotate, Backslash resets, hold Space to close the "
-            "gripper, Esc quits."
-        )
-    while args.vis and is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+    scene.viewer.register_keybinds(
+        Keybind("move_forward", Key.UP, KeyAction.HOLD, callback=move, args=((-dpos, 0, 0),)),
+        Keybind("move_back", Key.DOWN, KeyAction.HOLD, callback=move, args=((dpos, 0, 0),)),
+        Keybind("move_left", Key.LEFT, KeyAction.HOLD, callback=move, args=((0, -dpos, 0),)),
+        Keybind("move_right", Key.RIGHT, KeyAction.HOLD, callback=move, args=((0, dpos, 0),)),
+        Keybind("move_up", Key.K, KeyAction.HOLD, callback=move, args=((0, 0, dpos),)),
+        Keybind("move_down", Key.J, KeyAction.HOLD, callback=move, args=((0, 0, -dpos),)),
+        Keybind("rotate_ccw", Key.N, KeyAction.HOLD, callback=rotate, args=(drot,)),
+        Keybind("rotate_cw", Key.M, KeyAction.HOLD, callback=rotate, args=(-drot,)),
+        Keybind("reset_scene", Key.BACKSLASH, KeyAction.RELEASE, callback=reset_scene),
+        Keybind("close_gripper", Key.SPACE, KeyAction.PRESS, callback=toggle_gripper, args=(True,)),
+        Keybind("open_gripper", Key.SPACE, KeyAction.RELEASE, callback=toggle_gripper, args=(False,)),
+        Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
+    )
+    gs.logger.info(
+        "Keys: arrows move in x/y, K/J move up/down, N/M rotate, Backslash resets, hold Space to close the "
+        "gripper, Esc quits."
+    )
+    while is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
         track_target()
 
 
