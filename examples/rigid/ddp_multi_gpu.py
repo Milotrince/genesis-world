@@ -8,6 +8,9 @@ Single machine, 2 GPUs:
     torchrun --standalone --nnodes=1 --nproc_per_node=2 examples/rigid/ddp_multi_gpu.py
 
 Launched without torchrun, the script trains as a single rank, on CPU when there is no GPU.
+
+With the viewer (-v), rank 0 opens a viewer where the Frankas can be dragged with the mouse, during training and after
+it. With -r, rank 0 records its scene.
 """
 
 import argparse
@@ -47,14 +50,18 @@ def run_worker(args: argparse.Namespace) -> None:
     gs.init(backend=gs.gpu, seed=local_rank)
 
     # sim
+    camera_pos = (3.5, 0.0, 2.5)
+    camera_lookat = (0.0, 0.0, 0.5)
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(3.5, 0.0, 2.5),
-            camera_lookat=(0.0, 0.0, 0.5),
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
             camera_fov=40,
         ),
+        profiling_options=gs.options.ProfilingOptions(
+            show_FPS=False,
+        ),
         show_viewer=args.vis and local_rank == 0,
-        show_FPS=False,
     )
     scene.add_entity(gs.morphs.Plane())
     franka = scene.add_entity(
@@ -63,7 +70,21 @@ def run_worker(args: argparse.Namespace) -> None:
         ),
         visualize_contact=True,
     )
+    camera = None
+    if args.record and local_rank == 0:
+        camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+            fov=40,
+        )
+    if args.vis and local_rank == 0:
+        scene.viewer.add_plugin(
+            gs.vis.viewer_plugins.MouseInteractionPlugin(),
+        )
     scene.build(n_envs=args.num_envs)
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/ddp_multi_gpu.mp4", fps=round(1.0 / scene.dt))
 
     # model, trained on the CUDA GPU of the rank, otherwise on CPU since gradients are only synchronized across CUDA
     # (NCCL) or CPU (Gloo) tensors, whatever device the scene runs on
@@ -104,9 +125,15 @@ def run_worker(args: argparse.Namespace) -> None:
         if local_rank == 0 and step % 100 == 0:
             print(f"[{step:04d}/{args.steps}] loss = {loss.item():.6f}")
 
+    if camera is not None:
+        camera.stop_recording()
+
     # cleanup
     dist.barrier()  # sync all ranks before shutting down the process group
     dist.destroy_process_group()
+    # The viewer of rank 0 stays open once the process group is gone, so no rank waits on it.
+    while args.vis and local_rank == 0 and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+        scene.step()
     gs.destroy()
 
 
@@ -118,6 +145,9 @@ def main():
         "-b", "--num-envs", type=int, default=2048 if not is_test else 2, help="Number of parallel environments"
     )
     parser.add_argument("-s", "--steps", type=int, default=1000 if not is_test else 5, help="Number of training steps")
+    parser.add_argument(
+        "-r", "--record", action="store_true", help="Record a video of the run to 'out/ddp_multi_gpu.mp4'"
+    )
     run_worker(parser.parse_args())
 
 

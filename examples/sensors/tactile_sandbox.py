@@ -1,8 +1,18 @@
 """
-Interactive demo of tactile sensors on a fixed taxel pad (box or dome) with controllable objects.
+Tactile sensors on a fixed taxel pad (box or dome), pressed by four objects, one per environment.
 Sensor types: ContactDepthProbe, ContactProbe, ElastomerTaxel, KinematicTaxel, ProximityTaxel.
 
 Note that the sensor readings here have not been calibrated to any units, and is purely for visualization purposes.
+
+Without the viewer, a scripted sequence presses the objects into the pad, slides and twists them, then lifts them off.
+With the viewer (-v), the same sequence runs, and the keyboard then drives the objects:
+
+    Up / Down       move the objects along -x / +x
+    Left / Right    move the objects along -y / +y
+    j / k           lower / raise the objects
+    n / m           rotate the objects about z, counterclockwise / clockwise
+    , / .           roll the objects
+    \\               reset the objects
 """
 
 import argparse
@@ -240,7 +250,9 @@ def main() -> None:
     parser.add_argument(
         "--set-pos", action="store_true", help="Set object position directly instead of using control force"
     )
-    parser.add_argument("-t", "--seconds", type=float, default=3.0, help="Seconds to simulate (headless mode)")
+    parser.add_argument(
+        "-r", "--record", action="store_true", help="Record a video of the run to 'out/tactile_sandbox.mp4'"
+    )
     parser.add_argument("--dome", action="store_true", help="Change the sensor object to a dome instead of a box")
     parser.add_argument(
         "--sensor",
@@ -268,14 +280,17 @@ def main() -> None:
         logging_level="info",
     )
 
+    camera_pos = (0.5, -0.2, 0.5)
+    camera_lookat = (0.0, 0.0, SENSOR_OBJ_Z)
+
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
             substeps=4,
             gravity=(0.0, 0.0, 0.0),
         ),
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(0.5, -0.2, 0.5),
-            camera_lookat=(0.0, 0.0, SENSOR_OBJ_Z),
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
         ),
         profiling_options=gs.options.ProfilingOptions(
             show_FPS=True,
@@ -371,6 +386,14 @@ def main() -> None:
         contact_depth_query=args.contact_depth_query,
         noise=args.noise,
     )
+    camera = None
+    if args.record:
+        camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+        )
+
     if args.vis and "PYTEST_VERSION" not in os.environ:
         _plot_tactile_sensor(scene, args.sensor, sensor, n_envs=4, plot_normal=probe_normal_axis)
     scene.build(n_envs=4, env_spacing=(SENSOR_OBJ_SIZE * 1.2, SENSOR_OBJ_SIZE * 1.2))
@@ -384,38 +407,30 @@ def main() -> None:
     obj_target_pos = obj_init_pos.copy()
     obj_target_euler = gu.quat_to_xyz(obj_init_quat, rpy=True, degrees=True)
     obj_target_quat = obj_init_quat.copy()
-    obj_contact_pos = obj_init_pos.copy()
-    obj_contact_pos[..., 2] -= OBJECT_INITIAL_CLEARANCE + OBJECT_MAX_PENETRATION
 
-    is_running = True
+    obj.set_dofs_kp(FORCE_SCALE / KEY_DPOS, dofs_idx_local=slice(0, 3))
+    obj.set_dofs_kp(ROT_FORCE_SCALE / KEY_DPOS, dofs_idx_local=slice(3, 6))
+    obj.set_dofs_kv(0.1 * FORCE_SCALE / KEY_DPOS, dofs_idx_local=slice(0, 6))
+
+    def translate(index: int, is_negative: bool):
+        delta = (-1 if is_negative else 1) * KEY_DPOS
+        obj_target_pos[..., index] += delta
+
+    def rotate(axis_idx: int, is_negative: bool):
+        nonlocal obj_target_quat
+        delta = -5.0 if is_negative else 5.0
+        obj_target_euler[..., axis_idx] += delta
+        obj_target_quat = gu.euler_to_quat(obj_target_euler)
 
     if args.vis:
-        obj.set_dofs_kp(FORCE_SCALE / KEY_DPOS, dofs_idx_local=slice(0, 3))
-        obj.set_dofs_kp(ROT_FORCE_SCALE / KEY_DPOS, dofs_idx_local=slice(3, 6))
-        obj.set_dofs_kv(0.1 * FORCE_SCALE / KEY_DPOS, dofs_idx_local=slice(0, 6))
-
-        def stop():
-            nonlocal is_running
-            is_running = False
 
         def reset_pose():
-            nonlocal obj_target_pos, obj_target_euler, obj_target_quat
-            obj_target_pos = obj_init_pos.copy()
-            obj_target_euler = gu.quat_to_xyz(obj_init_quat, rpy=True, degrees=True)
+            nonlocal obj_target_quat
+            obj_target_pos[:] = obj_init_pos
+            obj_target_euler[:] = gu.quat_to_xyz(obj_init_quat, rpy=True, degrees=True)
             obj_target_quat = obj_init_quat.copy()
             obj.set_pos(obj_init_pos)
             obj.set_quat(obj_init_quat)
-
-        def translate(index: int, is_negative: bool):
-            nonlocal obj_target_pos
-            delta = (-1 if is_negative else 1) * KEY_DPOS
-            obj_target_pos[..., index] += delta
-
-        def rotate(axis_idx: int, is_negative: bool):
-            nonlocal obj_target_euler, obj_target_quat
-            delta = -5.0 if is_negative else 5.0
-            obj_target_euler[..., axis_idx] += delta
-            obj_target_quat = gu.euler_to_quat(obj_target_euler)
 
         scene.viewer.register_keybinds(
             Keybind("move_forward", Key.UP, KeyAction.HOLD, callback=translate, args=(0, True)),
@@ -429,7 +444,6 @@ def main() -> None:
             Keybind("rotate_roll_left", Key.COMMA, KeyAction.HOLD, callback=rotate, args=(0, True)),
             Keybind("rotate_roll_right", Key.PERIOD, KeyAction.HOLD, callback=rotate, args=(0, False)),
             Keybind("reset", Key.BACKSLASH, KeyAction.RELEASE, callback=reset_pose),
-            Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
         )
 
     print("\n=== Tactile Sensor Sandbox ===")
@@ -439,60 +453,68 @@ def main() -> None:
     if args.vis and IS_MATPLOTLIB_AVAILABLE:
         print("Matplotlib live plot enabled when supported.")
     if args.vis:
-        print()
-        print("Keyboard Controls:")
-        print("  [UP/DOWN/LEFT/RIGHT] Move selected object in XY")
-        print("  [j / k]              Lower / raise selected object")
-        print("  [n / m]              Rotate object around Z axis")
-        print("  [SPACE]              Select next object")
-        print("  [\\]                  Reset objects")
-    else:
-        obj.set_pos(obj_contact_pos)
-        print(f"Running headless for {args.seconds}s ...")
+        gs.logger.info(
+            "Keyboard: [Up/Down/Left/Right] move the objects in XY, [j/k] lower/raise them, [n/m] rotate them about Z, "
+            "[,/.] roll them, [\\] reset them"
+        )
     print()
 
-    try:
-        while is_running:
-            # Every environment of this scene runs the same schedule, so one of them stands for the clock printed
-            # and compared below.
-            t = float(scene.get_time(envs_idx=0))
-            if args.vis:
-                if args.set_pos:
-                    obj.set_pos(obj_target_pos)
-                    obj.set_quat(obj_target_quat)
-                else:
-                    obj.control_dofs_position(gu.quat_to_xyz(obj_target_quat), dofs_idx_local=slice(3, 6))
-                    obj.control_dofs_position(obj_target_pos, dofs_idx_local=slice(0, 3))
-            data = sensor.read()
+    def step_objects():
+        if args.set_pos:
+            obj.set_pos(obj_target_pos)
+            obj.set_quat(obj_target_quat)
+        else:
+            obj.control_dofs_position(gu.quat_to_xyz(obj_target_quat), dofs_idx_local=slice(3, 6))
+            obj.control_dofs_position(obj_target_pos, dofs_idx_local=slice(0, 3))
+        # Every environment of this scene runs the same schedule, so one of them stands for the clock printed.
+        t = float(scene.get_time(envs_idx=0))
+        data = sensor.read()
+        if round(t / scene.dt) % 5 == 0:
             if args.sensor == "elastomer":
                 magnitude = torch.linalg.norm(data, dim=-1)
-                if magnitude.max() > gs.EPS:
-                    print(f"t={t:.2f}s  max|displacement|={magnitude.max():.5f}")
+                print(f"t={t:.2f}s  max|displacement|={magnitude.max():.5f}")
             elif args.sensor == "depth":
-                max_depth = data.max()
-                if max_depth > gs.EPS:
-                    print(f"t={t:.2f}s  max depth={max_depth:.4f}")
+                print(f"t={t:.2f}s  max depth={data.max():.4f}")
             elif args.sensor == "contact":
-                n_contact = int(data.sum())
-                if n_contact > 0:
-                    print(f"t={t:.2f}s  taxels in contact={n_contact}")
+                print(f"t={t:.2f}s  taxels in contact={int(data.sum())}")
             elif args.sensor in ("kinematic", "proximity"):
-                # |twist| is the plotted torque about the view normal (the twist_scalar spin term); print to calibrate.
+                # |twist| is the plotted torque about the view normal (the twist_scalar spin term).
                 force_mag = torch.linalg.norm(data.force, dim=-1).max()
                 twist_mag = (data.torque @ data.torque.new_tensor(probe_normal_axis)).abs().max()
-                if force_mag > gs.EPS:
-                    print(f"t={t:.2f}s  max|F|={force_mag:.4f}  max|twist|={twist_mag:.5f}")
+                print(f"t={t:.2f}s  max|F|={force_mag:.4f}  max|twist|={twist_mag:.5f}")
+        scene.step()
 
-            scene.step()
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/tactile_sandbox.mp4", fps=round(1.0 / scene.dt))
 
-            if "PYTEST_VERSION" in os.environ:
-                break
-            if not args.vis and t >= args.seconds:
-                break
-    except KeyboardInterrupt:
-        gs.logger.info("Simulation interrupted.")
-    finally:
-        gs.logger.info("Simulation finished.")
+    # The scripted sequence calls the same functions as the keys, one call per step, with idle steps for the objects
+    # to settle.
+    n_press = round((OBJECT_INITIAL_CLEARANCE + OBJECT_MAX_PENETRATION) / KEY_DPOS)
+    # Press the objects into the pad.
+    for _ in range(n_press):
+        translate(2, True)
+        step_objects()
+    for _ in range(10):
+        step_objects()
+    # Slide them along +x, then twist them about z.
+    for _ in range(10):
+        translate(0, False)
+        step_objects()
+    for _ in range(6):
+        rotate(2, False)
+        step_objects()
+    for _ in range(10):
+        step_objects()
+    # Lift them off.
+    for _ in range(n_press):
+        translate(2, False)
+        step_objects()
+    for _ in range(10):
+        step_objects()
+    if camera is not None:
+        camera.stop_recording()
+    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+        step_objects()
 
 
 if __name__ == "__main__":

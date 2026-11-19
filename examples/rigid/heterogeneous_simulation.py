@@ -24,6 +24,8 @@ Variant Assignment Rules:
        - Environment 1 -> Variant 1 (second morph in list)
        - Variants 2 and 3 are unused
 
+With the viewer (-v), drag the objects or the arms with the mouse, during the grasp and after it.
+
 Usage:
     python heterogeneous_simulation.py -v -b 4  # 4 environments (matches 4 variants)
     python heterogeneous_simulation.py -v -b 8  # 8 environments (2 per variant)
@@ -31,8 +33,10 @@ Usage:
 """
 
 import argparse
+import os
 
 import numpy as np
+
 import genesis as gs
 
 
@@ -40,13 +44,21 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--vis", action="store_true", help="Show visualization GUI")
     parser.add_argument("-b", "--num-envs", type=int, default=4, help="Number of parallel environments")
+    parser.add_argument(
+        "-r", "--record", action="store_true", help="Record a video of the run to 'out/heterogeneous_simulation.mp4'"
+    )
     args = parser.parse_args()
+    n_hold_steps = 100 if "PYTEST_VERSION" not in os.environ else 20
 
     gs.init(backend=gs.cpu, precision="32")
+
+    camera_pos = (3.5, -2.5, 2.5)
+    camera_lookat = (0.4, 0.0, 0.2)
+
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(3, -1, 1.5),
-            camera_lookat=(0.0, 0.0, 0.5),
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
         ),
         show_viewer=args.vis,
     )
@@ -68,7 +80,23 @@ def main():
     grasping_object = scene.add_entity(
         morph=morphs_heterogeneous,
     )
+
+    camera = None
+    if args.record:
+        camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+        )
+
+    if args.vis:
+        scene.viewer.add_plugin(
+            gs.vis.viewer_plugins.MouseInteractionPlugin(),
+        )
+
     scene.build(n_envs=args.num_envs, env_spacing=(1, 1))
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/heterogeneous_simulation.mp4", fps=round(1.0 / scene.dt))
 
     motors_dof = np.arange(7)
     fingers_dof = np.arange(7, 9)
@@ -95,14 +123,12 @@ def main():
     franka.control_dofs_position(qpos[..., :-2], motors_dof)
 
     # hold
-    for i in range(100):
-        print("hold", i)
+    for _ in range(n_hold_steps):
         scene.step()
 
     # grasp
     finder_pos = 0.0
-    for i in range(100):
-        print("grasp", i)
+    for _ in range(n_hold_steps):
         franka.control_dofs_position(qpos[..., :-2], motors_dof)
         franka.control_dofs_position(np.array([[finder_pos, finder_pos]] * args.num_envs), fingers_dof)
         scene.step()
@@ -113,10 +139,13 @@ def main():
         pos=np.array([[0.65, 0.0, 0.3]] * args.num_envs),
         quat=np.array([[0, 1, 0, 0]] * args.num_envs),
     )
-    for i in range(200):
-        print("lift", i)
+    for _ in range(2 * n_hold_steps):
         franka.control_dofs_position(qpos[..., :-2], motors_dof)
         franka.control_dofs_position(np.array([[finder_pos, finder_pos]] * args.num_envs), fingers_dof)
+        scene.step()
+    if camera is not None:
+        camera.stop_recording()
+    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
         scene.step()
 
 

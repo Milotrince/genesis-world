@@ -47,7 +47,7 @@ def main():
 
     obs_dict = env.reset()
     with torch.no_grad():
-        while True:
+        while env.scene.viewer.is_alive():
             actions = policy(obs_dict)
             obs_dict, rews, dones, infos = env.step(actions)
 

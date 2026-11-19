@@ -1,7 +1,13 @@
+import argparse
 import os
+
 import numpy as np
+
 import genesis as gs
 
+parser = argparse.ArgumentParser()
+parser.add_argument("-v", "--vis", action="store_true", help="Show the interactive viewer")
+args = parser.parse_args()
 
 gs.init(backend=gs.cpu)
 
@@ -14,7 +20,7 @@ scene = gs.Scene(
         camera_lookat=(0.0, 0.0, 0.5),
         camera_fov=30,
     ),
-    show_viewer=True,
+    show_viewer=args.vis,
 )
 
 plane = scene.add_entity(
@@ -26,8 +32,14 @@ cube = scene.add_entity(
         pos=(0.65, 0.0, 0.02),
     )
 )
+franka_spec = gs.entities.Rigid(
+    morph=gs.morphs.MJCF(file="xml/franka_emika_panda/panda.xml"),
+)
+# select the fingertip pads (geoms 1 to 5 of each finger link, geom 0 being the finger mesh) to raise their friction
+fingers = franka_spec.select(gs.indices.Link.named("left_finger", "right_finger"))
+fingers.select(gs.indices.Geom.at(slice(1, 6))).set_friction(1.5)
 franka = scene.add_entity(
-    gs.morphs.MJCF(file="xml/franka_emika_panda/panda.xml"),
+    spec=franka_spec,
 )
 scene.build()
 

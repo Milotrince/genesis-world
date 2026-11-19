@@ -1,6 +1,10 @@
-"""Depth cameras attached to rigid and kinematic links, with per-frame set_vverts on a deforming sphere."""
+"""Depth cameras attached to rigid and kinematic links, with per-frame set_vverts on a deforming sphere.
+
+With the viewer (-v), drag the Go2 with the mouse to move the depth camera mounted on it, during the run and after it.
+"""
 
 import argparse
+import os
 from pathlib import Path
 
 import numpy as np
@@ -20,7 +24,12 @@ def main():
     parser.add_argument("-s", "--steps", type=int, default=300, help="Number of simulation steps")
     parser.add_argument("--save-every", type=int, default=10, help="Save depth PNG every N steps")
     parser.add_argument("-o", "--output-dir", type=str, default="out/depth", help="Directory for saved depth PNGs")
+    parser.add_argument(
+        "-r", "--record", action="store_true", help="Record a video of the run to 'out/depth_camera_custom_vverts.mp4'"
+    )
     args = parser.parse_args()
+    if "PYTEST_VERSION" in os.environ:
+        args.steps = 5
 
     out_dir = Path(args.output_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -28,6 +37,9 @@ def main():
         old.unlink()
 
     gs.init(backend=gs.gpu if args.gpu else gs.cpu)
+
+    camera_pos = (3.0, -3.0, 2.0)
+    camera_lookat = (0.0, 0.0, 0.3)
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
@@ -37,8 +49,8 @@ def main():
             gravity=(0, 0, -9.81),
         ),
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(3.0, -3.0, 2.0),
-            camera_lookat=(0.0, 0.0, 0.3),
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
             camera_fov=45,
         ),
         show_viewer=args.vis,
@@ -133,6 +145,20 @@ def main():
         ),
     }
 
+    camera = None
+    if args.record:
+        camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+            fov=45,
+        )
+
+    if args.vis:
+        scene.viewer.add_plugin(
+            gs.vis.viewer_plugins.MouseInteractionPlugin(),
+        )
+
     if args.num_envs > 0:
         scene.build(n_envs=args.num_envs)
     else:
@@ -179,34 +205,44 @@ def main():
     # Wave-deform parameters; per-env time offset gives each environment a distinct animation phase.
     amplitude, freq = 0.08, 4.0
 
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/depth_camera_custom_vverts.mp4", fps=round(1.0 / scene.dt))
+
+    def deform_and_step(step):
+        t = step * 0.05
+        ts = t + 0.5 * np.arange(B, dtype=np.float32)
+        deformed = np.broadcast_to(sphere_verts, (B, *sphere_verts.shape)).copy()
+        deformed[..., 2] += (
+            amplitude
+            * np.sin(freq * sphere_verts[:, 0] + ts[:, None])
+            * np.cos(freq * sphere_verts[:, 1] + 0.7 * ts[:, None])
+        )
+        deformed[..., 0] += amplitude * 0.5 * np.sin(freq * sphere_verts[:, 2] + 1.3 * ts[:, None])
+        kin_sphere.set_vverts(deformed if args.num_envs > 0 else deformed[0])
+
+        scene.step()
+
+        depth_imgs = {name: cam.read_image() for name, cam in cams.items()}
+        if step % 50 == 0:
+            hits = {
+                name: int((torch.isfinite(img) & (img < max_range)).sum().item()) for name, img in depth_imgs.items()
+            }
+            summary = "  ".join(f"cam_{name} hits={n:5d}" for name, n in hits.items())
+            print(f"  step {step:4d}:  {summary}", flush=True)
+        return depth_imgs
+
     try:
         for step in range(args.steps):
-            t = step * 0.05
-            ts = t + 0.5 * np.arange(B, dtype=np.float32)
-            deformed = np.broadcast_to(sphere_verts, (B, *sphere_verts.shape)).copy()
-            deformed[..., 2] += (
-                amplitude
-                * np.sin(freq * sphere_verts[:, 0] + ts[:, None])
-                * np.cos(freq * sphere_verts[:, 1] + 0.7 * ts[:, None])
-            )
-            deformed[..., 0] += amplitude * 0.5 * np.sin(freq * sphere_verts[:, 2] + 1.3 * ts[:, None])
-            kin_sphere.set_vverts(deformed if args.num_envs > 0 else deformed[0])
-
-            scene.step()
-
-            depth_imgs = {name: cam.read_image() for name, cam in cams.items()}
-
+            depth_imgs = deform_and_step(step)
             if step % args.save_every == 0:
                 for i, name in enumerate(cams):
                     exporter.export_frame_single_camera(step, i, depth=tensor_to_array(depth_imgs[name]))
-
-            if step % 50 == 0:
-                hits = {
-                    name: int((torch.isfinite(img) & (img < max_range)).sum().item())
-                    for name, img in depth_imgs.items()
-                }
-                summary = "  ".join(f"cam_{name} hits={n:5d}" for name, n in hits.items())
-                print(f"  step {step:4d}:  {summary}", flush=True)
+        if camera is not None:
+            camera.stop_recording()
+        step = args.steps
+        while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+            deform_and_step(step)
+            step += 1
     except KeyboardInterrupt:
         print("\nInterrupted.", flush=True)
 

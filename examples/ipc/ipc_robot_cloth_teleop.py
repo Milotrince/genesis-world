@@ -1,17 +1,17 @@
 """
 Keyboard Controls:
-Up	- Move Forward (North)
-Down	- Move Backward (South)
-Left	- Move Left (West)
-Right	- Move Right (East)
-n	- Move Up
-m	- Move Down
-j/k	- Yaw Left/Right (Rotate around Z axis)
-i/o	- Pitch Up/Down (Rotate around Y axis)
-l/;	- Roll Left/Right (Rotate around X axis)
-u	- Reset Scene
-space	- Press to close gripper, release to open gripper
-esc	- Quit
+Up        - Move Forward (-x)
+Down      - Move Backward (+x)
+Left      - Move Left (-y)
+Right     - Move Right (+y)
+k         - Move Up
+j         - Move Down
+n/m       - Yaw Left/Right (Rotate around Z axis)
+u/o       - Pitch Up/Down (Rotate around Y axis)
+l/;       - Roll Left/Right (Rotate around X axis)
+backslash - Reset Scene
+space     - Press to close gripper, release to open gripper
+esc       - Quit
 """
 
 import argparse
@@ -181,11 +181,10 @@ def main():
         origin_size=0.01,
         axis_radius=0.007,
     )
-    scene.viewer.update(force=True)
-
     if scene.viewer is None:
         gs.logger.warning("Viewer is not active. Keyboard input requires the Genesis viewer.")
         return
+    scene.viewer.update(force=True)
 
     gripper_close = np.array(False, dtype=gs.np_bool)
     is_running = True

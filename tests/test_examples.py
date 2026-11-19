@@ -13,7 +13,7 @@ EXAMPLES_DIR = Path(__file__).parents[1] / "examples"
 
 # Training a policy, or evaluating the policy a training produces, is out of reach of the unit tests, and the other
 # modules hold code shared by examples
-IGNORE_SCRIPT_PATTERNS = {"*_train.py", "*_eval.py", "*_env.py", "behavior_cloning.py", "quadcopter_controller.py"}
+IGNORE_SCRIPT_PATTERNS = {"*_train.py", "*_eval.py", "*_env.py", "behavior_cloning.py"}
 
 # Map example scripts or directories to their required optional dependencies.
 # Directory keys apply recursively to all scripts within that directory.

@@ -1,9 +1,14 @@
+import argparse
 import os
 
 import numpy as np
 
 import genesis as gs
 import genesis.utils.geom as gu
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-v", "--vis", action="store_true", help="Show the interactive viewer")
+args = parser.parse_args()
 
 gs.init(backend=gs.cpu, precision="32", logging_level="info")
 
@@ -17,7 +22,7 @@ scene = gs.Scene(
         camera_lookat=(0.0, 0.0, 0.0),
         camera_fov=40,
     ),
-    show_viewer=True,
+    show_viewer=args.vis,
 )
 
 

@@ -1,18 +1,25 @@
 """
-Interactive SurfaceDistanceProbe demo with Shadow Hand and keyboard teleop.
+SurfaceDistanceProbe sensors on the palm and fingertips of a Shadow Hand measure the distance to a rubber duck (mesh)
+and a box.
 
-Surface distance probes on the hand measure distance to a rubber duck (mesh) and a box.
-Use keyboard controls to move the hand via IK; the hand tracks target positions
-for the wrist and fingertips.
+Without the viewer, the hand follows a scripted sweep past both objects and logs the distances. With the viewer (-v),
+the same sweep runs, and the keyboard then drives the hand:
+
+    Up / Down       move the hand along +x / -x
+    Left / Right    move the hand along +y / -y
+    j / k           move the hand down / up
+    \\               reset the hand and the objects
 """
 
 import argparse
 import os
 
 import numpy as np
+import torch
 
 import genesis as gs
 import genesis.utils.geom as gu
+from genesis.utils.misc import tensor_to_array
 from genesis.vis.keybindings import Key, KeyAction, Keybind
 
 # Teleop
@@ -33,7 +40,9 @@ def main():
     parser = argparse.ArgumentParser(description="Interactive SurfaceDistanceProbe with Shadow Hand")
     parser.add_argument("-v", "--vis", action="store_true", help="Show visualization GUI")
     parser.add_argument("-g", "--gpu", action="store_true", help="Run on GPU instead of CPU")
-    parser.add_argument("-t", "--seconds", type=float, default=3.0, help="Seconds to simulate (headless mode)")
+    parser.add_argument(
+        "-r", "--record", action="store_true", help="Record a video of the run to 'out/surface_distance_shadowhand.mp4'"
+    )
     args = parser.parse_args()
 
     gs.init(
@@ -42,13 +51,16 @@ def main():
         logging_level="info",
     )
 
+    camera_pos = (-1.2, 0.6, 1.0)
+    camera_lookat = (0.0, 0.0, 0.5)
+
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
             gravity=(0.0, 0.0, 0.0),
         ),
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(-1.2, 0.6, 1.0),
-            camera_lookat=(0.0, 0.0, 0.5),
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
         ),
         show_viewer=args.vis,
     )
@@ -106,29 +118,31 @@ def main():
         )
         sensors.append(sensor)
 
+    camera = None
+    if args.record:
+        camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+        )
+
     scene.build()
 
     hand_pos = hand_pos_init.copy()
+    for obj in (duck, box):
+        obj.set_dofs_kv((0.8, 0.8, 0.8, 0.02, 0.02, 0.02))
+        obj.control_dofs_position(0.0)
+    robot.set_dofs_kp(FORCE_SCALE / KEY_DPOS)
+    robot.set_dofs_kv(0.1 * FORCE_SCALE / KEY_DPOS)
+    robot.control_dofs_position(robot.get_dofs_position())
+
+    def translate(index: int, is_negative: bool):
+        hand_pos[index] += (-1 if is_negative else 1) * KEY_DPOS
+
     if args.vis:
-        for obj in (duck, box):
-            obj.set_dofs_kv((0.8, 0.8, 0.8, 0.02, 0.02, 0.02))
-            obj.control_dofs_position(0.0)
-        robot.set_dofs_kp(FORCE_SCALE / KEY_DPOS)
-        robot.set_dofs_kv(0.1 * FORCE_SCALE / KEY_DPOS)
-        robot.control_dofs_position(robot.get_dofs_position())
-
-    # Register keybindings
-    is_running = True
-    if args.vis:
-
-        def stop():
-            nonlocal is_running
-            is_running = False
-
-        def translate(index: int, is_negative: bool):
-            hand_pos[index] += (-1 if is_negative else 1) * KEY_DPOS
 
         def reset_pose():
+            hand_pos[:] = hand_pos_init
             robot.set_pos(hand_pos_init)
             duck.set_pos(DUCK_POS)
             duck.set_quat(DUCK_QUAT)
@@ -143,38 +157,33 @@ def main():
             Keybind("move_down", Key.J, KeyAction.HOLD, callback=translate, args=(2, True)),
             Keybind("move_up", Key.K, KeyAction.HOLD, callback=translate, args=(2, False)),
             Keybind("reset", Key.BACKSLASH, KeyAction.RELEASE, callback=reset_pose),
-            Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
         )
+        gs.logger.info("Keyboard: [Up/Down/Left/Right] move hand XY, [j/k] down/up, [\\] reset")
 
-    print("\n=== SurfaceDistanceProbe with Shadow Hand ===")
-    print("Surface distance probes on hand palm and fingertips, tracking duck and box links")
-    if args.vis:
-        print("Keyboard: [Up/Down/Left/Right] move hand XY, [n/m] up/down, [\\] reset, [ESC] quit")
-    else:
-        print(f"Running headless for {args.seconds}s ...")
-    print()
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/surface_distance_shadowhand.mp4", fps=round(1.0 / scene.dt))
 
-    # Simulation loop
-    try:
-        while is_running:
-            if args.vis:
-                robot.control_dofs_position(hand_pos, dofs_idx_local=slice(0, 3))
-            else:
-                distances = []
-                for sensor in sensors:
-                    distances.append(sensor.read())
-                print(f"Surface distances: {distances}")
-
+    # The same moves the arrow keys and j/k issue, one per step: the hand climbs, sweeps past the duck, then dips
+    # towards the box.
+    scripted_moves = ((2, False, 15), (1, False, 25), (0, True, 15), (2, True, 20), (1, True, 10))
+    if "PYTEST_VERSION" in os.environ:
+        scripted_moves = scripted_moves[:1]
+    i_step = 0
+    for index, is_negative, n_steps in scripted_moves:
+        for _ in range(n_steps):
+            translate(index, is_negative)
+            robot.control_dofs_position(hand_pos, dofs_idx_local=slice(0, 3))
             scene.step()
+            if i_step % 10 == 0:
+                distances = torch.cat([sensor.read() for sensor in sensors], dim=-1)
+                gs.logger.info(f"Step {i_step}: palm and fingertip distances {tensor_to_array(distances).round(3)}")
+            i_step += 1
+    if camera is not None:
+        camera.stop_recording()
 
-            if "PYTEST_VERSION" in os.environ:
-                break
-            if not args.vis and scene.get_time() > args.seconds:
-                break
-    except KeyboardInterrupt:
-        gs.logger.info("Simulation interrupted.")
-    finally:
-        gs.logger.info("Simulation finished.")
+    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+        robot.control_dofs_position(hand_pos, dofs_idx_local=slice(0, 3))
+        scene.step()
 
 
 if __name__ == "__main__":

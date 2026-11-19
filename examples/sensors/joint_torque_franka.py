@@ -10,6 +10,8 @@ also captures the contact reaction.
 
 Three live plots show, for joints J0, J1 and J2, the comparison between the control torque, the sensor reading and
 their difference.
+
+With the viewer (-v), drag the arm with the mouse to load the joints by hand, during the push and after it.
 """
 
 import argparse
@@ -28,11 +30,17 @@ def main():
     parser.add_argument("-v", "--vis", action="store_true", help="Show visualization GUI")
     parser.add_argument("-g", "--gpu", action="store_true", help="Run on GPU instead of CPU")
     parser.add_argument("-t", "--seconds", type=float, default=5.0, help="Number of seconds to simulate")
+    parser.add_argument(
+        "-r", "--record", action="store_true", help="Record a video of the run to 'out/joint_torque_franka.mp4'"
+    )
     args = parser.parse_args()
 
     steps = int(args.seconds / args.dt) if "PYTEST_VERSION" not in os.environ else 5
 
     gs.init(backend=gs.gpu if args.gpu else gs.cpu)
+
+    camera_pos = (3.5, 0.0, 2.5)
+    camera_lookat = (0.0, 0.0, 0.5)
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
@@ -42,8 +50,8 @@ def main():
             show_world_frame=False,
         ),
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(3.5, 0.0, 2.5),
-            camera_lookat=(0.0, 0.0, 0.5),
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
             camera_fov=40,
         ),
         profiling_options=gs.options.ProfilingOptions(
@@ -103,7 +111,23 @@ def main():
         else:
             print("matplotlib or pyqtgraph not found, skipping real-time plotting.")
 
+    camera = None
+    if args.record:
+        camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+            fov=40,
+        )
+
+    if args.vis:
+        scene.viewer.add_plugin(
+            gs.vis.viewer_plugins.MouseInteractionPlugin(),
+        )
+
     scene.build()
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/joint_torque_franka.mp4", fps=round(1.0 / args.dt))
 
     franka.set_dofs_armature(1.0)
     franka.set_dofs_frictionloss(10.0)
@@ -125,6 +149,10 @@ def main():
         for i in tqdm(range(steps)):
             target = qpos_hold if i < contact_step else qpos_push
             franka.control_dofs_position(target[:-2], motors_dof)
+            scene.step()
+        if camera is not None:
+            camera.stop_recording()
+        while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
             scene.step()
     except KeyboardInterrupt:
         gs.logger.info("Simulation interrupted, exiting.")
