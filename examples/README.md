@@ -41,7 +41,7 @@ Read these in order. Each one teaches one API.
 | Example | Shows |
 |---|---|
 | `wrecking_ball.py` | A wrecking ball on a contact-held chain smashing a pile of cubes |
-| `hibernation.py` | Bodies at rest hibernating so that they cost nothing to simulate |
+| `rube_goldberg.py` | A chain reaction through revolute, prismatic and spherical joints, with hibernation |
 | `bolt_nut_self_screw.py` | A nut screwing itself down a bolt through non-convex thread contact |
 | `screw_constraint.py` | A nut driven along a bolt by a screw constraint |
 | `closed_loop.py` | Closed-loop linkages from MJCF equality constraints |
@@ -66,6 +66,7 @@ Read these in order. Each one teaches one API.
 | Example | Shows |
 |---|---|
 | `fem_vertex_constraints.py` | Hard and soft vertex constraints on FEM entities, under the legacy or the SAP coupler |
+| `pbd_flags_in_wind.py` | PBD cloth flags in wind, turbulence and a point attractor |
 | `pbd_elastic_dragon.py` | A PBD elastic body |
 
 ## fluids
@@ -118,6 +119,7 @@ Read these in order. Each one teaches one API.
 
 | Example | Shows |
 |---|---|
+| `rigid_sysid_launch.py` | The launch of a sliding box recovered from its trajectory through rigid gradients |
 | `mpm_push.py` | Gradients through an MPM push, optimized with torch |
 
 ## parallel
