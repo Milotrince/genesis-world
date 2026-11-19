@@ -52,7 +52,7 @@ machine. A GPU only pays off past roughly fifty parallel environments, which alm
 A script that genuinely needs a GPU - a batched training or benchmark run, or a renderer that only exists on
 CUDA - hardcodes `backend=gs.gpu` and says why in a comment, rather than exposing a flag with a single usable
 value. Everything else takes `-g/--gpu` as an opt-in, or hardcodes `backend=gs.cpu` when it has no parser.
-The same rule covers a script that only works on CPU (see `rigid/hibernation.py`).
+The same rule covers a script that only works on CPU.
 
 Long-running scripts cut their horizon under `"PYTEST_VERSION" in os.environ` so the examples CI stays cheap.
 
