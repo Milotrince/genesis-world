@@ -1266,7 +1266,7 @@ class Inertial(URDFType):
 
     @mass.setter
     def mass(self, value):
-        self._mass = float(value) if value is not None else None
+        self._mass = float(value)
 
     @property
     def inertia(self):
@@ -1292,7 +1292,10 @@ class Inertial(URDFType):
     @classmethod
     def _from_xml(cls, node, root, path):
         origin = parse_origin(node, default=False)
-        mass = float(n.attrib["value"]) if (n := node.find("mass")) is not None else None
+        n = node.find("mass")
+        if n is None:
+            raise ValueError("Missing required subelement of type mass when parsing an object of type Inertial")
+        mass = float(n.attrib["value"])
         n = node.find("inertia")
         xx = float(n.attrib["ixx"])
         xy = float(n.attrib["ixy"])
@@ -1307,10 +1310,9 @@ class Inertial(URDFType):
         node = ET.Element("inertial")
         if self.origin is not None:
             node.append(unparse_origin(self.origin))
-        if self.mass is not None:
-            mass = ET.Element("mass")
-            mass.attrib["value"] = str(self.mass)
-            node.append(mass)
+        mass = ET.Element("mass")
+        mass.attrib["value"] = str(self.mass)
+        node.append(mass)
         inertia = ET.Element("inertia")
         inertia.attrib["ixx"] = str(self.inertia[0, 0])
         inertia.attrib["ixy"] = str(self.inertia[0, 1])

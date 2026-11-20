@@ -228,6 +228,7 @@ def test_parsing_inertia_defaults(
     degenerate_inertials,
     zero_density_marker_mjcf,
     implicit_inertial_origin_chain,
+    massless_inertial,
     show_viewer,
     tol,
     caplog,
@@ -405,6 +406,10 @@ def test_parsing_inertia_defaults(
     )
     stacked_tip.attach(stacked_middle, parent_link_name=stacked_middle.base_link.name, pos=(0.0, 0.0, 0.2))
     stacked_middle.attach(stacked_base, parent_link_name=stacked_base.base_link.name, pos=(0.0, 0.0, 0.2))
+
+    # An inertial element must state a mass
+    with pytest.raises(ValueError, match="mass"):
+        scene.add_entity(gs.morphs.URDF(file=massless_inertial))
 
     with caplog.at_level("WARNING"):
         scene.build()

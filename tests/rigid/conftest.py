@@ -855,6 +855,15 @@ def implicit_inertial_origin_chain():
 
 
 @pytest.fixture(scope="session")
+def massless_inertial():
+    """Generate a URDF whose single link authors an inertial element without its required mass."""
+    urdf = ET.Element("robot", name="massless_inertial")
+    inertial = ET.SubElement(ET.SubElement(urdf, "link", name="base_link"), "inertial")
+    ET.SubElement(inertial, "inertia", ixx="0.1", ixy="0.0", ixz="0.0", iyy="0.1", iyz="0.0", izz="0.1")
+    return ET.tostring(urdf, encoding="unicode")
+
+
+@pytest.fixture(scope="session")
 def aligned_link_frame_urdfs():
     """Generate two fixed-child URDF variants with nontrivial link-local frames, each mounting its child its own way."""
     variants_joint_origin = (((0.31, -0.09, 0.11), (-0.2, 0.15, 0.35)), ((0.27, -0.05, 0.14), (0.1, -0.25, 0.2)))
