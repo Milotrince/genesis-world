@@ -1,14 +1,17 @@
-"""A Franka swings a tray of three soft jellies to a delivery spot and stops hard, and the jellies wobble and settle.
+"""A Franka picks up a tray of three soft jellies, swings it to a delivery stand and stops hard, then sets it down.
 
-The jellies are position-based dynamics (PBD) elastic bodies standing on a rigid tray, which a bracket between the
-fingers holds beside the hand. The robot swings the tray around its base at a brisk pace, then stops dead over the
-delivery spot: the jellies slide into the lip of the tray, squash and tip against it, and spring back. The lip alone
-holds them, since the contact between particles and rigid geoms has no friction. The run logs how many jellies are
-still on the tray and the peak deformation of each one after the stop.
+The jellies are position-based dynamics (PBD) elastic bodies standing on a free rigid tray. The robot grasps the fin on
+the handle of the tray, lifts it off the pick-up stand and swings it around its base at a brisk pace, then stops dead
+over the delivery stand: the jellies slide into the lip of the tray, squash and tip against it, and spring back. The lip
+alone holds them, since the contact between particles and rigid geoms has no friction. Once they settle, the robot sets
+the tray down, lets go and backs away. The run logs the peak deformation of each jelly after the stop, how many jellies
+are still on the tray, and whether the tray rests on the delivery stand.
 
 Keyboard controls (-v), once the scripted delivery is over:
-Up/Down    - Move the tray away from/towards the base
-Left/Right - Swing the tray left/right
+Up/Down    - Move the hand away from/towards the base
+Left/Right - Swing the hand left/right
+K/J        - Move the hand up/down
+Space      - Hold to grasp the tray, release to let go
 Esc        - Quit
 
 Plus all default viewer controls (press 'i' to see them).
@@ -33,13 +36,17 @@ TRAY_HALF_SIZE = (0.16, 0.1)
 TRAY_THICKNESS = 0.04
 LIP_HEIGHT = 0.03
 LIP_THICKNESS = 0.03
-# Position of the center of the tray top relative to the hand pointing down: the tray sits beside the fingertips, a
-# bracket between the fingers holding it.
-TRAY_OFFSET = (0.27, 0.0, -0.115)
-# The hand swings the tray around the base of the robot, the tray on the far side: the distance of the hand from the
-# base axis, the height of the top of the tray, and the azimuths of the pick-up and delivery spots.
+# The handle sticks out of the near side of the tray and ends in an upright fin for the fingers: the distance of the fin
+# from the center of the tray, its half-size, and the height of the hand above the tray top when the fingers hold it.
+FIN_X = 0.27
+FIN_HALF_SIZE = (0.025, 0.01, 0.025)
+GRASP_Z = 0.12
+FINGERS_FORCE = 15.0
+# The robot swings the tray around its base: the distance of the hand from the base axis, the height of the top of the
+# tray resting on a stand, how high the robot lifts it, and the azimuths of the pick-up and delivery stands.
 HAND_RADIUS = 0.4
 TRAY_Z = 0.3
+LIFT_Z = 0.06
 PICKUP_ANGLE = -1.0
 DELIVERY_ANGLE = 1.0
 # Peak speed and acceleration of the center of the tray along the arc.
@@ -48,17 +55,27 @@ CARRY_ACCELERATION = 2.0
 
 
 def tray_mjcf():
-    """MJCF model of the tray, in a frame at the center of its top: a plate with a lip on its four sides."""
+    """MJCF model of the free tray, in a frame at the center of its top: a plate with a lip, and a handle towards -x.
+
+    The two long walls of the lip run the full length of the plate and the two short walls fit between them.
+    """
     mjcf = ET.Element("mujoco", model="tray")
     tray = ET.SubElement(ET.SubElement(mjcf, "worldbody"), "body", name="tray")
+    ET.SubElement(tray, "freejoint")
     half_x, half_y = TRAY_HALF_SIZE
     wall = 0.5 * LIP_THICKNESS
+    handle_end_x = FIN_X + FIN_HALF_SIZE[0]
     for pos, size in (
         ((0.0, 0.0, -0.5 * TRAY_THICKNESS), (half_x, half_y, 0.5 * TRAY_THICKNESS)),
-        ((half_x - wall, 0.0, 0.5 * LIP_HEIGHT), (wall, half_y, 0.5 * LIP_HEIGHT)),
-        ((-half_x + wall, 0.0, 0.5 * LIP_HEIGHT), (wall, half_y, 0.5 * LIP_HEIGHT)),
         ((0.0, half_y - wall, 0.5 * LIP_HEIGHT), (half_x, wall, 0.5 * LIP_HEIGHT)),
         ((0.0, -half_y + wall, 0.5 * LIP_HEIGHT), (half_x, wall, 0.5 * LIP_HEIGHT)),
+        ((half_x - wall, 0.0, 0.5 * LIP_HEIGHT), (wall, half_y - 2.0 * wall, 0.5 * LIP_HEIGHT)),
+        ((-half_x + wall, 0.0, 0.5 * LIP_HEIGHT), (wall, half_y - 2.0 * wall, 0.5 * LIP_HEIGHT)),
+        (
+            (-0.5 * (half_x + handle_end_x), 0.0, -0.5 * TRAY_THICKNESS),
+            (0.5 * (handle_end_x - half_x), 0.02, 0.5 * TRAY_THICKNESS),
+        ),
+        ((-FIN_X, 0.0, FIN_HALF_SIZE[2]), FIN_HALF_SIZE),
     ):
         ET.SubElement(
             tray,
@@ -66,27 +83,8 @@ def tray_mjcf():
             type="box",
             pos=" ".join(map(str, pos)),
             size=" ".join(map(str, size)),
-            density="500",
+            density="200",
             rgba="0.85 0.85 0.88 1",
-        )
-    # The bracket runs down between the fingers, then out to the near edge of the plate. It passes between the fingers,
-    # so it is left out of collisions.
-    hand_x, hand_z = -TRAY_OFFSET[0], -TRAY_OFFSET[2]
-    bracket_z = -0.5 * TRAY_THICKNESS
-    for pos, size in (
-        ((hand_x, 0.0, 0.5 * (hand_z - 0.055 + bracket_z)), (0.006, 0.012, 0.5 * (hand_z - 0.055 - bracket_z))),
-        ((0.5 * (hand_x - half_x), 0.0, bracket_z), (0.5 * (-half_x - hand_x), 0.012, 0.006)),
-    ):
-        ET.SubElement(
-            tray,
-            "geom",
-            type="box",
-            pos=" ".join(map(str, pos)),
-            size=" ".join(map(str, size)),
-            contype="0",
-            conaffinity="0",
-            density="500",
-            rgba="0.6 0.6 0.63 1",
         )
     return ET.tostring(mjcf, encoding="unicode")
 
@@ -125,16 +123,17 @@ def main():
     scene.add_entity(
         gs.morphs.Plane(),
     )
-    # The pick-up and delivery stands mark the spots under the tray.
-    tray_radius = HAND_RADIUS + TRAY_OFFSET[0]
+    tray_radius = HAND_RADIUS + FIN_X
+    stand_height = TRAY_Z - TRAY_THICKNESS
+    stands_pos = []
     for angle, color in ((PICKUP_ANGLE, (0.55, 0.42, 0.3)), (DELIVERY_ANGLE, (0.3, 0.55, 0.35))):
+        stands_pos.append(np.array([tray_radius * np.cos(angle), tray_radius * np.sin(angle)]))
         scene.add_entity(
             morph=gs.morphs.Box(
-                pos=(tray_radius * np.cos(angle), tray_radius * np.sin(angle), 0.1),
+                pos=(*stands_pos[-1], 0.5 * stand_height),
                 euler=(0.0, 0.0, np.rad2deg(angle)),
-                size=(0.36, 0.24, 0.2),
+                size=(0.36, 0.24, stand_height),
                 fixed=True,
-                collision=False,
             ),
             surface=gs.surfaces.Rough(
                 color=color,
@@ -150,16 +149,13 @@ def main():
             gravity_compensation=1.0,
         ),
     )
-    # The tray has no joint of its own, so it moves with the hand only once its vertices follow the hand.
     tray = scene.add_entity(
         morph=gs.morphs.MJCF(
             file=tray_mjcf(),
-            batch_fixed_verts=True,
+            pos=(*stands_pos[0], TRAY_Z),
+            euler=(0.0, 0.0, np.rad2deg(PICKUP_ANGLE)),
         ),
     )
-    # The hand points down, a half-turn about x. The mounting rotation is the same half-turn, which levels the tray.
-    hand_down_quat = np.array([0.0, 1.0, 0.0, 0.0])
-    tray.attach(franka, "hand", pos=(TRAY_OFFSET[0], -TRAY_OFFSET[1], -TRAY_OFFSET[2]), quat=hand_down_quat)
 
     jellies = []
     jelly_width, jelly_height = 0.06, 0.05
@@ -210,8 +206,10 @@ def main():
     motors_dof = np.arange(7)
     fingers_dof = np.arange(7, 9)
     hand = franka.get_link("hand")
+    # The hand points down, a half-turn about x, its fingers closing across the fin.
+    hand_down_quat = np.array([0.0, 1.0, 0.0, 0.0])
     # The target of the hand in cylindrical coordinates around the base axis: radius, azimuth and height.
-    target = np.array([HAND_RADIUS, PICKUP_ANGLE, TRAY_Z - TRAY_OFFSET[2]])
+    target = np.array([HAND_RADIUS, PICKUP_ANGLE, TRAY_Z + GRASP_Z + 0.1])
 
     def solve_target():
         radius, angle, z = target
@@ -222,9 +220,11 @@ def main():
         return franka.inverse_kinematics(link=hand, pos=pos, quat=quat, init_qpos=franka.get_qpos())[:7]
 
     # Every solve starts from the previous one, which keeps the arm on the elbow-up branch it starts on.
-    franka.set_qpos([PICKUP_ANGLE, -0.3, 0.0, -2.4, 0.0, 2.1, 0.785, 0.0, 0.0])
+    franka.set_qpos([PICKUP_ANGLE, -0.3, 0.0, -2.4, 0.0, 2.1, 0.785, 0.04, 0.04])
     franka.set_qpos(solve_target(), motors_dof)
-    franka.control_dofs_position([0.0, 0.0], fingers_dof)
+    franka.set_dofs_kp([100.0, 100.0], fingers_dof)
+    franka.set_dofs_kv([10.0, 10.0], fingers_dof)
+    franka.control_dofs_position([0.04, 0.04], fingers_dof)
     motors_target = franka.get_qpos()[:7]
 
     # The joint velocity between successive targets feeds the PD controller forward, so that the hand keeps up with a
@@ -236,23 +236,56 @@ def main():
         motors_target = q
         scene.step()
 
-    jellies_rest = []
-    for jelly in jellies:
-        particles_pos = tensor_to_array(jelly.get_particles_pos())
-        jellies_rest.append(particles_pos - particles_pos.mean(axis=0))
+    def move_to(radius, z, steps):
+        start = target.copy()
+        for i_step in range(1, steps + 1):
+            target[[0, 2]] = start[[0, 2]] + (np.array([radius, z]) - start[[0, 2]]) * i_step / steps
+            track_target()
+
+    # The fingers grip the fin by friction alone, which cannot hold the torque of the loaded tray around the fin through
+    # the hard stop: once the fingers close on the fin, a weld constraint holds the tray to the hand.
+    is_holding = False
+
+    def grasp():
+        nonlocal is_holding
+        franka.control_dofs_force([-FINGERS_FORCE, -FINGERS_FORCE], fingers_dof)
+        fin_pos = gu.transform_by_trans_quat(
+            np.array([-FIN_X, 0.0, FIN_HALF_SIZE[2]]), tensor_to_array(tray.get_pos()), tensor_to_array(tray.get_quat())
+        )
+        fingers_center = gu.transform_by_trans_quat(
+            np.array([0.0, 0.0, 0.1]), tensor_to_array(hand.get_pos()), tensor_to_array(hand.get_quat())
+        )
+        if not is_holding and np.linalg.norm(fin_pos - fingers_center) < 0.03:
+            scene.rigid_solver.add_weld_constraint(tray.base_link.idx, hand.idx)
+            is_holding = True
+
+    def release():
+        nonlocal is_holding
+        if is_holding:
+            scene.rigid_solver.delete_weld_constraint(tray.base_link.idx, hand.idx)
+            is_holding = False
+        franka.control_dofs_position([0.04, 0.04], fingers_dof)
 
     if "PYTEST_VERSION" not in os.environ:
-        n_settle, n_after = 50, 250
+        n_reach, n_grip, n_wobble = 60, 40, 200
         delivery_angle = DELIVERY_ANGLE
     else:
-        n_settle, n_after = 5, 5
+        n_reach, n_grip, n_wobble = 5, 5, 5
         delivery_angle = PICKUP_ANGLE + 0.05
 
     if camera is not None:
         camera.start_recording(save_to_filename="out/pbd_jelly_delivery.mp4", fps=50)
-    for _ in range(n_settle):
+    move_to(HAND_RADIUS, TRAY_Z + GRASP_Z, steps=n_reach)
+    grasp()
+    for _ in range(n_grip):
         track_target()
-    # Speed up gently, cruise, then stop dead over the delivery spot.
+    move_to(HAND_RADIUS, TRAY_Z + GRASP_Z + LIFT_Z, steps=n_reach)
+
+    jellies_rest = []
+    for jelly in jellies:
+        particles_pos = tensor_to_array(jelly.get_particles_pos())
+        jellies_rest.append(particles_pos - particles_pos.mean(axis=0))
+    # Speed up gently, cruise, then stop dead over the delivery stand.
     angular_speed = 0.0
     while target[1] < delivery_angle:
         angular_speed = min(angular_speed + CARRY_ACCELERATION / tray_radius * DT, CARRY_SPEED / tray_radius)
@@ -261,7 +294,7 @@ def main():
     # The deformation of a jelly is the root-mean-square distance of its particles from its rest shape, once the rigid
     # motion that best fits them is removed.
     jellies_deformation_peak = np.zeros(len(jellies))
-    for _ in range(n_after):
+    for _ in range(n_wobble):
         track_target()
         for i_jelly, (jelly, rest) in enumerate(zip(jellies, jellies_rest)):
             particles_pos = tensor_to_array(jelly.get_particles_pos())
@@ -269,15 +302,26 @@ def main():
             u, _, vt = np.linalg.svd(rest.T @ particles_pos)
             deformation = np.sqrt(np.mean(np.sum((particles_pos - rest @ u @ vt) ** 2, axis=-1)))
             jellies_deformation_peak[i_jelly] = max(jellies_deformation_peak[i_jelly], deformation)
+
+    move_to(HAND_RADIUS, TRAY_Z + GRASP_Z, steps=n_reach)
+    release()
+    for _ in range(n_grip):
+        track_target()
+    move_to(HAND_RADIUS - 0.1, TRAY_Z + GRASP_Z + 0.15, steps=n_reach)
     if camera is not None:
         camera.stop_recording()
 
-    tray_top_z = tensor_to_array(tray.get_pos())[2]
-    jellies_center = np.stack([tensor_to_array(jelly.get_particles_pos()).mean(axis=0) for jelly in jellies])
-    n_on_tray = np.count_nonzero(jellies_center[:, 2] > tray_top_z)
-    gs.logger.info(f"{n_on_tray} of {len(jellies)} jellies delivered on the tray.")
     for i_jelly, deformation in enumerate(jellies_deformation_peak):
         gs.logger.info(f"Jelly {i_jelly}: peak deformation {1000.0 * deformation:.1f} mm after the stop.")
+    tray_pos, tray_quat = tensor_to_array(tray.get_pos()), tensor_to_array(tray.get_quat())
+    jellies_center = np.stack([tensor_to_array(jelly.get_particles_pos()).mean(axis=0) for jelly in jellies])
+    jellies_center_local = gu.inv_transform_by_trans_quat(jellies_center, tray_pos, tray_quat)
+    is_on_tray = (np.abs(jellies_center_local[:, :2]) < TRAY_HALF_SIZE).all(axis=-1) & (
+        jellies_center_local[:, 2] > 0.0
+    )
+    gs.logger.info(f"{np.count_nonzero(is_on_tray)} of {len(jellies)} jellies delivered on the tray.")
+    is_tray_on_stand = np.linalg.norm(tray_pos[:2] - stands_pos[1]) < 0.05 and abs(tray_pos[2] - TRAY_Z) < 0.01
+    gs.logger.info(f"Tray {'rests' if is_tray_on_stand else 'does not rest'} on the delivery stand.")
 
     if args.vis:
         is_running = True
@@ -294,9 +338,16 @@ def main():
             Keybind("move_in", Key.DOWN, KeyAction.HOLD, callback=move, args=((-0.004, 0.0, 0.0),)),
             Keybind("swing_left", Key.LEFT, KeyAction.HOLD, callback=move, args=((0.0, -0.01, 0.0),)),
             Keybind("swing_right", Key.RIGHT, KeyAction.HOLD, callback=move, args=((0.0, 0.01, 0.0),)),
+            Keybind("move_up", Key.K, KeyAction.HOLD, callback=move, args=((0.0, 0.0, 0.004),)),
+            Keybind("move_down", Key.J, KeyAction.HOLD, callback=move, args=((0.0, 0.0, -0.004),)),
+            Keybind("grasp", Key.SPACE, KeyAction.PRESS, callback=grasp),
+            Keybind("release", Key.SPACE, KeyAction.RELEASE, callback=release),
             Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
         )
-        gs.logger.info("Keys: Up/Down move the tray away from/towards the base, Left/Right swing it, Esc quits.")
+        gs.logger.info(
+            "Keys: Up/Down move the hand away from/towards the base, Left/Right swing it, K/J move it up/down, hold "
+            "Space to grasp the tray, Esc quits."
+        )
         while is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
             track_target()
 
