@@ -470,9 +470,8 @@ def test_fluid_emitter(n_envs, material_type, show_viewer):
     )
     scene.build(n_envs=n_envs)
 
-    # The particles of the box follow those of the emitter, so an emission running past the last particle of the
-    # emitter would move them. Small emissions bring the next particle past half of them, then a large emission holds
-    # more than half of them.
+    # The particles of the box follow those of the emitter, so an emission running past its last particle moves them.
+    # Small emissions fill more than half of the emitter, then a large emission needs more than half of it.
     particle_size = emitter.entity.particle_size
     for i in range(50):
         if emitter.next_particle > emitter.max_particles // 2:
