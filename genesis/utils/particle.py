@@ -247,12 +247,6 @@ def _relax_volume_sampling(positions, sdf, origin, cell_size, radius, n_steps):
 
 
 def _box_to_particles(p_size, pos, size, sampler):
-    """
-    Private function to sample particles from a box. This function only supports `random` and `regular` samplers.
-    This is a private function that does not consider additional mesh offset or scale.
-    """
-    size = np.array(size)
-    pos = np.array(pos)
     lower = pos - size / 2
     upper = pos + size / 2
 
@@ -262,16 +256,11 @@ def _box_to_particles(p_size, pos, size, sampler):
         # The draws are scaled by separate numpy operations, each rounded exactly, so that every platform samples the
         # same positions. The compiled scaling of 'np.random.uniform' rounds differently from one platform to another.
         positions = lower + np.random.random((n_particles, 3)) * (upper - lower)
-
-    elif sampler == "regular":
+    else:
         p_lower = lower + 0.5 * p_size
         p_upper = upper - 0.5 * p_size
         x, y, z = (np.linspace(p_lower[i], p_upper[i], n_particles_axes[i]) for i in range(3))
         positions = np.stack(np.meshgrid(x, y, z, indexing="ij"), -1).reshape((-1, 3))
-
-    else:
-        gs.raise_exception(f"Unsupported sampler method: {sampler}.")
-
     return positions
 
 
@@ -300,70 +289,42 @@ def primitive_to_particles(primitive, p_size, sampler):
 
 
 def particles_to_mesh(positions, radius, backend):
-    def parse_args(backend):
-        args_dict = dict()
-        args_list = backend.split("-")
-        if len(args_list) >= 2:
-            args_dict["rscale"] = float(args_list[1])
-            args_list = args_list[2:]
-            for i in range(0, len(args_list), 2):
-                args_dict[args_list[i]] = float(args_list[i + 1])
-        return args_dict
-
-    if positions.shape[0] == 0:
+    """Reconstruct the surface of a set of particles sharing one radius, with the 'levelset' or 'splashsurf' backend."""
+    assert backend in ("levelset", "splashsurf")
+    if len(positions) == 0:
         return trimesh.Trimesh(vertices=np.zeros((0, 3)), faces=np.zeros((0, 3)))
 
-    if isinstance(radius, np.ndarray):
-        radii = radius
-        radius = np.min(radius)
-        if "splashsurf" in backend:
-            gs.logger.warning(
-                "Backend 'splashsurf' does not support specifying individual radius for each particle. Switching to "
-                "backend 'levelset' as a fallback."
-            )
-            backend = "levelset"
-    else:
-        radii = np.array([])
-
-    args_dict = parse_args(backend)
-
-    if "levelset" in backend:
-        radius_scale = args_dict.get("rscale", 2.0)
-        if radii.size == 0:
-            radii = np.full(len(positions), radius, dtype=positions.dtype)
-        radii = radii * radius_scale
-        voxel_size = radius * radius_scale * args_dict.get("vscale", 1.0)
-        isovalue = args_dict.get("isovalue", 0.0)
+    if backend == "levelset":
+        sphere_radius = 2.0 * radius
+        radii = np.full(len(positions), sphere_radius, dtype=positions.dtype)
         # The surface is extracted from the distance at the corners of the cells it crosses, which lie within one cell
         # diagonal of it, so the distance only has to be exact within that band around the iso-surface.
-        sdf, origin = _rasterize_spheres(positions, radii, voxel_size, band=abs(isovalue) + 2.0 * voxel_size)
+        sdf, origin = _rasterize_spheres(positions, radii, sphere_radius, band=2.0 * sphere_radius)
         vertices, faces, _, _ = marching_cubes(
             sdf,
-            level=isovalue,
-            spacing=(voxel_size,) * 3,
+            level=0.0,
+            spacing=(sphere_radius,) * 3,
             gradient_direction="descent",
-            mask=np.abs(sdf - isovalue) < 2.0 * voxel_size,
+            mask=np.abs(sdf) < 2.0 * sphere_radius,
         )
         return trimesh.Trimesh(origin + vertices, faces, process=False)
-    elif "splashsurf" in backend:
-        # FIXME: genesis-world#2173 - The memory of the process grows from one reconstruction to the next. See also
-        # genesis-world#1531 (comment 3220880318) on the copies the getters of the mesh make.
-        mesh_with_data, _ = pysplashsurf.reconstruction_pipeline(
-            positions,
-            particle_radius=radius * args_dict.get("rscale", 1.0),
-            smoothing_length=2.0,
-            cube_size=0.8,
-            iso_surface_threshold=0.6,
-            mesh_smoothing_weights=True,
-            mesh_smoothing_iters=int(args_dict.get("smooth", 25)),
-            mesh_cleanup=True,
-            multi_threading=True,
-        )
-        mesh = trimesh.Trimesh(mesh_with_data.mesh.vertices, mesh_with_data.mesh.triangles, process=False)
-        gs.logger.debug(f"[splashsurf]: reconstruct vertices: {mesh.vertices.shape}, {mesh.faces.shape}")
-        return mesh
-    else:
-        gs.raise_exception(f"Unsupported backend: {backend}.")
+
+    # FIXME: genesis-world#2173 - The memory of the process grows from one reconstruction to the next. See also
+    # genesis-world#1531 (comment 3220880318) on the copies the getters of the mesh make.
+    mesh_with_data, _ = pysplashsurf.reconstruction_pipeline(
+        positions,
+        particle_radius=radius,
+        smoothing_length=2.0,
+        cube_size=0.8,
+        iso_surface_threshold=0.6,
+        mesh_smoothing_weights=True,
+        mesh_smoothing_iters=25,
+        mesh_cleanup=True,
+        multi_threading=True,
+    )
+    mesh = trimesh.Trimesh(mesh_with_data.mesh.vertices, mesh_with_data.mesh.triangles, process=False)
+    gs.logger.debug(f"[splashsurf]: reconstruct vertices: {mesh.vertices.shape}, {mesh.faces.shape}")
+    return mesh
 
 
 @nb.jit(nopython=True, cache=True, parallel=True)
@@ -791,7 +752,7 @@ class FoamGenerator:
         )
         is_crest = (velocities_dir * normals).sum(axis=-1) >= 0.6
         kinetic_energy = 0.5 * m * speeds**2
-        ke_min = 0.1 * (self.particle_radius**3 * 6400) * 2.5**2
+        ke_min = 0.1 * m * 2.5**2
         i_ta = np.clip((trapped_air - 0.05) / (0.5 - 0.05), 0.0, 1.0)
         i_wc = np.clip((is_crest * curvature - 0.05) / (0.5 - 0.05), 0.0, 1.0)
         i_ke = np.clip((kinetic_energy - ke_min) / (49.0 * ke_min), 0.0, 1.0)
@@ -830,9 +791,3 @@ class FoamGenerator:
             self.bubble_decay,
         )
         return self.foams_pos
-
-
-def filter_surface(positions, particle_radius):
-    """Return whether each particle lies at the surface of the set, which a particle with few neighbors does."""
-    neighbors_start, _ = _find_neighbors(positions, positions, 4.0 * particle_radius)
-    return np.diff(neighbors_start) < 20
