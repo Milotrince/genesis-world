@@ -69,7 +69,7 @@ Read these in order. Each one teaches one API.
 | `mpm_ice_cream.py` | Soft-serve emitted from a dispenser and coiled onto a cone the Franka holds |
 | `pbd_flags_in_wind.py` | PBD cloth flags in wind, turbulence and a point attractor |
 | `pbd_tablecloth.py` | Two Frankas draping a PBD tablecloth over a table |
-| `pbd_elastic_dragon.py` | A PBD elastic body |
+| `pbd_jelly_delivery.py` | A Franka carrying a tray of PBD elastic jellies that wobble when it stops |
 
 ## fluids
 

@@ -229,7 +229,7 @@ Catalogue entries pruned from the Physics grid. Kept here as a reference so
 they can be reinstated later. The links and thumbnail paths are all still
 valid in the repo; just paste any pair of rows back into the Physics table.
 
-| [Rigid: grasp bottle](./examples/parallel/franka_grasp_bottle.py) | [Rigid: Jenga](./examples/rigid/jenga.py) | [FEM: elastic dragon](./examples/deformable/pbd_elastic_dragon.py) |
+| [Rigid: grasp bottle](./examples/parallel/franka_grasp_bottle.py) | [Rigid: Jenga](./examples/rigid/jenga.py) | [PBD: jelly delivery](./examples/deformable/pbd_jelly_delivery.py) |
 | <img src="https://raw.githubusercontent.com/Genesis-Embodied-AI/genesis-world/readme-assets/videos/rigid_grasp_bottle.webp" width="240"> | <img src="https://raw.githubusercontent.com/Genesis-Embodied-AI/genesis-world/readme-assets/videos/collision_pyramid.png" width="240"> | <img src="https://raw.githubusercontent.com/Genesis-Embodied-AI/genesis-world/readme-assets/videos/elastic_dragon.webp" width="240"> |
 | [FEM: SAP fixed constraint](./examples/deformable/fem_vertex_constraints.py) | [SPH: liquid](./examples/tutorials/12_sph_liquid.py) | [Coupler: grasp soft cube](./examples/multiphysics/rigid_mpm_grasp_soft_cube.py) |
 | <img src="https://raw.githubusercontent.com/Genesis-Embodied-AI/genesis-world/readme-assets/videos/sap_fem_fixed_constraint.webp" width="240"> | <img src="https://raw.githubusercontent.com/Genesis-Embodied-AI/genesis-world/readme-assets/videos/tutorials_sph_liquid.webp" width="240"> | <img src="https://raw.githubusercontent.com/Genesis-Embodied-AI/genesis-world/readme-assets/videos/coupling_grasp_soft_cube.webp" width="240"> |
