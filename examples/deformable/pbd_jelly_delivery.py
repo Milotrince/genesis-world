@@ -41,7 +41,15 @@ LIP_THICKNESS = 0.03
 FIN_X = 0.27
 FIN_HALF_SIZE = (0.025, 0.01, 0.025)
 GRASP_Z = 0.12
+# The fingers hold the tray by friction alone, against the torque of the tray and the jellies about the fin. The
+# torsional friction of the finger pads resists that torque, and needs the elliptic friction cone. Light tray and
+# jellies keep the torque within the grip through the hard stop. The grip force stays below the force that drives the
+# fingers past their joint limit when they close on nothing.
 FINGERS_FORCE = 15.0
+GRIP_FRICTION = 2.0
+GRIP_FRICTION_TORSIONAL = 0.03
+TRAY_DENSITY = 30.0
+JELLY_RHO = 300.0
 # The robot swings the tray around its base: the distance of the hand from the base axis, the height of the top of the
 # tray resting on a stand, how high the robot lifts it, and the azimuths of the pick-up and delivery stands.
 HAND_RADIUS = 0.4
@@ -83,7 +91,7 @@ def tray_mjcf():
             type="box",
             pos=" ".join(map(str, pos)),
             size=" ".join(map(str, size)),
-            density="200",
+            density=str(TRAY_DENSITY),
             rgba="0.85 0.85 0.88 1",
         )
     return ET.tostring(mjcf, encoding="unicode")
@@ -105,6 +113,10 @@ def main():
         sim_options=gs.options.SimOptions(
             dt=DT,
             substeps=10,
+        ),
+        rigid_options=gs.options.RigidOptions(
+            friction_cone=gs.friction_cone.elliptic,
+            enable_torsional_friction=True,
         ),
         pbd_options=gs.options.PBDOptions(
             particle_size=1e-2,
@@ -155,6 +167,10 @@ def main():
             pos=(*stands_pos[0], TRAY_Z),
             euler=(0.0, 0.0, np.rad2deg(PICKUP_ANGLE)),
         ),
+        material=gs.materials.Rigid(
+            friction=GRIP_FRICTION,
+            friction_torsional=GRIP_FRICTION_TORSIONAL,
+        ),
     )
 
     jellies = []
@@ -183,6 +199,7 @@ def main():
                 morph=morph,
                 # Soft enough to wobble visibly, stiff enough to keep its shape under its own weight.
                 material=gs.materials.PBD.Elastic(
+                    rho=JELLY_RHO,
                     stretch_compliance=1e-2,
                     volume_compliance=1e-2,
                 ),
@@ -222,6 +239,9 @@ def main():
     # Every solve starts from the previous one, which keeps the arm on the elbow-up branch it starts on.
     franka.set_qpos([PICKUP_ANGLE, -0.3, 0.0, -2.4, 0.0, 2.1, 0.785, 0.04, 0.04])
     franka.set_qpos(solve_target(), motors_dof)
+    for link_name in ("left_finger", "right_finger"):
+        franka.get_link(link_name).set_friction(GRIP_FRICTION)
+        franka.get_link(link_name).set_friction_torsional(GRIP_FRICTION_TORSIONAL)
     franka.set_dofs_kp([100.0, 100.0], fingers_dof)
     franka.set_dofs_kv([10.0, 10.0], fingers_dof)
     franka.control_dofs_position([0.04, 0.04], fingers_dof)
@@ -242,28 +262,10 @@ def main():
             target[[0, 2]] = start[[0, 2]] + (np.array([radius, z]) - start[[0, 2]]) * i_step / steps
             track_target()
 
-    # The fingers grip the fin by friction alone, which cannot hold the torque of the loaded tray around the fin through
-    # the hard stop: once the fingers close on the fin, a weld constraint holds the tray to the hand.
-    is_holding = False
-
     def grasp():
-        nonlocal is_holding
         franka.control_dofs_force([-FINGERS_FORCE, -FINGERS_FORCE], fingers_dof)
-        fin_pos = gu.transform_by_trans_quat(
-            np.array([-FIN_X, 0.0, FIN_HALF_SIZE[2]]), tensor_to_array(tray.get_pos()), tensor_to_array(tray.get_quat())
-        )
-        fingers_center = gu.transform_by_trans_quat(
-            np.array([0.0, 0.0, 0.1]), tensor_to_array(hand.get_pos()), tensor_to_array(hand.get_quat())
-        )
-        if not is_holding and np.linalg.norm(fin_pos - fingers_center) < 0.03:
-            scene.rigid_solver.add_weld_constraint(tray.base_link.idx, hand.idx)
-            is_holding = True
 
     def release():
-        nonlocal is_holding
-        if is_holding:
-            scene.rigid_solver.delete_weld_constraint(tray.base_link.idx, hand.idx)
-            is_holding = False
         franka.control_dofs_position([0.04, 0.04], fingers_dof)
 
     if "PYTEST_VERSION" not in os.environ:
