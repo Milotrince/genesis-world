@@ -3,8 +3,10 @@ import inspect
 import math
 import os
 import weakref
+from collections.abc import Sequence
 from functools import lru_cache, wraps
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -36,6 +38,9 @@ from .cache import (
     register_cache_clear,
 )
 from .misc import get_assets_dir, get_src_dir, unique_rows
+
+if TYPE_CHECKING:
+    from genesis.vis.camera import Camera
 
 # Largest coordinate discrepancy, as a fraction of the bounding-box diagonal, under which two meshes are considered
 # identical by the on-disk caches. Orders of magnitude below the spacing of genuinely distinct geometry, and orders of
@@ -1093,47 +1098,40 @@ def apply_transform(transform, positions, normals=None):
 
 
 def create_frame(
-    origin_radius=0.012, axis_radius=0.005, axis_length=1.0, head_radius=0.01, head_length=0.03, sections=12
-):
+    origin_radius: float = 0.012,
+    axis_radius: float = 0.005,
+    axis_length: float = 1.0,
+    head_radius: float = 0.01,
+    head_length: float = 0.03,
+    sections: int = 12,
+) -> trimesh.Trimesh:
     origin = create_sphere(radius=origin_radius, subdivisions=2)
 
-    x = create_arrow(
-        length=axis_length,
-        radius=axis_radius,
-        l_ratio=head_length / axis_length,
-        r_ratio=head_radius / axis_radius,
-        body_color=(0.7, 0.0, 0.0, 1.0),
-        head_color=(0.7, 0.7, 0.7, 1.0),
-        sections=sections,
-    )
-    y = create_arrow(
-        length=axis_length,
-        radius=axis_radius,
-        l_ratio=head_length / axis_length,
-        r_ratio=head_radius / axis_radius,
-        body_color=(0.0, 0.7, 0.0, 1.0),
-        head_color=(0.7, 0.7, 0.7, 1.0),
-        sections=sections,
-    )
-    z = create_arrow(
-        length=axis_length,
-        radius=axis_radius,
-        l_ratio=head_length / axis_length,
-        r_ratio=head_radius / axis_radius,
-        body_color=(0.0, 0.0, 0.7, 1.0),
-        head_color=(0.7, 0.7, 0.7, 1.0),
-        sections=sections,
-    )
+    # The arrows point along z, then rotate onto x and y
+    axes = []
+    for body_color, euler in (
+        ((0.7, 0.0, 0.0, 1.0), (0.0, 90.0, 0.0)),
+        ((0.0, 0.7, 0.0, 1.0), (-90.0, 0.0, 0.0)),
+        ((0.0, 0.0, 0.7, 1.0), (0.0, 0.0, 0.0)),
+    ):
+        axis = create_arrow(
+            length=axis_length,
+            radius=axis_radius,
+            l_ratio=head_length / axis_length,
+            r_ratio=head_radius / axis_radius,
+            body_color=body_color,
+            head_color=(0.7, 0.7, 0.7, 1.0),
+            sections=sections,
+        )
+        axis.vertices = gu.transform_by_R(axis.vertices, gu.euler_to_R(euler))
+        axes.append(axis)
 
-    x.vertices = gu.transform_by_R(x.vertices, gu.euler_to_R((0.0, 90.0, 0.0)))
-    y.vertices = gu.transform_by_R(y.vertices, gu.euler_to_R((-90.0, 0.0, 0.0)))
-
-    return trimesh.util.concatenate([origin, x, y, z])
+    return trimesh.util.concatenate([origin, *axes])
 
 
-def create_camera_frustum(camera, color):
+def create_camera_frustum(camera: "Camera", color: Sequence[float]) -> trimesh.Trimesh:
     # camera
-    camera_mesh = load_trimesh(os.path.join(get_src_dir(), "assets", "meshes", "camera/camera.glb"), force="mesh")
+    camera_mesh = load_trimesh(os.path.join(get_assets_dir(), "meshes", "camera", "camera.glb"), force="mesh")
     camera_mesh.visual = camera_mesh.visual.to_color()
     camera_mesh.apply_translation([0.0, 0.0, 1.0])
     camera_mesh.apply_scale(0.05)

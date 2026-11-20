@@ -5,15 +5,16 @@ from typing import TYPE_CHECKING, NamedTuple
 import numpy as np
 import torch
 
+import networkx as nx
 import trimesh
 
 import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.urdf as uu
+from genesis.engine.materials.base import Material
 from genesis.ext.urdfpy.urdf import URDF
 from genesis.options.surfaces import Surface
 from genesis.utils.hybrid import (
-    check_graph,
     compute_graph_attribute,
     gel_graph_to_nx_graph,
     graph_to_tree,
@@ -496,14 +497,21 @@ def default_func_instantiate_soft_from_rigid(scene, part_rigid, material_soft, m
     return part_soft
 
 
-def default_func_instantiate_rigid_from_soft(scene, mesh, morph, material_rigid, material_hybrid, surface):
+def default_func_instantiate_rigid_from_soft(
+    scene: "Scene",
+    mesh: trimesh.Trimesh,
+    morph: gs.morphs.Mesh,
+    material_rigid: Material,
+    material_hybrid: gs.materials.Hybrid,
+    surface: Surface,
+) -> Entity:
     # skeletonization
     gelmesh = trimesh_to_gelmesh(mesh)
     graph_gel = skeletonization(gelmesh)
 
     # convert to nxgraph
     graph_nx = gel_graph_to_nx_graph(graph_gel)
-    check_graph(graph_nx)
+    assert nx.is_connected(graph_nx)
 
     # compute graph attribute
     graph_pos = graph_gel.positions()
@@ -511,7 +519,7 @@ def default_func_instantiate_rigid_from_soft(scene, mesh, morph, material_rigid,
 
     # reduce nxgraph
     graph_nx_reduced = reduce_graph(graph_nx, straight_thresh=60)
-    check_graph(graph_nx_reduced)
+    assert nx.is_connected(graph_nx_reduced)
 
     # to URDF
     G = graph_nx_reduced
