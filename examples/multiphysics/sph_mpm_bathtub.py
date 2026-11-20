@@ -4,7 +4,8 @@ The water is a smoothed particle hydrodynamics (SPH) liquid and the duck a light
 solid, so the water carries the duck through the coupling of the two solvers. The tub starts part full and the faucet
 tops it up. Pulling the plug deactivates the water particles that reach the drain, at a set flow rate, and turns on a
 vortex force field that swirls the water, the duck and a ring of foam balls around it. The water level and the
-position of the duck are logged along the way. Particle scenes are slow on CPU, so '-g' speeds the run up a lot.
+position of the duck are logged along the way. The water is drawn as its particles. Particle scenes are slow on CPU,
+so '-g' speeds the run up a lot.
 
 Keyboard controls (with -v, once the scripted run is over):
 1 - Toggle the faucet
@@ -122,6 +123,8 @@ def main():
             upper_bound=(0.5 * size_x + 0.06, 0.5 * size_y + 0.06, 0.4),
         ),
         vis_options=gs.options.VisOptions(
+            # The spheres drawn for the particles overlap a little, so that the water reads as a volume.
+            particle_size_scale=1.3,
             # A light shining down from the side of the camera keeps the walls from shading the water and the duck.
             lights=[
                 {"type": "directional", "dir": (0.3, 0.6, -1.5), "color": (1.0, 1.0, 1.0), "intensity": 5.0},
@@ -159,23 +162,32 @@ def main():
             color=(0.8, 0.8, 0.82),
         ),
     )
+    # The water is drawn as its particles, which the debug view and the debug camera show.
     water = scene.add_entity(
-        material=gs.materials.SPH.Liquid(),
-        # The water starts a few millimetres clear of the walls and the floor.
-        morph=gs.morphs.Box(
-            pos=(0.0, 0.0, WALL + 0.5 * FILL_HEIGHT + 0.005),
-            size=(size_x - 0.01, size_y - 0.01, FILL_HEIGHT),
-        ),
-        surface=gs.surfaces.Default(
-            color=(0.3, 0.6, 0.95, 0.55),
+        spec=gs.entities.SPH(
+            # The water starts a few millimetres clear of the walls and the floor.
+            morph=gs.morphs.Box(
+                pos=(0.0, 0.0, WALL + 0.5 * FILL_HEIGHT + 0.005),
+                size=(size_x - 0.01, size_y - 0.01, FILL_HEIGHT),
+            ),
+            surface=gs.surfaces.Default(
+                color=(0.3, 0.6, 0.95, 0.55),
+            ),
+            vis=gs.options.EntityVisOptions(
+                debug=True,
+            ),
         ),
     )
     faucet = scene.add_emitter(
-        material=gs.materials.SPH.Liquid(),
-        max_particles=2000,
-        surface=gs.surfaces.Default(
-            color=(0.3, 0.6, 0.95, 0.55),
+        spec=gs.entities.SPH(
+            surface=gs.surfaces.Default(
+                color=(0.3, 0.6, 0.95, 0.55),
+            ),
+            vis=gs.options.EntityVisOptions(
+                debug=True,
+            ),
         ),
+        max_particles=2000,
     )
     duck = scene.add_entity(
         morph=gs.morphs.Mesh(
@@ -228,6 +240,7 @@ def main():
             pos=camera_pos,
             lookat=camera_lookat,
             fov=40,
+            debug=True,
         )
 
     scene.build()
