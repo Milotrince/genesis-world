@@ -44,17 +44,20 @@ def main():
 
     gs.init(backend=gs.gpu if args.gpu else gs.cpu, precision="32", seed=0)
 
-    camera_pos = (1.8, -1.5, 1.4)
-    camera_lookat = (0.4, 0.0, 0.35)
+    camera_pos = (1.5, -1.15, 1.1)
+    camera_lookat = (0.45, 0.0, 0.35)
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
             dt=4e-3,
             substeps=10,
         ),
+        # The water runs off the table and spreads over the floor, so the domain reaches about a metre past the table on
+        # every side, its walls out of frame. A coarser grid than the default keeps it affordable on CPU.
         mpm_options=gs.options.MPMOptions(
-            lower_bound=(0.1, -0.5, 0.0),
-            upper_bound=(1.0, 0.5, 0.85),
+            grid_density=40,
+            lower_bound=(-0.35, -1.05, 0.0),
+            upper_bound=(1.75, 1.05, 0.85),
         ),
         viewer_options=gs.options.ViewerOptions(
             camera_pos=camera_pos,
@@ -64,8 +67,12 @@ def main():
         show_viewer=args.vis,
     )
 
+    # A rough floor slows the water down as it spreads.
     scene.add_entity(
         gs.morphs.Plane(),
+        material=gs.materials.Rigid(
+            coup_friction=1.0,
+        ),
     )
     scene.add_entity(
         gs.morphs.Box(
