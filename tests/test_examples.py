@@ -22,9 +22,7 @@ EXAMPLE_DEPENDENCIES = {
     "usd_fridge.py": ["pxr"],
     "usd_kitchen.py": ["pxr"],
     # IPC examples require the pyuipc package (provides uipc module)
-    "ipc_cloth_teleop.py": ["uipc"],
-    "ipc_franka_grasp_cube.py": ["uipc"],
-    "ipc_objects_falling.py": ["uipc"],
+    "ipc_fold_towel.py": ["uipc"],
     "batch_renderer_franka.py": ["gs_madrona"],
     "raytracer_materials.py": ["LuisaRenderPy"],
 }

@@ -1,35 +1,23 @@
 ## IPC examples
 
-This repo shows how to use IPC coupler. (Incremental Potential Contact) algorithm provides a unified framework for robust contact handling across different material types including cloth, deformable FEM objects, and rigid bodies.
+The IPC (Incremental Potential Contact) coupler handles contact between cloth, deformable FEM entities and rigid links
+in one solver, with no interpenetration.
 
 **Prerequisites:**
-1. Install LibUIPC optional dependency: `pip install pyuipc`
-2. Ensure Genesis is in development mode: `pip install -e .`
+1. Install the optional LibUIPC dependency: `pip install pyuipc`.
+2. Use Linux or Windows on x86 with an Nvidia GPU. The IPC solver always runs on CUDA.
 
-Beware only Linux/Windows x86 CPU & Nvidia GPU is supported for now.
+**Examples:**
 
-**Test Cases:**
-
-1. **Basic cloth simulation:**
+1. **Folding a towel:**
    ```bash
-   python examples/multiphysics/ipc_objects_falling.py -v
+   python examples/multiphysics/ipc_fold_towel.py -v
    ```
-  Expected: A cloth falls under gravity and collides with the ground plane clustered with objects
+   Two Frankas pinch the corners of an IPC cloth towel and fold it in half by friction alone. With `-v`, the keyboard
+   then teleoperates one Franka.
 
-1. **Robotic grasping of deformables:**
+1. **Grasping soft entities:**
    ```bash
-   python examples/multiphysics/ipc_franka_grasp_cube.py -v
+   python examples/multiphysics/soft_grasp.py --coupler ipc -v
    ```
- Expected: Franka Panda robot grasps and manipulates a deformable cube with IPC contact resolution
-
-1. **Interactive cloth manipulation:**
-   ```bash
-   python examples/multiphysics/ipc_cloth_teleop.py
-   ```
-    Expected: Interactive Franka Panda robot manipulation and manipulates two pieces of cloths
-
-
-**Verification:**
-- No interpenetration between objects during contact
-- Cloth renders correctly (visible mesh with proper shading)
-- Two-way coupling: Genesis rigid body motion affects IPC objects and vice versa
+   A Franka places a tomato, a jelly and a plush toy, all FEM entities.
