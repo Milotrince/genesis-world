@@ -11,10 +11,6 @@ import genesis as gs
 from .mesh import get_ptc_cache
 
 
-def n_particles_vol(p_size=0.01, volume=1.0):
-    return max(1, round(volume / p_size**3))
-
-
 def trimesh_to_particles_simple(mesh, p_size, sampler):
     """
     Mesh to particles via `random` or `regular` sampler.
@@ -52,7 +48,7 @@ def trimesh_to_particles_simple(mesh, p_size, sampler):
     return positions
 
 
-def trimesh_to_particles_pbs(mesh, p_size, sampler, pos=(0, 0, 0)):
+def trimesh_to_particles_pbs(mesh, p_size, sampler):
     """Sample particles uniformly in the volume of a mesh, following Kugelstadt et al. 2021.
 
     Particles are seeded on a lattice inside the mesh, then relaxed by a few smoothed-particle hydrodynamics (SPH) steps
@@ -104,7 +100,7 @@ def trimesh_to_particles_pbs(mesh, p_size, sampler, pos=(0, 0, 0)):
             positions = _relax_volume_sampling(positions, sdf, origin, cell_size, radius, n_steps=100)
             cache.save(positions)
 
-    return positions + pos
+    return positions
 
 
 @nb.jit(nopython=True, cache=True)
@@ -279,32 +275,27 @@ def _box_to_particles(p_size, pos, size, sampler):
     return positions
 
 
-def primitive_to_particles(p_size, shape, size, sampler, inner_radius=0.0):
+def primitive_to_particles(primitive, p_size, sampler):
     """
-    Sample particles inside a primitive centered at the origin.
+    Sample particles inside a trimesh box, cylinder or sphere primitive centered at the origin.
 
-    The primitive is a box of extents size, a cylinder along z of diameter size[0] and height size[2], or a sphere of
-    diameter size[0], hollowed out within inner_radius of the origin. The 'pbs' samplers sample the mesh of the
-    primitive. The 'random' and 'regular' samplers fill the box of extents size, keeping what lies in the primitive.
+    The 'pbs' samplers sample the mesh of the primitive. The 'random' and 'regular' samplers fill the bounding box of
+    the exact primitive, keeping what lies inside it.
     """
-    assert shape in ("box", "cylinder", "sphere")
+    assert isinstance(primitive, (trimesh.primitives.Box, trimesh.primitives.Cylinder, trimesh.primitives.Sphere))
     if "pbs" in sampler:
-        if shape == "box":
-            mesh = trimesh.creation.box(extents=size)
-        elif shape == "cylinder":
-            mesh = trimesh.creation.cylinder(radius=0.5 * size[0], height=size[2])
-        else:
-            mesh = trimesh.creation.icosphere(radius=0.5 * size[0])
-        positions = trimesh_to_particles_pbs(mesh, p_size, sampler)
+        positions = trimesh_to_particles_pbs(primitive, p_size, sampler)
+    elif isinstance(primitive, trimesh.primitives.Box):
+        positions = _box_to_particles(p_size=p_size, pos=np.zeros(3), size=primitive.primitive.extents, sampler=sampler)
     else:
+        # The cylinder rejects particles by their distance to the z axis, the sphere by their distance to the origin
+        radius = primitive.primitive.radius
+        if isinstance(primitive, trimesh.primitives.Cylinder):
+            size, n_axes = np.array((2.0 * radius, 2.0 * radius, primitive.primitive.height)), 2
+        else:
+            size, n_axes = np.full(3, 2.0 * radius), 3
         positions = _box_to_particles(p_size=p_size, pos=np.zeros(3), size=size, sampler=sampler)
-        if shape == "cylinder":
-            positions = positions[np.linalg.norm(positions[:, :2], axis=-1) <= 0.5 * size[0]]
-        elif shape == "sphere":
-            positions = positions[np.linalg.norm(positions, axis=-1) <= 0.5 * size[0]]
-
-    if inner_radius > 0.0:
-        positions = positions[np.linalg.norm(positions, axis=-1) >= inner_radius]
+        positions = positions[np.linalg.norm(positions[:, :n_axes], axis=-1) <= radius]
     return positions
 
 

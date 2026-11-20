@@ -1,6 +1,8 @@
 import numpy as np
 import torch
 
+import trimesh
+
 import genesis as gs
 import genesis.utils.geom as gu
 import genesis.utils.particle as pu
@@ -108,16 +110,16 @@ class Emitter(RBC):
 
         if droplet_length > 0.0:
             if droplet_shape == "circle":
-                shape, size = "cylinder", (droplet_size, droplet_size, droplet_length)
+                droplet = trimesh.primitives.Cylinder(radius=0.5 * droplet_size, height=droplet_length)
             elif droplet_shape == "sphere":  # sphere droplet ignores droplet_length
-                shape, size = "sphere", (droplet_size, droplet_size, droplet_size)
+                droplet = trimesh.primitives.Sphere(radius=0.5 * droplet_size)
             elif droplet_shape == "square":
-                shape, size = "box", (droplet_size, droplet_size, droplet_length)
+                droplet = trimesh.primitives.Box(extents=(droplet_size, droplet_size, droplet_length))
             elif droplet_shape == "rectangle":
-                shape, size = "box", (droplet_size[0], droplet_size[1], droplet_length)
+                droplet = trimesh.primitives.Box(extents=(droplet_size[0], droplet_size[1], droplet_length))
             else:
                 gs.raise_exception(f"Unsupported droplet shape '{droplet_shape}'")
-            positions = pu.primitive_to_particles(p_size=p_size, shape=shape, size=size, sampler=self._entity.sampler)
+            positions = pu.primitive_to_particles(droplet, p_size, self._entity.sampler)
 
             positions = gu.transform_by_trans_R(
                 positions.astype(gs.np_float, copy=False),
@@ -164,8 +166,8 @@ class Emitter(RBC):
         Parameters:
         ----------
         source_radius: float, optional
-            The radius of the sphere source. Particles will be emitted from a shell with inner radius using
-            '0.8 * source_radius' and outer radius using source_radius.
+            The radius of the sphere source. Particles are emitted from the shell between '0.4 * source_radius' and
+            source_radius.
         pos: array_like, shape=(3,)
             The center of the sphere source.
         speed: float
@@ -183,18 +185,15 @@ class Emitter(RBC):
         if particle_size is None:
             particle_size = self._entity.particle_size
 
-        positions_ = pu.primitive_to_particles(
-            p_size=particle_size,
-            shape="sphere",
-            size=(2.0 * source_radius, 2.0 * source_radius, 2.0 * source_radius),
-            sampler=self._entity.sampler,
-            inner_radius=0.4 * source_radius,
-        )
+        source = trimesh.primitives.Sphere(radius=source_radius)
+        positions_ = pu.primitive_to_particles(source, particle_size, self._entity.sampler)
+        dists = np.linalg.norm(positions_, axis=1)
+        is_in_shell = dists >= 0.4 * source_radius
+        positions_, dists = positions_[is_in_shell], dists[is_in_shell]
         positions = pos + positions_
 
         check_particles_inside_boundary(positions, self.solver.boundary_lower, self.solver.boundary_upper)
 
-        dists = np.linalg.norm(positions_, axis=1)
         positions[dists < gs.EPS] = gs.EPS
         vels = (speed / (dists[:, None] + gs.EPS)) * positions_
 
