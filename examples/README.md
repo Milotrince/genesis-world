@@ -65,7 +65,7 @@ Read these in order. Each one teaches one API.
 | Example | Shows |
 |---|---|
 | `fem_vertex_constraints.py` | Hard and soft vertex constraints on FEM entities, under the legacy or the SAP coupler |
-| `mpm_knead_dough.py` | A Franka carrying, pressing and folding elasto-plastic dough |
+| `mpm_roll_dough.py` | A Franka rolling elasto-plastic dough out into a sheet |
 | `mpm_ice_cream.py` | Soft-serve emitted from a dispenser and coiled onto a cone the Franka holds |
 | `pbd_flags_in_wind.py` | PBD cloth flags in wind, turbulence and a point attractor |
 | `pbd_tablecloth.py` | Two Frankas draping a PBD tablecloth over a table |

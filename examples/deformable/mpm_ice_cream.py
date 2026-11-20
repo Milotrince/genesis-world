@@ -19,7 +19,9 @@ import os
 import xml.etree.ElementTree as ET
 
 import numpy as np
+
 import trimesh
+from huggingface_hub import snapshot_download
 
 import genesis as gs
 from genesis.utils.misc import tensor_to_array
@@ -83,8 +85,9 @@ def main():
 
     gs.init(backend=gs.gpu if args.gpu else gs.cpu)
 
-    camera_pos = (0.36, -0.03, 0.47)
-    camera_lookat = (0.56, 0.0, 0.2)
+    # The camera faces the robot from the open front of the machine, whose housing hides the cone from behind.
+    camera_pos = (0.25, 0.42, 0.47)
+    camera_lookat = (0.5, -0.17, 0.2)
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
@@ -99,7 +102,7 @@ def main():
         viewer_options=gs.options.ViewerOptions(
             camera_pos=camera_pos,
             camera_lookat=camera_lookat,
-            camera_fov=40,
+            camera_fov=45,
         ),
         show_viewer=args.vis,
     )
@@ -107,11 +110,19 @@ def main():
     scene.add_entity(
         gs.morphs.Plane(),
     )
-    # The mesh is y-up and in centimeters. Its right nozzle, the one with no cup under it, sits 19.04 cm right of its
-    # origin and 6 cm ahead, with its tip 25.2 cm high. Turned to face the robot, the machine puts that tip at NOZZLE_POS.
+    # The dispenser of genesis/assets, without the ice creams modelled under two of its nozzles.
+    asset_path = snapshot_download(
+        repo_type="dataset",
+        repo_id="Genesis-Intelligence/assets",
+        revision="1fc8d7f42e83b7ce0ea0bdb1feecbabf8b173a2d",
+        allow_patterns="icecream_dispenser/*",
+        max_workers=1,
+    )
+    # The mesh is y-up and in centimeters. Its right nozzle sits 19.04 cm right of its origin and 6 cm ahead, with its
+    # tip 25.2 cm high. Turned to face -x, the machine puts that tip at NOZZLE_POS.
     scene.add_entity(
         morph=gs.morphs.Mesh(
-            file="meshes/icecream_dispenser.obj",
+            file=f"{asset_path}/icecream_dispenser/icecream_dispenser.obj",
             scale=0.01,
             pos=(NOZZLE_POS[0] + 0.06, NOZZLE_POS[1] + 0.1904, NOZZLE_POS[2] - 0.252),
             euler=(0.0, 0.0, -90.0),
@@ -120,9 +131,12 @@ def main():
             file_meshes_are_zup=False,
         ),
     )
+    # The robot stands beside the machine, facing +y, and holds the cone in the open front of the machine.
     franka = scene.add_entity(
         morph=gs.morphs.MJCF(
             file="xml/franka_emika_panda/panda.xml",
+            pos=(NOZZLE_POS[0] - CONE_REACH, NOZZLE_POS[1] - 0.55, 0.0),
+            euler=(0.0, 0.0, 90.0),
         ),
         material=gs.materials.Rigid(
             gravity_compensation=1.0,
@@ -159,7 +173,7 @@ def main():
             res=(1280, 720),
             pos=camera_pos,
             lookat=camera_lookat,
-            fov=40,
+            fov=45,
         )
 
     scene.build()
