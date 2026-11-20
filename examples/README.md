@@ -101,7 +101,8 @@ Read these in order. Each one teaches one API.
 | `lidar_go2.py` | A lidar or a depth camera on a Go2 patrolling among obstacles |
 | `depth_camera_deforming_mesh.py` | Depth cameras watching a mesh deformed every frame |
 | `surface_distance_shadowhand.py` | Distance probes on the fingertips of a Shadow Hand |
-| `tactile_sandbox.py`, `tactile_franka.py` | Tactile sensors |
+| `tactile_sandbox.py` | Five tactile sensor kinds on a pad pressed by four objects |
+| `tactile_peg_insertion.py` | A Franka finding a hole by a force-guided spiral search and inserting a peg, with fingertip gels |
 | `temperature_grid.py` | Heat transfer through contact |
 | `camera_backends.py` | Camera sensors on every rendering backend |
 
