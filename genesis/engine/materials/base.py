@@ -12,14 +12,14 @@ if TYPE_CHECKING:
     from genesis.engine.entities.base_entity import Entity
 
 
-_SAMPLER_PATTERN = re.compile(r"^pbs(-\d+)?$|^random$|^regular$")
+_SAMPLER_PATTERN = re.compile(r"pbs(-[1-9]\d*)?|random|regular")
 
 
 def _validate_sampler(v: str) -> str:
-    if not isinstance(v, str) or not _SAMPLER_PATTERN.match(v):
+    if not isinstance(v, str) or not _SAMPLER_PATTERN.fullmatch(v):
         raise PydanticCustomError(
             "invalid_sampler",
-            "Input should be 'pbs', 'pbs-<res>', 'random', or 'regular'",
+            "Input should be 'pbs', 'pbs-<res>' with a positive resolution, 'random', or 'regular'",
             {"value": v},
         )
     return v
