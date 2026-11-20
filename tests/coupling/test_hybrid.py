@@ -461,9 +461,27 @@ def test_fluid_emitter(n_envs, material_type, show_viewer):
             color=(0.7, 0.85, 1.0, 0.7),
         ),
     )
+    box = scene.add_entity(
+        morph=gs.morphs.Box(
+            pos=(0.5, -1.0, 0.2),
+            size=(0.1, 0.1, 0.1),
+        ),
+        material=material_type(),
+    )
     scene.build(n_envs=n_envs)
 
-    emitter.emit_omni()
+    # The particles of the box follow those of the emitter, so an emission running past the last particle of the
+    # emitter would move them. Small emissions bring the next particle past half of them, then a large emission holds
+    # more than half of them.
+    particle_size = emitter.entity.particle_size
+    for i in range(50):
+        if emitter.next_particle > emitter.max_particles // 2:
+            break
+        emitter.emit_omni(source_radius=5.0 * particle_size)
+    box_pos = box.get_particles_pos()
+    emitter.emit_omni(source_radius=10.0 * particle_size)
+    assert_equal(box.get_particles_pos(), box_pos)
+
     for i in range(5):
         emitter.emit(droplet_shape="circle", droplet_size=0.25)
         scene.step()
