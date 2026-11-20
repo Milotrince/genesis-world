@@ -2,9 +2,9 @@
 
 Each ring is a hollow, non-convex part. Its collision geometry is an authored convex decomposition shipped with the
 asset (sixteen convex wedges around the hole), so the rings slide over the peg exactly, with no automatic decomposition
-at build time. The toy is built at 55% of its size, so that the widest ring fits between the open fingers of the Franka. The rings
-start scattered on the table. The robot grasps each one by its outer rim, lifts it above the peg, centers its hole over
-the peg from the measured position of the ring, lowers it onto the peg and lets it drop.
+at build time. The toy is built at 55% of its size, so that the widest ring fits between the open fingers of the Franka.
+The rings start scattered on the table. The robot grasps each one by its outer rim, lifts it above the peg, centers its
+hole over the peg from the measured position of the ring, lowers it onto the peg and lets it drop.
 
 Keyboard controls (-v), once the scripted stacking is over:
 Up/Down    - Move the hand along -x/+x
@@ -17,6 +17,7 @@ Esc        - Quit
 
 import argparse
 import os
+import xml.etree.ElementTree as ET
 
 import numpy as np
 
@@ -26,6 +27,8 @@ from genesis.utils.misc import tensor_to_array
 from genesis.vis.keybindings import Key, KeyAction, Keybind
 
 
+# Height of the top of the table.
+TABLE_HEIGHT = 0.3
 SCALE = 0.55
 # Dimensions of the toy at full size: height of the base, of a ring and of the peg above the base, and the diameter of
 # each ring, widest first.
@@ -48,6 +51,17 @@ RINGS_POS = ((0.4, -0.15), (0.55, -0.15), (0.4, 0.15), (0.55, 0.15), (0.65, -0.0
 FINGERTIP_OFFSET = 0.112
 
 
+def table_mjcf():
+    mjcf = ET.Element("mujoco", model="table")
+    ET.SubElement(ET.SubElement(mjcf, "default"), "geom", rgba="0.95 0.95 0.95 1")
+    body = ET.SubElement(ET.SubElement(mjcf, "worldbody"), "body", name="table", pos=f"0.55 0 {TABLE_HEIGHT}")
+    ET.SubElement(body, "geom", type="box", size="0.35 0.7 0.015", pos="0 0 -0.015")
+    for x in (-0.31, 0.31):
+        for y in (-0.66, 0.66):
+            ET.SubElement(body, "geom", type="box", size="0.02 0.02 0.135", pos=f"{x} {y} -0.165")
+    return ET.tostring(mjcf, encoding="unicode")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--vis", action="store_true", help="Show the interactive viewer")
@@ -57,8 +71,8 @@ def main():
 
     gs.init(backend=gs.gpu if args.gpu else gs.cpu)
 
-    camera_pos = (0.95, -0.4, 0.35)
-    camera_lookat = (0.5, 0.0, 0.06)
+    camera_pos = (0.95, -0.4, TABLE_HEIGHT + 0.35)
+    camera_lookat = (0.5, 0.0, TABLE_HEIGHT + 0.06)
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
@@ -81,9 +95,14 @@ def main():
         gs.morphs.Plane(),
     )
     scene.add_entity(
+        morph=gs.morphs.MJCF(
+            file=table_mjcf(),
+        ),
+    )
+    scene.add_entity(
         morph=gs.morphs.URDF(
             file="tower/base_pole.urdf",
-            pos=(*PEG_POS, 0.5 * SCALE * BASE_HEIGHT),
+            pos=(*PEG_POS, TABLE_HEIGHT + 0.5 * SCALE * BASE_HEIGHT),
             scale=SCALE,
             fixed=True,
             file_meshes_are_zup=True,
@@ -95,7 +114,7 @@ def main():
             scene.add_entity(
                 morph=gs.morphs.URDF(
                     file=f"tower/ring_{i_ring + 1:02d}.urdf",
-                    pos=(*ring_pos, 0.5 * SCALE * RING_HEIGHT),
+                    pos=(*ring_pos, TABLE_HEIGHT + 0.5 * SCALE * RING_HEIGHT),
                     scale=SCALE,
                     file_meshes_are_zup=True,
                 ),
@@ -134,9 +153,13 @@ def main():
     franka.set_dofs_kp([100.0, 100.0], fingers_dof)
     franka.set_dofs_kv([10.0, 10.0], fingers_dof)
 
-    target_pos = np.array([0.45, 0.0, 0.4])
+    target_pos = np.array([0.45, 0.0, TABLE_HEIGHT + 0.4])
     target_quat = gu.xyz_to_quat(np.array([0.0, np.pi, 0.0]))
-    franka.set_qpos(franka.inverse_kinematics(link=hand, pos=target_pos, quat=target_quat)[:7], motors_dof)
+    # Seed the first inverse kinematics solve with a ready pose, so that the arm starts on its elbow-up branch.
+    qpos_ready = (0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04)
+    franka.set_qpos(
+        franka.inverse_kinematics(link=hand, pos=target_pos, quat=target_quat, init_qpos=qpos_ready)[:7], motors_dof
+    )
     # Distance per step the hand target moves at most.
     dpos = 0.003
 
@@ -167,7 +190,7 @@ def main():
         n_rings, n_reach, n_grasp, n_settle, n_carry, n_insert = len(rings), 150, 40, 30, 150, 60
     else:
         n_rings, n_reach, n_grasp, n_settle, n_carry, n_insert = 1, 20, 10, 10, 20, 10
-    peg_top = SCALE * (BASE_HEIGHT + POLE_HEIGHT)
+    peg_top = TABLE_HEIGHT + SCALE * (BASE_HEIGHT + POLE_HEIGHT)
     for i_ring, ring in enumerate(rings[:n_rings]):
         # Reach over the ring from above, the fingertips just clear of the table, and let the arm settle before the
         # fingers close on the rim across a diameter.
@@ -184,7 +207,7 @@ def main():
         # Carry the ring until its bottom clears the peg, then lower it onto the peg down to just above the stack. The
         # hand is steered so that the ring, measured where it actually sits in the hand, reaches each waypoint.
         ring_top_z = peg_top + 0.5 * SCALE * RING_HEIGHT + 0.02
-        ring_insert_z = max(peg_top - 0.03, SCALE * (BASE_HEIGHT + (i_ring + 0.5) * RING_HEIGHT) + 0.01)
+        ring_insert_z = max(peg_top - 0.03, TABLE_HEIGHT + SCALE * (BASE_HEIGHT + (i_ring + 0.5) * RING_HEIGHT) + 0.01)
         for ring_target_z, n_steps in ((ring_top_z, n_carry), (ring_insert_z, n_insert)):
             for _ in range(n_steps):
                 ring_offset = tensor_to_array(hand.get_pos()) - tensor_to_array(ring.get_pos())
@@ -193,7 +216,7 @@ def main():
         for _ in range(n_settle):
             track_target()
         for _ in range(n_settle):
-            step_towards(np.array([*target_pos[:2], 0.4]))
+            step_towards(np.array([*target_pos[:2], TABLE_HEIGHT + 0.4]))
     if camera is not None:
         camera.stop_recording()
 

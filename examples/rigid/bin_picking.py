@@ -20,6 +20,7 @@ Esc       - Quit
 
 import argparse
 import os
+import xml.etree.ElementTree as ET
 
 from huggingface_hub import snapshot_download
 
@@ -31,13 +32,26 @@ from genesis.vis.keybindings import Key, KeyAction, Keybind
 PAD_DEPTH = 0.103
 # The tank mesh is 15 cm long, 11 cm wide and 6 cm tall in its y-up frame, scaled into a wide and shallow bin.
 BIN_SCALE = (3.5, 1.5, 3.5)
-BIN_POS = (0.5, -0.25, 0.0)
+# Height of the top of the table.
+TABLE_HEIGHT = 0.3
+BIN_POS = (0.5, -0.25, TABLE_HEIGHT)
 BIN_HALF_SIZE = (0.074 * BIN_SCALE[0], 0.057 * BIN_SCALE[2])
-TRAY_POS = (0.45, 0.3, 0.0)
+TRAY_POS = (0.45, 0.3, TABLE_HEIGHT)
 TRAY_SIZE = 0.24
 OBJECT_SCALE = 0.5
 # The hand points down with its fingers closing along x, or along y.
 HAND_QUATS = ((0.0, 0.7071068, 0.7071068, 0.0), (0.0, 1.0, 0.0, 0.0))
+
+
+def table_mjcf():
+    mjcf = ET.Element("mujoco", model="table")
+    ET.SubElement(ET.SubElement(mjcf, "default"), "geom", rgba="0.95 0.95 0.95 1")
+    body = ET.SubElement(ET.SubElement(mjcf, "worldbody"), "body", name="table", pos=f"0.55 0 {TABLE_HEIGHT}")
+    ET.SubElement(body, "geom", type="box", size="0.35 0.7 0.015", pos="0 0 -0.015")
+    for x in (-0.31, 0.31):
+        for y in (-0.66, 0.66):
+            ET.SubElement(body, "geom", type="box", size="0.02 0.02 0.135", pos=f"{x} {y} -0.165")
+    return ET.tostring(mjcf, encoding="unicode")
 
 
 def main():
@@ -50,8 +64,8 @@ def main():
 
     gs.init(backend=gs.gpu if args.gpu else gs.cpu, precision="32", seed=0)
 
-    camera_pos = (1.25, -0.25, 0.8)
-    camera_lookat = (0.45, 0.0, 0.05)
+    camera_pos = (1.5, -0.35, TABLE_HEIGHT + 0.8)
+    camera_lookat = (0.35, 0.0, TABLE_HEIGHT + 0.05)
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
@@ -70,6 +84,11 @@ def main():
 
     scene.add_entity(
         gs.morphs.Plane(),
+    )
+    scene.add_entity(
+        gs.morphs.MJCF(
+            file=table_mjcf(),
+        ),
     )
     scene.add_entity(
         gs.morphs.Mesh(
@@ -120,7 +139,7 @@ def main():
                 pos=(
                     BIN_POS[0] + 0.04 * (i_object % 2 - 0.5),
                     BIN_POS[1] + 0.06 * (i_object - 1.5),
-                    0.15 + 0.08 * i_object,
+                    BIN_POS[2] + 0.15 + 0.08 * i_object,
                 ),
             ),
         )
@@ -236,12 +255,12 @@ def main():
             for _ in range(int(30 * step_scale)):
                 scene.step()
             move_hand((x, y, top_z + 0.25), steps=80)
-            if obj.get_pos()[2].item() > 0.12:
+            if obj.get_pos()[2].item() > BIN_POS[2] + 0.12:
                 hand_quat = HAND_QUATS[0]
-                move_hand((TRAY_POS[0], TRAY_POS[1], 0.35), steps=250, plan=True)
+                move_hand((TRAY_POS[0], TRAY_POS[1], TRAY_POS[2] + 0.35), steps=250, plan=True)
                 # Set the object down on the tray floor before letting go, so that it neither bounces out nor hangs
                 # on a finger.
-                move_hand((TRAY_POS[0], TRAY_POS[1], 0.17), steps=60)
+                move_hand((TRAY_POS[0], TRAY_POS[1], TRAY_POS[2] + 0.17), steps=60)
             release()
             for _ in range(int(30 * step_scale)):
                 scene.step()
@@ -249,7 +268,7 @@ def main():
                 gs.logger.info(f"The {asset_name} is in the tray.")
                 break
             gs.logger.info(f"Attempt {i_attempt + 1} at the {asset_name} failed.")
-        move_hand((TRAY_POS[0], TRAY_POS[1], 0.35), steps=60)
+        move_hand((TRAY_POS[0], TRAY_POS[1], TRAY_POS[2] + 0.35), steps=60)
 
     n_in_tray = sum(is_inside(obj, TRAY_POS, (0.5 * TRAY_SIZE, 0.5 * TRAY_SIZE)) for obj in objects)
     gs.logger.info(f"{n_in_tray} of {len(objects)} objects ended up in the tray.")

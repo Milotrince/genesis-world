@@ -1,9 +1,9 @@
 """A Franka pokes blocks out of a Jenga-like tower with one fingertip, until it takes one block too many and the tower
 falls.
 
-The tower stands on a pedestal, three blocks per layer and each layer turned by a quarter turn. The hand points forward
-with its gripper open and its left finger pushes the middle block of three low layers until it sticks out of the far
-side, the outer blocks carrying the tower meanwhile. It then pushes both outer blocks of the lowest of those layers,
+The tower stands on a block on a table, three blocks per layer and each layer turned by a quarter turn. The hand points
+forward with its gripper open and its left finger pushes the middle block of three low layers until it sticks out of the
+far side, the outer blocks carrying the tower meanwhile. It then pushes both outer blocks of the lowest of those layers,
 which shifts the support of the tower past its centre of mass, and the tower topples. Contacts use the elliptic friction
 cone. With '--contact-patch' the contact points between the faces of the blocks come from the contact patch instead of
 the default multi-contact detection, and either run logs how much the tower settles before the first poke.
@@ -20,6 +20,7 @@ Esc       - Quit
 
 import argparse
 import os
+import xml.etree.ElementTree as ET
 
 import torch
 
@@ -36,8 +37,12 @@ LAYER_GAP = 5e-4
 # blocks a player looks for in a real tower. Pushing it out then drags nothing above it.
 MIDDLE_THINNING = 2e-3
 N_LAYERS = 12
-PEDESTAL_SIZE = (0.1, 0.1, 0.1)
-TOWER_POS = (0.55, 0.0, PEDESTAL_SIZE[2])
+# Height of the top of the table.
+TABLE_HEIGHT = 0.3
+# The tower stands on a block on the table, which raises the poked layers to a height the forward-pointing hand
+# reaches away from its joint limits.
+PEDESTAL_SIZE = (0.1, 0.1, 0.17)
+TOWER_POS = (0.55, 0.0, TABLE_HEIGHT + PEDESTAL_SIZE[2])
 # Distance from the origin of the hand to its fingertips, along its axis, and from its axis to the middle of the left
 # finger of the open gripper. Both closed fingers side by side are wider than a block, so the left finger of the open
 # gripper pokes alone, the right one passing beside the tower.
@@ -46,7 +51,19 @@ FINGER_OFFSET = 0.054
 # The hand points along +x, with its fingers closing along y.
 HAND_QUAT = (0.7071068, 0.0, 0.7071068, 0.0)
 # The fingers reach about 5 cm in front of the hand, which bounds how deep a poke goes into the tower.
-PUSH_DEPTH = 0.049
+# A deeper poke frees the first outer block far enough for the tower to fall before the second one is pushed.
+PUSH_DEPTH = 0.045
+
+
+def table_mjcf():
+    mjcf = ET.Element("mujoco", model="table")
+    ET.SubElement(ET.SubElement(mjcf, "default"), "geom", rgba="0.95 0.95 0.95 1")
+    body = ET.SubElement(ET.SubElement(mjcf, "worldbody"), "body", name="table", pos=f"0.55 0 {TABLE_HEIGHT}")
+    ET.SubElement(body, "geom", type="box", size="0.35 0.7 0.015", pos="0 0 -0.015")
+    for x in (-0.31, 0.31):
+        for y in (-0.66, 0.66):
+            ET.SubElement(body, "geom", type="box", size="0.02 0.02 0.135", pos=f"{x} {y} -0.165")
+    return ET.tostring(mjcf, encoding="unicode")
 
 
 def main():
@@ -59,8 +76,8 @@ def main():
 
     gs.init(backend=gs.gpu if args.gpu else gs.cpu, precision="32", seed=0)
 
-    camera_pos = (0.9, -0.95, 0.55)
-    camera_lookat = (0.48, 0.0, 0.2)
+    camera_pos = (0.9, -0.95, TOWER_POS[2] + 0.45)
+    camera_lookat = (0.48, 0.0, TOWER_POS[2] + 0.1)
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
@@ -86,13 +103,18 @@ def main():
         gs.morphs.Plane(),
     )
     scene.add_entity(
+        gs.morphs.MJCF(
+            file=table_mjcf(),
+        ),
+    )
+    scene.add_entity(
         gs.morphs.Box(
-            pos=(TOWER_POS[0], TOWER_POS[1], 0.5 * PEDESTAL_SIZE[2]),
+            pos=(TOWER_POS[0], TOWER_POS[1], TABLE_HEIGHT + 0.5 * PEDESTAL_SIZE[2]),
             size=PEDESTAL_SIZE,
             fixed=True,
         ),
-        surface=gs.surfaces.Rough(
-            color=(0.3, 0.3, 0.33),
+        surface=gs.surfaces.Default(
+            color=(0.95, 0.95, 0.95),
         ),
     )
     # Even layers run along x and odd ones along y. blocks[i_layer][i_block] counts the blocks of a layer from -y or -x.
