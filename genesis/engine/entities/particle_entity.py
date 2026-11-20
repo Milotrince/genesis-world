@@ -121,31 +121,8 @@ class ParticleEntity(Entity):
         self.active = False
 
     def init_sampler(self):
-        """
-        Initialize the particle sampling strategy based on the material's sampler field.
-
-        Raises
-        ------
-        GenesisException
-            If the specified sampler is not supported or incorrectly formatted.
-        """
-        self.sampler = self.material.sampler
-
-        match self.sampler.split("-"):
-            case ["regular"]:
-                pass
-            case ["random"]:
-                pass
-            case ["pbs"]:
-                # using default sdf_res=32
-                self.sampler += "-32"
-            case ["pbs", num] if num.isnumeric():
-                pass
-            case _:
-                gs.raise_exception(
-                    "Only one of the following samplers is supported: [`regular`, `random`, `pbs`, `pbs-sdf_res`]. "
-                    f"Got: {self.sampler}."
-                )
+        """Resolve the particle sampler of the material, a bare 'pbs' taking a resolution of 32."""
+        self.sampler = "pbs-32" if self.material.sampler == "pbs" else self.material.sampler
 
     def _add_to_solver(self):
         # For nowhere entity, it will be activated when particles are later added.
