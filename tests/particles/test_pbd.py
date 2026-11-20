@@ -371,6 +371,7 @@ def test_force_fields(show_viewer, tol):
                 force_field_type(direction=direction)
 
 
+@pytest.mark.required
 def test_sampler_validation():
     gs.materials.PBD.Liquid(sampler="pbs-64")
     for sampler in ("pbs-0", "pbs-032", "random\n", "foo"):
