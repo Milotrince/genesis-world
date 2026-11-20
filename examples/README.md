@@ -54,8 +54,7 @@ Read these in order. Each one teaches one API.
 | `diffik_controller.py` | A differential inverse kinematics controller built on the Jacobian |
 | `ik_shadow_hand.py` | Multi-link inverse kinematics on a Shadow Hand |
 | `merge_entities.py` | An arm and its hand loaded from separate files and merged |
-| `kinematic_go2_ghost.py` | A kinematic ghost showing a reference motion |
-| `terrain_from_mesh.py`, `terrain_height_field.py`, `terrain_subterrain.py` | Height-field terrains |
+| `terrain_from_mesh.py`, `terrain_height_field.py` | Height-field terrains from a mesh and from an array |
 | `drone_fly_route.py` | A PID-controlled drone flying through waypoints |
 | `drone_teleop.py` | A drone flown open-loop from propeller speeds |
 | `usd_fridge.py`, `usd_kitchen.py` | Articulated assets imported from USD stages (needs `usd-core`) |
@@ -121,6 +120,7 @@ Read these in order. Each one teaches one API.
 | Example | Shows |
 |---|---|
 | `rigid_sysid_launch.py` | The launch of a sliding box recovered from its trajectory through rigid gradients |
+| `rigid_throw_to_target.py` | A Franka throw into a bin, tuned by gradient descent through the swing |
 | `mpm_push.py` | Gradients through an MPM push, optimized with torch |
 
 ## parallel
@@ -141,6 +141,7 @@ Environments with their training and evaluation scripts, which need `rsl-rl`. Se
 |---|---|
 | `go2_env.py`, `go2_train.py`, `go2_eval.py` | Go2 locomotion |
 | `go2_backflip.py` | Pretrained Go2 backflips, runnable without training |
+| `go2_terrain_env.py`, `go2_terrain_train.py`, `go2_terrain_eval.py` | A Go2 walking stairs, slopes and stepping stones from a height scan, with a terrain curriculum, randomized friction and payload, and a kinematic ghost of the command |
 | `grasp_env.py`, `grasp_train.py`, `grasp_eval.py`, `behavior_cloning.py` | Franka grasping, from reinforcement learning to vision-based behavior cloning |
 | `hover_env.py`, `hover_train.py`, `hover_eval.py` | Drone hovering |
 
