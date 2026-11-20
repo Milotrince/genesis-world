@@ -83,13 +83,13 @@ Read these in order. Each one teaches one API.
 
 | Example | Shows |
 |---|---|
-| `rigid_mpm_cut_dragon.py` | An elastic dragon sliced by a thin rigid cutter |
-| `rigid_mpm_grasp_soft_cube.py` | A Franka grasping an MPM cube |
+| `rigid_mpm_fruit_ninja.py` | A Franka slicing falling MPM fruit with a thin blade |
+| `rigid_mpm_snowplow.py` | A wheeled robot plowing MPM snow into a berm |
 | `rigid_mpm_sand_wheel.py` | Sand pouring over wheels |
-| `sph_mpm_duck.py` | An MPM duck floating in SPH water |
+| `sph_mpm_bathtub.py` | A rubber duck in a bathtub that fills from a faucet and drains through a vortex |
 | `rigid_fem_cube_on_arm.py` | An FEM cube pinned to a Franka hand |
-| `sap_franka_grasp_fem_sphere.py`, `sap_franka_grasp_rigid_cube.py`, `sap_fem_sphere_and_cube.py` | The SAP coupler |
-| `ipc_objects_falling.py`, `ipc_franka_grasp_cube.py`, `ipc_cloth_teleop.py` | The IPC coupler (see `ipc_README.md`) |
+| `soft_grasp.py` | A Franka placing a tomato, a jelly and a plush toy under the SAP or the IPC coupler |
+| `ipc_fold_towel.py` | Two Frankas folding a towel under the IPC coupler (see `ipc_README.md`) |
 
 ## sensors
 
