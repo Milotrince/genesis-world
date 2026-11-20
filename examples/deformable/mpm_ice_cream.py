@@ -2,10 +2,11 @@
 
 The serve is an elasto-plastic MPM material poured by an emitter at the nozzle: it yields and flows as it is laid down,
 then holds its shape under its own weight. The robot holds the cone attached to its hand and moves it around a small
-circle under the nozzle while lowering it, which lays the strand in rings stacked on top of each other. The run logs
-the height and the width of the serve, read from the particle positions. MPM is slow on CPU, so pass -g to run on GPU.
+circle under the nozzle while lowering it, which lays the strand in rings stacked on top of each other, then pulls the
+cone out of the machine and presents it. The run logs the height and the width of the serve, read from the particle
+positions, after the serve and after the presentation. MPM is slow on CPU, so pass -g to run on GPU.
 
-Keyboard controls (-v), once the scripted serve is over:
+Keyboard controls (-v), once the scripted serve and presentation are over:
 Up/Down    - Move the cone along -x/+x
 Left/Right - Move the cone along -y/+y
 K/J        - Move the cone up/down
@@ -44,6 +45,8 @@ CONE_REACH = 0.1
 CIRCLE_RADIUS = 0.015
 CIRCLE_PERIOD = 0.6
 RIM_GAP = 0.02
+# Rim center of the cone once the robot presents the serve, out of the machine and towards the camera.
+PRESENT_POS = np.array([0.4, 0.05, 0.24])
 
 
 def cone_mjcf():
@@ -86,8 +89,8 @@ def main():
     gs.init(backend=gs.gpu if args.gpu else gs.cpu)
 
     # The camera faces the robot from the open front of the machine, whose housing hides the cone from behind.
-    camera_pos = (0.25, 0.42, 0.47)
-    camera_lookat = (0.5, -0.17, 0.2)
+    camera_pos = (0.2, 0.36, 0.42)
+    camera_lookat = (0.46, -0.06, 0.22)
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
@@ -96,8 +99,8 @@ def main():
         ),
         mpm_options=gs.options.MPMOptions(
             grid_density=192,
-            lower_bound=(NOZZLE_POS[0] - 0.08, NOZZLE_POS[1] - 0.08, NOZZLE_POS[2] - 0.15),
-            upper_bound=(NOZZLE_POS[0] + 0.08, NOZZLE_POS[1] + 0.08, NOZZLE_POS[2] + 0.02),
+            lower_bound=(PRESENT_POS[0] - 0.07, NOZZLE_POS[1] - 0.08, NOZZLE_POS[2] - 0.17),
+            upper_bound=(NOZZLE_POS[0] + 0.08, PRESENT_POS[1] + 0.07, PRESENT_POS[2] + 0.12),
         ),
         viewer_options=gs.options.ViewerOptions(
             camera_pos=camera_pos,
@@ -216,9 +219,9 @@ def main():
         gs.logger.info(f"{label}: serve {100 * height:.1f} cm high and {100 * width:.1f} cm wide on the rim.")
 
     if "PYTEST_VERSION" in os.environ:
-        n_serve, n_settle = 20, 10
+        n_serve, n_settle, n_out, n_up, n_hold = 20, 10, 5, 5, 5
     else:
-        n_serve, n_settle = round(3.0 / DT), round(1.0 / DT)
+        n_serve, n_settle, n_out, n_up, n_hold = (round(duration / DT) for duration in (3.0, 1.0, 2.0, 1.5, 1.0))
     # Lower the cone as fast as a column as wide as the rim would grow at the flow rate of the nozzle, so that the nozzle
     # stays just above the top of the serve.
     flow_rate = 0.25 * math.pi * NOZZLE_DIAMETER**2 * EXTRUSION_SPEED
@@ -239,6 +242,18 @@ def main():
     for _ in range(n_settle):
         track_target()
     log_serve("Settled")
+    # Pull the cone straight out of the bay, then raise it towards the camera. Each move eases in and out, so the serve
+    # stays on the cone.
+    for pos_end, n_steps in ((np.array([PRESENT_POS[0], *rim_pos[1:]]), n_out), (PRESENT_POS, n_up)):
+        pos_start = rim_pos.copy()
+        for i_step in range(1, n_steps + 1):
+            ratio = i_step / n_steps
+            ratio = ratio * ratio * (3.0 - 2.0 * ratio)
+            rim_pos[:] = (1.0 - ratio) * pos_start + ratio * pos_end
+            track_target()
+    for _ in range(n_hold):
+        track_target()
+    log_serve("Presented")
     if camera is not None:
         camera.stop_recording()
 
