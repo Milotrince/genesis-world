@@ -272,6 +272,8 @@ def primitive_to_particles(primitive, p_size, sampler):
     the exact primitive, keeping what lies inside it.
     """
     assert isinstance(primitive, (trimesh.primitives.Box, trimesh.primitives.Cylinder, trimesh.primitives.Sphere))
+    # The random and regular samplers test the exact primitive rather than going through 'trimesh_to_particles_simple',
+    # whose signed distance is slower and whose cache would store one entry per emission of the random sampler.
     if "pbs" in sampler:
         positions = trimesh_to_particles_pbs(primitive, p_size, sampler)
     elif isinstance(primitive, trimesh.primitives.Box):
