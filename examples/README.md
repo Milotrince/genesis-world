@@ -65,14 +65,18 @@ Read these in order. Each one teaches one API.
 | Example | Shows |
 |---|---|
 | `fem_vertex_constraints.py` | Hard and soft vertex constraints on FEM entities, under the legacy or the SAP coupler |
+| `mpm_roll_dough.py` | A Franka rolling elasto-plastic dough out into a sheet |
+| `mpm_ice_cream.py` | Soft-serve emitted from a dispenser and coiled onto a cone the Franka holds |
 | `pbd_flags_in_wind.py` | PBD cloth flags in wind, turbulence and a point attractor |
-| `pbd_elastic_dragon.py` | A PBD elastic body |
+| `pbd_tablecloth.py` | Two Frankas draping a PBD tablecloth over a table |
+| `pbd_jelly_delivery.py` | A Franka carrying a tray of PBD elastic jellies that wobble when it stops |
 
 ## fluids
 
 | Example | Shows |
 |---|---|
-| `mpm_flush_cubes.py` | MPM liquid jets from emitters flushing elastic objects |
+| `sph_pour.py` | A Franka pouring a cup of SPH water into a bowl |
+| `mpm_hose.py` | A Franka hosing debris off a table with an MPM liquid jet |
 | `pbd_liquid.py` | A PBD liquid block collapsing |
 
 ## multiphysics
@@ -81,11 +85,8 @@ Read these in order. Each one teaches one API.
 |---|---|
 | `rigid_mpm_cut_dragon.py` | An elastic dragon sliced by a thin rigid cutter |
 | `rigid_mpm_grasp_soft_cube.py` | A Franka grasping an MPM cube |
-| `rigid_mpm_attachment.py` | MPM particles attached to a rigid link |
 | `rigid_mpm_sand_wheel.py` | Sand pouring over wheels |
-| `rigid_sph_cube.py`, `rigid_sph_water_wheel.py` | Rigid bodies in SPH water |
 | `sph_mpm_duck.py` | An MPM duck floating in SPH water |
-| `rigid_pbd_cloth_drape.py`, `rigid_pbd_cloth_attached.py` | PBD cloth draped on and attached to rigid bodies |
 | `rigid_fem_cube_on_arm.py` | An FEM cube pinned to a Franka hand |
 | `sap_franka_grasp_fem_sphere.py`, `sap_franka_grasp_rigid_cube.py`, `sap_fem_sphere_and_cube.py` | The SAP coupler |
 | `ipc_objects_falling.py`, `ipc_franka_grasp_cube.py`, `ipc_cloth_teleop.py` | The IPC coupler (see `ipc_README.md`) |
