@@ -1450,7 +1450,7 @@ class RigidSolver(GravityMixin, TimeBasedMixin, KinematicSolver):
         self.collider.clear()
         self.collider.detection()
 
-    def detect_collision(self, env_idx=0):
+    def detect_collision(self, env_idx: int = 0) -> np.ndarray:
         # TODO: support batching
         self._kernel_detect_collision()
 

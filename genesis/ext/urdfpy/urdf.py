@@ -1260,13 +1260,13 @@ class Inertial(URDFType):
         self.origin = origin
 
     @property
-    def mass(self):
+    def mass(self) -> float:
         """float : The mass of the link in kilograms."""
         return self._mass
 
     @mass.setter
-    def mass(self, value):
-        self._mass = float(value)
+    def mass(self, value: float) -> None:
+        self._mass = value
 
     @property
     def inertia(self):
@@ -1290,7 +1290,7 @@ class Inertial(URDFType):
         self._origin = configure_origin(value, default=False)
 
     @classmethod
-    def _from_xml(cls, node, root, path):
+    def _from_xml(cls, node: ET.Element, root: ET.Element, path: str) -> "Inertial":
         origin = parse_origin(node, default=False)
         n = node.find("mass")
         if n is None:
@@ -1306,7 +1306,7 @@ class Inertial(URDFType):
         inertia = np.array([[xx, xy, xz], [xy, yy, yz], [xz, yz, zz]], dtype=np.float64)
         return Inertial(mass=mass, inertia=inertia, origin=origin)
 
-    def _to_xml(self, parent):
+    def _to_xml(self, parent: ET.Element) -> ET.Element:
         node = ET.Element("inertial")
         if self.origin is not None:
             node.append(unparse_origin(self.origin))
@@ -2630,7 +2630,7 @@ class Link(URDFType):
             self._collision_mesh = meshes[0] + meshes[1:]
         return self._collision_mesh
 
-    def copy(self, prefix="", scale=None, collision_only=False):
+    def copy(self, prefix: str = "", scale: float | np.ndarray | None = None, collision_only: bool = False) -> "Link":
         """Create a deep copy of the link.
 
         Parameters
@@ -2657,9 +2657,7 @@ class Link(URDFType):
                 volume_scaled = cm.volume
                 cmm = np.eye(4)
                 cmm[:3, 3] = cm.center_mass
-                mass = None
-                if self.inertial.mass is not None:
-                    mass = self.inertial.mass * (volume_scaled / volume_orig)
+                mass = self.inertial.mass * (volume_scaled / volume_orig)
                 inertial = Inertial(mass=mass, inertia=cm.moment_inertia, origin=cmm)
 
         visuals = None
