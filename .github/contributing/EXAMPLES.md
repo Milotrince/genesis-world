@@ -107,8 +107,8 @@ Beyond it, two things matter most here:
 - `parallel/domain_randomization.py` - Domain randomization
 
 ### Multi-Physics
-- `multiphysics/rigid_pbd_cloth_drape.py` - Cloth-rigid coupling
-- `multiphysics/rigid_sph_cube.py` - Fluid-rigid coupling
+- `deformable/pbd_tablecloth.py` - Cloth-rigid coupling
+- `fluids/sph_pour.py` - Fluid-rigid coupling
 - `multiphysics/rigid_mpm_sand_wheel.py` - Granular-rigid coupling
 
 ### Training
