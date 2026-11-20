@@ -1,13 +1,14 @@
 """A Franka slashes MPM fruit falling in front of it with a blade, cutting each fruit in two.
 
-The fruit is an elasto-plastic MPM material, and the blade is a flat rigid ellipsoid held in the hand. The blade is
-much thinner than an MPM grid cell, so the solver runs with CPIC (compatible particle-in-cell), which keeps the
-particles on either side of a thin rigid geom from interacting through the cells it crosses. The arm whips its base
-joint, so the blade crosses the fruit at about 3 m/s: a slower stroke pushes the fruit away whole. The fruits drop one
-or two at a time onto the circle the blade sweeps, and the run logs how many pieces each fruit is cut into.
+The fruit is an elasto-plastic MPM material, and the blade is a flat rigid ellipsoid that the hand holds level, like a
+sword. The blade is much thinner than an MPM grid cell, so the solver runs with CPIC (compatible particle-in-cell),
+which keeps the particles on either side of a thin rigid geom from interacting through the cells it crosses. The arm
+whips its base joint, so the blade sweeps a horizontal ring at about 3 m/s and slices each fruit falling through it
+across: a slower stroke pushes the fruit away whole. The blade cuts on its rightward stroke, and the arm swings back
+once the pieces have landed. The fruits drop one or two at a time, and the run logs the pieces of each fruit.
 
 Keyboard controls (-v), once the scripted rounds are over:
-Left/Right - Whip the blade to the left/right
+Right/Left - Whip the blade to the right (the cutting stroke), or back to the left
 Up/Down    - Raise/lower the blade
 T          - Drop the next fruit, while any is left
 Esc        - Quit
@@ -29,41 +30,54 @@ DT = 4e-3
 GRAVITY = 9.81
 GRID_DENSITY = 64
 PARTICLE_SIZE = 0.008
-# Half-width, half-thickness and length of the blade, and the distance from the hand down to its top.
+# Half-width, half-thickness and length of the blade, the distance from the hand down to the blade, below the
+# fingertips, and the length of the blade behind the axis of the hand.
 BLADE_HALF_WIDTH = 0.035
 BLADE_HALF_THICKNESS = 0.006
-BLADE_LENGTH = 0.26
-BLADE_DEPTH = 0.06
-# Radius of the circle the hand sweeps around the base, and the angle of the base joint on either side of the middle.
-SWING_RADIUS = 0.6
+BLADE_LENGTH = 0.3
+BLADE_DEPTH = 0.125
+BLADE_BACK = 0.03
+# Radius of the circle the hand sweeps around the base, radius where the fruits fall through the widest part of the
+# blade, and the angle of the base joint on either side of the middle.
+HAND_RADIUS = 0.45
+SWING_RADIUS = HAND_RADIUS + 0.5 * BLADE_LENGTH - BLADE_BACK
 SWING_ANGLE = 0.5
 # Steps from the swing command until the blade passes the middle of its stroke, and steps per radian of the base joint
 # around the middle, measured on this arm.
-SWING_MIDDLE_STEPS = 43
-SWING_STEPS_PER_RAD = 47
+SWING_MIDDLE_STEPS = 33
+SWING_STEPS_PER_RAD = 42
 # Height the fruits drop from, and height where they meet the blade.
-DROP_HEIGHT = 0.68
+DROP_HEIGHT = 0.56
 CUT_HEIGHT = 0.42
-# Steps after the crossing during which the pieces are counted, in flight, before they land against each other.
+# The fruit falls while the blade crosses it, so the blade is rolled about its length, its leading edge up on the
+# rightward stroke, until its plane holds the motion of the blade relative to the fruit. A level blade cuts a steep
+# slope through the fruit and carries the top part on its face.
+BLADE_ROLL = np.arctan(np.sqrt(2.0 * GRAVITY * (DROP_HEIGHT - CUT_HEIGHT)) * SWING_STEPS_PER_RAD * DT / SWING_RADIUS)
+# Steps after the crossing during which the pieces are counted, in flight, before they land against each other, and
+# steps after the crossing until the arm swings back, once the pieces have landed.
 COUNT_WINDOW_STEPS = 30
+RETURN_STEPS = 80
 # Name, radius, color and azimuth on the swing circle of each fruit. The scripted rounds drop the first four, each at
 # its own azimuth, so that a fruit never falls onto the pieces of another one. Each of them meets the blade before the
-# middle of the stroke or just after it, since the base joint slows down over the second half and pushes the fruit away.
+# middle of the rightward stroke, since the base joint slows down over the second half and pushes the fruit away.
 FRUITS = (
-    ("apple", 0.045, (0.8, 0.08, 0.08), -0.2),
-    ("orange", 0.05, (1.0, 0.5, 0.05), 0.2),
-    ("lemon", 0.042, (0.95, 0.85, 0.15), -0.05),
-    ("lime", 0.04, (0.35, 0.75, 0.15), 0.1),
-    ("plum", 0.04, (0.45, 0.1, 0.4), 0.0),
-    ("peach", 0.045, (1.0, 0.65, 0.45), -0.12),
-    ("apricot", 0.04, (1.0, 0.6, 0.2), 0.12),
-    ("melon", 0.055, (0.6, 0.85, 0.4), 0.05),
+    ("apple", 0.045, (0.8, 0.08, 0.08), -0.1),
+    ("orange", 0.05, (1.0, 0.5, 0.05), -0.25),
+    ("lemon", 0.042, (0.95, 0.85, 0.15), -0.2),
+    ("lime", 0.04, (0.35, 0.75, 0.15), 0.0),
+    ("plum", 0.04, (0.45, 0.1, 0.4), -0.15),
+    ("peach", 0.045, (1.0, 0.65, 0.45), -0.05),
+    ("apricot", 0.04, (1.0, 0.6, 0.2), -0.3),
+    ("melon", 0.055, (0.6, 0.85, 0.4), 0.0),
 )
 
 
 def blade_mjcf():
-    """MJCF model of the blade, in the frame of the hand that holds it: the blade hangs down the z axis of the hand, its
-    flat faces normal to the y axis, between the fingers."""
+    """MJCF model of the blade, in the frame of the hand that holds it.
+
+    The blade lies flat below the fingertips along the y axis of the hand, rolled about that axis so that its +x edge
+    rises.
+    """
     mjcf = ET.Element("mujoco", model="blade")
     blade = ET.SubElement(ET.SubElement(mjcf, "worldbody"), "body", name="blade")
     # A flat ellipsoid has a sharp edge on both sides and thickens behind it, so it wedges the halves apart.
@@ -71,9 +85,10 @@ def blade_mjcf():
         blade,
         "geom",
         type="ellipsoid",
-        pos=f"0 0 {BLADE_DEPTH + 0.5 * BLADE_LENGTH}",
-        size=f"{BLADE_HALF_WIDTH} {BLADE_HALF_THICKNESS} {0.5 * BLADE_LENGTH}",
-        density="7800",
+        pos=f"0 {0.5 * BLADE_LENGTH - BLADE_BACK} {BLADE_DEPTH}",
+        euler=f"0 {np.degrees(BLADE_ROLL)} 0",
+        size=f"{BLADE_HALF_WIDTH} {0.5 * BLADE_LENGTH} {BLADE_HALF_THICKNESS}",
+        density="2700",
         rgba="0.8 0.82 0.85 1",
     )
     return ET.tostring(mjcf, encoding="unicode")
@@ -184,19 +199,18 @@ def main():
     fingers_dof = (7, 8)
     franka.set_dofs_kp(100.0, fingers_dof)
     franka.set_dofs_kv(10.0, fingers_dof)
-    # The hand points down with its x axis along world y, so the edge of the blade leads as the base joint turns.
+    # The hand points down with its y axis pointing outward from the base, so the blade points outward and its edge
+    # leads as the base joint turns.
     hand_quat = np.array([0.0, np.sqrt(0.5), np.sqrt(0.5), 0.0])
-    # The middle of the blade sits below the height where the fruits meet it, since the blade narrows toward its tip,
-    # and a fruit that the blade reaches late has fallen further.
-    blade_height = CUT_HEIGHT - 0.06
+    blade_height = CUT_HEIGHT
     swing_side = -1.0
     fall_steps = round(np.sqrt(2.0 * (DROP_HEIGHT - CUT_HEIGHT) / GRAVITY) / DT)
 
     def aim(side):
         nonlocal swing_side
         swing_side = side
-        z_hand = blade_height + BLADE_DEPTH + 0.5 * BLADE_LENGTH
-        q = tensor_to_array(franka.inverse_kinematics(link=hand, pos=(SWING_RADIUS, 0.0, z_hand), quat=hand_quat))
+        z_hand = blade_height + BLADE_DEPTH
+        q = tensor_to_array(franka.inverse_kinematics(link=hand, pos=(HAND_RADIUS, 0.0, z_hand), quat=hand_quat))
         q[0] += side * SWING_ANGLE
         q[7:] = 0.02
         # The target jumps to the end of the stroke, so the joints accelerate at their torque limits.
@@ -218,19 +232,20 @@ def main():
 
     if camera is not None:
         camera.start_recording(save_to_filename="out/rigid_mpm_fruit_ninja.mp4", fps=round(1.0 / DT))
-    # Each round whips the blade to the other side, and drops each of its fruits so that the fruit falls through the
-    # cut height as the blade reaches its azimuth.
+    # Each round whips the blade to the right, drops each of its fruits so that the fruit falls through the cut height
+    # as the blade reaches its azimuth, then swings the blade back to the left.
     n_dropped = 0
     n_cut = 0
     fruits_n_pieces = np.zeros(len(fruits), dtype=gs.np_int)
     for i_round, fruits_idx in enumerate(((0,), (1,), (2, 3))):
-        side = -swing_side
-        crossings_step = [round(SWING_MIDDLE_STEPS + side * FRUITS[i][3] * SWING_STEPS_PER_RAD) for i in fruits_idx]
+        crossings_step = [round(SWING_MIDDLE_STEPS + FRUITS[i][3] * SWING_STEPS_PER_RAD) for i in fruits_idx]
         whip_step = fall_steps - min(crossings_step)
-        n_steps = whip_step + max(crossings_step) + COUNT_WINDOW_STEPS + 80
-        for i_step in range(3 if "PYTEST_VERSION" in os.environ else n_steps):
+        return_step = whip_step + max(crossings_step) + RETURN_STEPS
+        for i_step in range(3 if "PYTEST_VERSION" in os.environ else return_step + 60):
             if i_step == whip_step:
-                aim(side)
+                aim(1.0)
+            if i_step == return_step:
+                aim(-1.0)
             for i_fruit, crossing_step in zip(fruits_idx, crossings_step):
                 if i_step == whip_step + crossing_step - fall_steps:
                     fruits[i_fruit].activate()
@@ -274,7 +289,9 @@ def main():
             Keybind("drop", Key.T, KeyAction.PRESS, callback=drop_next),
             Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
         )
-        gs.logger.info("Keys: Left/Right whip the blade, Up/Down raise/lower it, T drops a fruit, Esc quits.")
+        gs.logger.info(
+            "Keys: Right whips the blade, Left swings it back, Up/Down raise/lower it, T drops a fruit, Esc quits."
+        )
         while is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
             scene.step()
 
