@@ -461,13 +461,46 @@ def test_fluid_emitter(n_envs, material_type, show_viewer):
             color=(0.7, 0.85, 1.0, 0.7),
         ),
     )
+    box = scene.add_entity(
+        morph=gs.morphs.Box(
+            pos=(0.5, -1.0, 0.2),
+            size=(0.1, 0.1, 0.1),
+        ),
+        material=material_type(),
+    )
     scene.build(n_envs=n_envs)
 
-    emitter.emit_omni()
+    # The particles of the box follow those of the emitter, so an emission running past its last particle moves them.
+    # Small emissions fill more than half of the emitter, then a large emission needs more than half of it.
+    particle_size = emitter.entity.particle_size
+    for i in range(50):
+        if emitter.next_particle > emitter.max_particles // 2:
+            break
+        emitter.emit_omni(source_radius=5.0 * particle_size)
+    assert emitter.next_particle > emitter.max_particles // 2
+    box_pos = box.get_particles_pos()
+    emitter.emit_omni(source_radius=10.0 * particle_size)
+    assert_equal(box.get_particles_pos(), box_pos)
+
+    with pytest.raises(gs.GenesisException):
+        emitter.emit_omni(source_radius=0.0)
+
     for i in range(5):
         emitter.emit(droplet_shape="circle", droplet_size=0.25)
         scene.step()
     scene.step()
+
+    # Steps emitting 0.4 particle size of liquid release a droplet every third step. A reset restarts this count,
+    # discarding the partial droplet accumulated by the steps before it.
+    speed = 0.4 * particle_size / scene.dt
+    for _ in range(2):
+        emitter.emit(droplet_shape="circle", droplet_size=0.25, speed=speed)
+    scene.reset()
+    for _ in range(2):
+        emitter.emit(droplet_shape="circle", droplet_size=0.25, speed=speed)
+        assert emitter.next_particle == 0
+    emitter.emit(droplet_shape="circle", droplet_size=0.25, speed=speed)
+    assert emitter.next_particle > 0
 
 
 @pytest.mark.required("sparse")
