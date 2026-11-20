@@ -157,17 +157,21 @@ def main():
     )
     cone.attach(franka, "hand", pos=(0.0, 0.0, 0.0))
     emitter = scene.add_emitter(
-        material=gs.materials.MPM.ElastoPlastic(
-            E=2e4,
-            nu=0.3,
-            rho=600.0,
-            von_mises_yield_stress=800.0,
+        spec=gs.entities.MPM(
+            material=gs.materials.MPM.ElastoPlastic(
+                E=2e4,
+                nu=0.3,
+                rho=600.0,
+                von_mises_yield_stress=800.0,
+            ),
+            surface=gs.surfaces.Rough(
+                color=(0.98, 0.95, 0.88),
+            ),
+            vis=gs.options.EntityVisOptions(
+                debug=True,
+            ),
         ),
         max_particles=8000,
-        surface=gs.surfaces.Rough(
-            color=(0.98, 0.95, 0.88),
-            vis_mode="particle",
-        ),
     )
 
     camera = None
@@ -177,6 +181,7 @@ def main():
             pos=camera_pos,
             lookat=camera_lookat,
             fov=45,
+            debug=True,
         )
 
     scene.build()

@@ -81,6 +81,10 @@ def main():
 
     plugin.register_panel(custom_panel)
 
+    # The finger actuator of panda.xml takes its target in [0, 255]. Its own gains, set here, take it in metres.
+    fingers_dof = (7, 8)
+    panda.set_dofs_kp(100.0, fingers_dof)
+    panda.set_dofs_kv(10.0, fingers_dof)
     # The sweep moves every joint between its limits, each one out of phase with the previous one.
     dofs_lower, dofs_upper = panda.get_dofs_limit()
     dofs_mid = 0.5 * (dofs_lower + dofs_upper)

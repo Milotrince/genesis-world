@@ -66,6 +66,11 @@ def main():
     if camera is not None:
         camera.start_recording(save_to_filename="out/benchmark_franka.mp4", fps=round(1.0 / scene.dt))
 
+    # The finger actuator of panda.xml takes its target in [0, 255]. Its own gains, set here, take it in metres.
+    fingers_dof = (7, 8)
+    franka.set_dofs_kp(100.0, fingers_dof)
+    franka.set_dofs_kv(10.0, fingers_dof)
+
     # control all the robots
     # with the following control: 43M FPS on GPU with 30000 environments
     # without the following control (arm in collision with the floor): 32M FPS

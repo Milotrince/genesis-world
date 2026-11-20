@@ -180,6 +180,10 @@ def main():
         fruit.deactivate()
 
     hand = franka.get_link("hand")
+    # The finger actuator of panda.xml takes its target in [0, 255]. Its own gains, set here, take it in metres.
+    fingers_dof = (7, 8)
+    franka.set_dofs_kp(100.0, fingers_dof)
+    franka.set_dofs_kv(10.0, fingers_dof)
     # The hand points down with its x axis along world y, so the edge of the blade leads as the base joint turns.
     hand_quat = np.array([0.0, np.sqrt(0.5), np.sqrt(0.5), 0.0])
     # The middle of the blade sits below the height where the fruits meet it, since the blade narrows toward its tip,

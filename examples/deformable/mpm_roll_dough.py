@@ -114,19 +114,23 @@ def main():
         ),
     )
     dough = scene.add_entity(
-        morph=gs.morphs.Box(
-            pos=(*BOARD_POS, BOARD_TOP + 0.5 * DOUGH_SIZE[2]),
-            size=DOUGH_SIZE,
-        ),
-        material=gs.materials.MPM.ElastoPlastic(
-            E=5e4,
-            nu=0.3,
-            rho=1100.0,
-            von_mises_yield_stress=800.0,
-        ),
-        surface=gs.surfaces.Rough(
-            color=(0.95, 0.87, 0.65),
-            vis_mode="particle",
+        spec=gs.entities.MPM(
+            morph=gs.morphs.Box(
+                pos=(*BOARD_POS, BOARD_TOP + 0.5 * DOUGH_SIZE[2]),
+                size=DOUGH_SIZE,
+            ),
+            material=gs.materials.MPM.ElastoPlastic(
+                E=5e4,
+                nu=0.3,
+                rho=1100.0,
+                von_mises_yield_stress=800.0,
+            ),
+            surface=gs.surfaces.Rough(
+                color=(0.95, 0.87, 0.65),
+            ),
+            vis=gs.options.EntityVisOptions(
+                debug=True,
+            ),
         ),
     )
     franka = scene.add_entity(
@@ -153,6 +157,7 @@ def main():
             pos=camera_pos,
             lookat=camera_lookat,
             fov=40,
+            debug=True,
         )
 
     scene.build()
