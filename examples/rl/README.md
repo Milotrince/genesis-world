@@ -3,6 +3,21 @@
 Each task is an environment (`*_env.py`) with its training (`*_train.py`) and evaluation (`*_eval.py`) scripts. The
 training scripts use the PPO implementation of `rsl-rl`.
 
+## Go2 on terrain (`go2_terrain_env.py`, `go2_terrain_train.py`, `go2_terrain_eval.py`)
+
+A Go2 learns to walk over rough ground, slopes, stairs and stepping stones. It observes a raycaster height scan and
+foot contact sensors. Friction and trunk payload are randomized per environment, and a curriculum moves each
+environment to harder terrain as it succeeds. Training takes about 10 minutes at 4096 environments on one GPU.
+
+```bash
+python examples/rl/go2_terrain_train.py
+python examples/rl/go2_terrain_eval.py            # downloads the shipped policy
+python examples/rl/go2_terrain_eval.py --ckpt 1499
+```
+
+The evaluation walks the robot the length of the mixed terrain row, with a kinematic ghost following the command.
+With `-v`, the arrow keys set the speed and the heading.
+
 ## Drone hover (`hover_env.py`, `hover_train.py`, `hover_eval.py`)
 
 The hover environment (`hover_env.py`) is designed to train a drone to maintain a stable hover position by reaching randomly generated target points. The environment includes:
