@@ -33,8 +33,8 @@ DT = 4e-3
 
 # Tip of the nozzle of the dispenser, placed so that the nozzle hangs at this point.
 NOZZLE_POS = np.array([0.55, 0.0, 0.25])
-NOZZLE_DIAMETER = 0.014
-EXTRUSION_SPEED = 0.2
+NOZZLE_DIAMETER = 0.022
+EXTRUSION_SPEED = 0.12
 # Cone: radius of its rim, length from the rim down to its tip, and the distance from the rim down to where the fingers
 # hold it. The hand holds the cone with its axis this far ahead of the hand.
 CONE_RADIUS = 0.028
@@ -43,8 +43,8 @@ CONE_GRIP_DEPTH = 0.045
 CONE_REACH = 0.1
 # Path of the rim center: the radius and the period of the circle under the nozzle, and the gap to the nozzle at start.
 CIRCLE_RADIUS = 0.015
-CIRCLE_PERIOD = 0.6
-RIM_GAP = 0.02
+CIRCLE_PERIOD = 0.7
+RIM_GAP = 0.025
 # Rim center of the cone once the robot presents the serve, out of the machine and towards the camera.
 PRESENT_POS = np.array([0.4, 0.05, 0.24])
 
@@ -158,10 +158,10 @@ def main():
     cone.attach(franka, "hand", pos=(0.0, 0.0, 0.0))
     emitter = scene.add_emitter(
         material=gs.materials.MPM.ElastoPlastic(
-            E=5e4,
+            E=2e4,
             nu=0.3,
             rho=600.0,
-            von_mises_yield_stress=2e3,
+            von_mises_yield_stress=800.0,
         ),
         max_particles=8000,
         surface=gs.surfaces.Rough(
@@ -221,7 +221,7 @@ def main():
     if "PYTEST_VERSION" in os.environ:
         n_serve, n_settle, n_out, n_up, n_hold = 20, 10, 5, 5, 5
     else:
-        n_serve, n_settle, n_out, n_up, n_hold = (round(duration / DT) for duration in (3.0, 1.0, 2.0, 1.5, 1.0))
+        n_serve, n_settle, n_out, n_up, n_hold = (round(duration / DT) for duration in (2.0, 1.0, 2.5, 2.5, 1.0))
     # Lower the cone as fast as a column as wide as the rim would grow at the flow rate of the nozzle, so that the nozzle
     # stays just above the top of the serve.
     flow_rate = 0.25 * math.pi * NOZZLE_DIAMETER**2 * EXTRUSION_SPEED
@@ -230,12 +230,10 @@ def main():
     if camera is not None:
         camera.start_recording(save_to_filename="out/mpm_ice_cream.mp4", fps=round(0.5 / DT))
     for i_step in range(n_serve):
+        # The circle shrinks as the serve rises, so that the rings taper to a peak.
         angle = 2.0 * math.pi * i_step * DT / CIRCLE_PERIOD
-        rim_pos[:] = rim_center + (
-            CIRCLE_RADIUS * math.cos(angle),
-            CIRCLE_RADIUS * math.sin(angle),
-            -sink_speed * i_step * DT,
-        )
+        radius = CIRCLE_RADIUS * (1.0 - 0.8 * i_step / n_serve)
+        rim_pos[:] = rim_center + (radius * math.cos(angle), radius * math.sin(angle), -sink_speed * i_step * DT)
         extrude()
         track_target()
     log_serve("Extruded")
