@@ -45,6 +45,9 @@ CONE_REACH = 0.1
 CIRCLE_RADIUS = 0.015
 CIRCLE_PERIOD = 0.7
 RIM_GAP = 0.025
+# Gap kept between the tip of the nozzle and the top of the serve, and the top speed at which the cone sinks to keep it.
+SERVE_GAP = 0.012
+SINK_SPEED_MAX = 0.04
 # Rim center of the cone once the robot presents the serve, out of the machine and towards the camera.
 PRESENT_POS = np.array([0.4, 0.05, 0.24])
 
@@ -99,8 +102,12 @@ def main():
         ),
         mpm_options=gs.options.MPMOptions(
             grid_density=192,
-            lower_bound=(PRESENT_POS[0] - 0.07, NOZZLE_POS[1] - 0.08, NOZZLE_POS[2] - 0.17),
+            lower_bound=(PRESENT_POS[0] - 0.07, NOZZLE_POS[1] - 0.08, NOZZLE_POS[2] - 0.22),
             upper_bound=(NOZZLE_POS[0] + 0.08, PRESENT_POS[1] + 0.07, PRESENT_POS[2] + 0.12),
+        ),
+        # The particles of the serve are drawn larger than they are, so that they overlap into one creamy surface.
+        vis_options=gs.options.VisOptions(
+            particle_size_scale=2.5,
         ),
         viewer_options=gs.options.ViewerOptions(
             camera_pos=camera_pos,
@@ -158,11 +165,13 @@ def main():
     cone.attach(franka, "hand", pos=(0.0, 0.0, 0.0))
     emitter = scene.add_emitter(
         spec=gs.entities.MPM(
+            # A yield stress far below the elastic modulus leaves the serve a small elastic range, so that it flows and
+            # slumps where it is loaded past its yield stress and keeps the shape it took, with no spring back.
             material=gs.materials.MPM.ElastoPlastic(
                 E=2e4,
                 nu=0.3,
                 rho=600.0,
-                von_mises_yield_stress=800.0,
+                von_mises_yield_stress=500.0,
             ),
             surface=gs.surfaces.Rough(
                 color=(0.98, 0.95, 0.88),
@@ -216,9 +225,13 @@ def main():
             speed=EXTRUSION_SPEED,
         )
 
+    def get_serve_pos():
+        return tensor_to_array(emitter.entity.get_particles_pos())[
+            tensor_to_array(emitter.entity.get_particles_active())
+        ]
+
     def log_serve(label):
-        serve_pos = tensor_to_array(emitter.entity.get_particles_pos())
-        serve_pos = serve_pos[tensor_to_array(emitter.entity.get_particles_active())]
+        serve_pos = get_serve_pos()
         height = np.percentile(serve_pos[:, 2], 98) - rim_pos[2]
         width = 2.0 * np.percentile(np.linalg.norm(serve_pos[:, :2] - rim_pos[:2], axis=-1), 98)
         gs.logger.info(f"{label}: serve {100 * height:.1f} cm high and {100 * width:.1f} cm wide on the rim.")
@@ -226,23 +239,31 @@ def main():
     if "PYTEST_VERSION" in os.environ:
         n_serve, n_settle, n_out, n_up, n_hold = 20, 10, 5, 5, 5
     else:
-        n_serve, n_settle, n_out, n_up, n_hold = (round(duration / DT) for duration in (2.0, 1.0, 2.5, 2.5, 1.0))
-    # Lower the cone as fast as a column as wide as the rim would grow at the flow rate of the nozzle, so that the nozzle
-    # stays just above the top of the serve.
-    flow_rate = 0.25 * math.pi * NOZZLE_DIAMETER**2 * EXTRUSION_SPEED
-    sink_speed = flow_rate / (math.pi * CONE_RADIUS**2)
+        n_serve, n_settle, n_out, n_up, n_hold = (round(duration / DT) for duration in (1.7, 1.0, 2.5, 2.5, 1.0))
 
     if camera is not None:
         camera.start_recording(save_to_filename="out/mpm_ice_cream.mp4", fps=round(0.5 / DT))
+    z_rim_target = rim_center[2]
     for i_step in range(n_serve):
+        # The top of the serve is the highest particle off the axis of the nozzle, which leaves out the strand still
+        # coming down from it. The cone sinks to keep the nozzle just above it, so the strand never bridges a gap.
+        if i_step % 5 == 0:
+            serve_pos = get_serve_pos()
+            is_off_axis = np.linalg.norm(serve_pos[:, :2] - NOZZLE_POS[:2], axis=-1) > 0.6 * NOZZLE_DIAMETER
+            z_top = serve_pos[is_off_axis, 2].max(initial=rim_center[2])
+            z_rim_target = min(z_rim_target, rim_center[2] - (z_top - (NOZZLE_POS[2] - SERVE_GAP)))
+        rim_center[2] = max(rim_center[2] - SINK_SPEED_MAX * DT, z_rim_target)
         # The circle shrinks as the serve rises, so that the rings taper to a peak.
         angle = 2.0 * math.pi * i_step * DT / CIRCLE_PERIOD
         radius = CIRCLE_RADIUS * (1.0 - 0.8 * i_step / n_serve)
-        rim_pos[:] = rim_center + (radius * math.cos(angle), radius * math.sin(angle), -sink_speed * i_step * DT)
+        rim_pos[:] = rim_center + (radius * math.cos(angle), radius * math.sin(angle), 0.0)
         extrude()
         track_target()
     log_serve("Extruded")
+    # Draw the cone slowly away from the nozzle, so that the strand necks off into a soft tip.
+    rim_end = rim_pos - (0.0, 0.0, 0.015)
     for _ in range(n_settle):
+        rim_pos[:] += 4.0 * DT * (rim_end - rim_pos)
         track_target()
     log_serve("Settled")
     # Pull the cone straight out of the bay, then raise it towards the camera. Each move eases in and out, so the serve
