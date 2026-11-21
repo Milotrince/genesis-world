@@ -1,10 +1,11 @@
 """A soft-serve machine extrudes ice cream onto a cone that a Franka circles under the nozzle, so the serve coils up.
 
-The serve is an elasto-plastic MPM material poured by an emitter at the nozzle: it yields and flows as it is laid down,
-then holds its shape under its own weight. The robot holds the cone attached to its hand and moves it around a small
-circle under the nozzle while lowering it, which lays the strand in rings stacked on top of each other, then pulls the
-cone out of the machine and presents it. The run logs the height and the width of the serve, read from the particle
-positions, after the serve and after the presentation. MPM is slow on CPU, so pass -g to run on GPU.
+The serve is an elasto-plastic MPM material poured by an emitter at the nozzle, a star of round jets that gives the
+strand its ridges: it yields and flows as it is laid down, then holds its shape under its own weight. The robot holds
+the cone attached to its hand and moves it around a small circle under the nozzle while lowering it, which lays the
+strand in rings stacked on top of each other, then pulls the cone out of the machine and presents it. The run logs the
+height and the width of the serve, read from the particle positions, after the serve and after the presentation. MPM is
+slow on CPU, so pass -g to run on GPU.
 
 With the viewer (-v), the scripted serve is skipped: the robot holds the empty cone under the nozzle, and the keys
 drive it.
@@ -36,8 +37,14 @@ DT = 4e-3
 
 # Tip of the nozzle of the dispenser, placed so that the nozzle hangs at this point.
 NOZZLE_POS = np.array([0.55, 0.0, 0.25])
-NOZZLE_DIAMETER = 0.022
-EXTRUSION_SPEED = 0.12
+# Star-shaped nozzle: a core surrounded by points, each a round jet, whose ring turns slowly so that the ridges twist.
+STAR_CORE_DIAMETER = 0.01
+STAR_POINT_DIAMETER = 0.006
+STAR_N_POINTS = 6
+STAR_RING_RADIUS = 0.5 * (STAR_CORE_DIAMETER + STAR_POINT_DIAMETER)
+STAR_TWIST_RATE = 1.0
+NOZZLE_DIAMETER = 2.0 * STAR_RING_RADIUS + STAR_POINT_DIAMETER
+EXTRUSION_SPEED = 0.15
 # Cone: radius of its rim, length from the rim down to its tip, and the distance from the rim down to where the fingers
 # hold it. The hand holds the cone with its axis this far ahead of the hand.
 CONE_RADIUS = 0.028
@@ -225,14 +232,32 @@ def main():
         franka.control_dofs_position(q, motors_dof)
         scene.step()
 
-    def extrude():
-        emitter.emit(
-            droplet_shape="circle",
-            droplet_size=NOZZLE_DIAMETER,
-            pos=NOZZLE_POS,
-            direction=(0.0, 0.0, -1.0),
-            speed=EXTRUSION_SPEED,
-        )
+    extruded_length = 0.0
+    star_angle = 0.0
+
+    def extrude(speed=EXTRUSION_SPEED):
+        nonlocal extruded_length, star_angle
+        # Each call to 'emit' keeps its own count of the length extruded, so the slab is counted here once for all the
+        # jets of the star, which then leave the nozzle together, one particle length at a time.
+        extruded_length += speed * DT
+        star_angle += STAR_TWIST_RATE * DT
+        if extruded_length < emitter.entity.particle_size:
+            return
+        # The core jet sits on the axis of the nozzle, and the point jets on a ring around it.
+        points_angle = star_angle + 2.0 * math.pi * np.arange(STAR_N_POINTS) / STAR_N_POINTS
+        jets_pos = np.tile(NOZZLE_POS, (STAR_N_POINTS + 1, 1))
+        jets_pos[1:, 0] += STAR_RING_RADIUS * np.cos(points_angle)
+        jets_pos[1:, 1] += STAR_RING_RADIUS * np.sin(points_angle)
+        for i_jet, jet_pos in enumerate(jets_pos):
+            emitter.emit(
+                droplet_shape="circle",
+                droplet_size=STAR_POINT_DIAMETER if i_jet else STAR_CORE_DIAMETER,
+                droplet_length=extruded_length,
+                pos=jet_pos,
+                direction=(0.0, 0.0, -1.0),
+                speed=speed,
+            )
+        extruded_length = 0.0
 
     def get_serve_pos():
         return tensor_to_array(emitter.entity.get_particles_pos())[
@@ -274,7 +299,8 @@ def main():
             angle = 2.0 * math.pi * i_step * DT / CIRCLE_PERIOD
             radius = CIRCLE_RADIUS * (1.0 - 0.8 * i_step / n_serve)
             rim_pos[:] = rim_center + (radius * math.cos(angle), radius * math.sin(angle), 0.0)
-            extrude()
+            # The flow slows down over the last quarter of the serve, so that the tip ends small instead of curling.
+            extrude(speed=EXTRUSION_SPEED * (1.0 - 0.6 * max(0.0, 4.0 * i_step / n_serve - 3.0)))
             track_target()
         log_serve("Extruded")
         # Keep circling while drawing the cone slowly away from the nozzle, so that the end of the strand lays down in a
