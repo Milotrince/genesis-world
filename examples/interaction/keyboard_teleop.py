@@ -1,7 +1,6 @@
-"""A Franka grasps a cube, lifts it, carries it aside and drops it, driven by end-effector teleoperation commands.
+"""Drive a Franka by end-effector teleoperation from the keyboard, to grasp a cube, lift it and carry it aside.
 
-A scripted sequence of the same commands the keys issue runs the grasp. The keyboard controls are registered once the
-scripted grasp ends, and then drive the robot for as long as the viewer stays open.
+The keyboard drives the robot from its start pose above the table, for as long as the viewer stays open.
 
 Keyboard controls:
 Up        - Move forward (-x)
@@ -173,59 +172,56 @@ def main():
 
     reset_robot()
 
-    if camera is not None:
-        camera.start_recording(save_to_filename="out/keyboard_teleop.mp4", fps=30)
-
-    # The scripted grasp calls the same functions as the keys. Each step towards a waypoint is one key press.
-    if "PYTEST_VERSION" not in os.environ:
-        n_approach, n_close, n_lift, n_carry, n_release = 220, 50, 90, 110, 50
-    else:
-        n_approach, n_close, n_lift, n_carry, n_release = 10, 10, 10, 10, 10
     # The fingers start closed, so open them before the approach.
     toggle_gripper(close=False)
-    for _ in range(n_approach):
-        step_towards((0.5, 0.0, TABLE_HEIGHT + 0.135))
-    toggle_gripper(close=True)
-    for _ in range(n_close):
-        track_target()
-    for _ in range(n_lift):
-        step_towards((0.5, 0.0, TABLE_HEIGHT + 0.3))
-    for _ in range(n_carry):
-        step_towards((0.5, 0.2, TABLE_HEIGHT + 0.3))
-    toggle_gripper(close=False)
-    for _ in range(n_release):
-        track_target()
+
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/keyboard_teleop.mp4", fps=30)
+    # The viewer is always open, so the scripted grasp runs under the test suite alone, which cannot press keys.
+    # It calls the same functions as the keys, and each step towards a waypoint is one key press.
+    if "PYTEST_VERSION" in os.environ:
+        for _ in range(10):
+            step_towards((0.5, 0.0, TABLE_HEIGHT + 0.135))
+        toggle_gripper(close=True)
+        for _ in range(10):
+            track_target()
+        for _ in range(10):
+            step_towards((0.5, 0.0, TABLE_HEIGHT + 0.3))
+        for _ in range(10):
+            step_towards((0.5, 0.2, TABLE_HEIGHT + 0.3))
+        toggle_gripper(close=False)
+        for _ in range(10):
+            track_target()
+        gs.logger.info(f"Cube position after the scripted grasp: {cube.get_pos()}")
+    else:
+        is_running = True
+
+        def stop():
+            nonlocal is_running
+            is_running = False
+
+        scene.viewer.register_keybinds(
+            Keybind("move_forward", Key.UP, KeyAction.HOLD, callback=move, args=((-dpos, 0, 0),)),
+            Keybind("move_back", Key.DOWN, KeyAction.HOLD, callback=move, args=((dpos, 0, 0),)),
+            Keybind("move_left", Key.LEFT, KeyAction.HOLD, callback=move, args=((0, -dpos, 0),)),
+            Keybind("move_right", Key.RIGHT, KeyAction.HOLD, callback=move, args=((0, dpos, 0),)),
+            Keybind("move_up", Key.K, KeyAction.HOLD, callback=move, args=((0, 0, dpos),)),
+            Keybind("move_down", Key.J, KeyAction.HOLD, callback=move, args=((0, 0, -dpos),)),
+            Keybind("rotate_ccw", Key.N, KeyAction.HOLD, callback=rotate, args=(drot,)),
+            Keybind("rotate_cw", Key.M, KeyAction.HOLD, callback=rotate, args=(-drot,)),
+            Keybind("reset_scene", Key.BACKSLASH, KeyAction.RELEASE, callback=reset_scene),
+            Keybind("close_gripper", Key.SPACE, KeyAction.PRESS, callback=toggle_gripper, args=(True,)),
+            Keybind("open_gripper", Key.SPACE, KeyAction.RELEASE, callback=toggle_gripper, args=(False,)),
+            Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
+        )
+        gs.logger.info(
+            "Keys: arrows move in x/y, K/J move up/down, N/M rotate, Backslash resets, hold Space to close the "
+            "gripper, Esc quits."
+        )
+        while is_running and scene.viewer.is_alive():
+            track_target()
     if camera is not None:
         camera.stop_recording()
-    gs.logger.info(f"Cube position after the scripted grasp: {cube.get_pos()}")
-
-    is_running = True
-
-    def stop():
-        nonlocal is_running
-        is_running = False
-
-    # The keys are registered once the scripted grasp is over, so that a key press cannot interfere with it.
-    scene.viewer.register_keybinds(
-        Keybind("move_forward", Key.UP, KeyAction.HOLD, callback=move, args=((-dpos, 0, 0),)),
-        Keybind("move_back", Key.DOWN, KeyAction.HOLD, callback=move, args=((dpos, 0, 0),)),
-        Keybind("move_left", Key.LEFT, KeyAction.HOLD, callback=move, args=((0, -dpos, 0),)),
-        Keybind("move_right", Key.RIGHT, KeyAction.HOLD, callback=move, args=((0, dpos, 0),)),
-        Keybind("move_up", Key.K, KeyAction.HOLD, callback=move, args=((0, 0, dpos),)),
-        Keybind("move_down", Key.J, KeyAction.HOLD, callback=move, args=((0, 0, -dpos),)),
-        Keybind("rotate_ccw", Key.N, KeyAction.HOLD, callback=rotate, args=(drot,)),
-        Keybind("rotate_cw", Key.M, KeyAction.HOLD, callback=rotate, args=(-drot,)),
-        Keybind("reset_scene", Key.BACKSLASH, KeyAction.RELEASE, callback=reset_scene),
-        Keybind("close_gripper", Key.SPACE, KeyAction.PRESS, callback=toggle_gripper, args=(True,)),
-        Keybind("open_gripper", Key.SPACE, KeyAction.RELEASE, callback=toggle_gripper, args=(False,)),
-        Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
-    )
-    gs.logger.info(
-        "Keys: arrows move in x/y, K/J move up/down, N/M rotate, Backslash resets, hold Space to close the "
-        "gripper, Esc quits."
-    )
-    while is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        track_target()
 
 
 if __name__ == "__main__":

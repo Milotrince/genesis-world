@@ -1,6 +1,6 @@
 """Import a refrigerator from a USD stage, then sweep each of its joints between its limits with PD control.
 
-With the viewer (-v), drag the doors and drawers with the mouse, during the sweep and after it.
+Mouse controls (-v): drag the doors and drawers.
 """
 
 import argparse
@@ -109,16 +109,16 @@ def main():
     if camera is not None:
         camera.start_recording(save_to_filename="out/usd_fridge.mp4", fps=round(1.0 / scene.dt))
 
-    joint_animator = JointAnimator(scene)
-
-    for _ in range(args.steps):
-        joint_animator.animate(scene)
-        scene.step()
+    if args.vis:
+        while scene.viewer.is_alive():
+            scene.step()
+    else:
+        joint_animator = JointAnimator(scene)
+        for _ in range(args.steps):
+            joint_animator.animate(scene)
+            scene.step()
     if camera is not None:
         camera.stop_recording()
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        joint_animator.animate(scene)
-        scene.step()
 
 
 if __name__ == "__main__":

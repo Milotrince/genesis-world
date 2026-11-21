@@ -1,7 +1,8 @@
 """A Franka arm and its hand, loaded from separate URDF or MJCF files, are merged into one articulation.
 
-The hand is attached to the arm before build, then both run through a short PD schedule. With the viewer (-v), drag
-the arm or the hand with the mouse, during the schedule and after it.
+The hand is attached to the arm before build, then both run through a short PD schedule.
+
+Mouse controls (-v): drag the arm or the hand, which the PD controllers hold upright.
 """
 
 import argparse
@@ -151,20 +152,25 @@ def main():
         gripper_dofs_idx,
     )
 
-    # PD control
-    for arm_qpos, gripper_qpos in (
-        ([1, 1, 0, 0, 0, 0, 0], [0.04, 0.04]),
-        ([-1, 0.8, 1, -2, 1, 0.5, -0.5], [0.0, 0.0]),
-        ([0, 0, 0, 0, 0, 0, 0], [0.04, 0.04]),
-    ):
-        franka.control_dofs_position(arm_qpos, arm_dofs_idx)
-        hand.control_dofs_position(gripper_qpos, gripper_dofs_idx)
-        for _ in range(n_phase_steps):
+    if args.vis:
+        # The PD controllers hold the arm upright with the gripper open while the mouse drags it.
+        franka.control_dofs_position([0, 0, 0, 0, 0, 0, 0], arm_dofs_idx)
+        hand.control_dofs_position([0.04, 0.04], gripper_dofs_idx)
+        while scene.viewer.is_alive():
             scene.step()
+    else:
+        # PD control
+        for arm_qpos, gripper_qpos in (
+            ([1, 1, 0, 0, 0, 0, 0], [0.04, 0.04]),
+            ([-1, 0.8, 1, -2, 1, 0.5, -0.5], [0.0, 0.0]),
+            ([0, 0, 0, 0, 0, 0, 0], [0.04, 0.04]),
+        ):
+            franka.control_dofs_position(arm_qpos, arm_dofs_idx)
+            hand.control_dofs_position(gripper_qpos, gripper_dofs_idx)
+            for _ in range(n_phase_steps):
+                scene.step()
     if camera is not None:
         camera.stop_recording()
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        scene.step()
 
 
 if __name__ == "__main__":

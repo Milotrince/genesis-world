@@ -7,7 +7,7 @@ follows the lateral push of the chamfer into the hole and inserts the peg. An `E
 reads the grip on the peg. The force arrow and the gel markers are drawn in the scene, and a live plot shows the
 readings against time.
 
-Keyboard controls (-v), once the scripted insertion ends:
+Keyboard controls (-v), with the peg gripped over its start pose:
 Up/Down    - Move the peg along -x/+x
 Left/Right - Move the peg along -y/+y
 K/J        - Move the peg up/down
@@ -378,51 +378,53 @@ def main():
         control_step()
     start_state = scene.get_state()
 
+    def reset_scene():
+        nonlocal phase
+        scene.reset(start_state)
+        hand_target_pos[:] = hand_start_pos
+        phase = "hold"
+
+    if args.vis:
+        dpos = 0.002
+        scene.viewer.register_keybinds(
+            Keybind("move_forward", Key.UP, KeyAction.HOLD, callback=move, args=((-dpos, 0, 0),)),
+            Keybind("move_back", Key.DOWN, KeyAction.HOLD, callback=move, args=((dpos, 0, 0),)),
+            Keybind("move_left", Key.LEFT, KeyAction.HOLD, callback=move, args=((0, -dpos, 0),)),
+            Keybind("move_right", Key.RIGHT, KeyAction.HOLD, callback=move, args=((0, dpos, 0),)),
+            Keybind("move_up", Key.K, KeyAction.HOLD, callback=move, args=((0, 0, dpos),)),
+            Keybind("move_down", Key.J, KeyAction.HOLD, callback=move, args=((0, 0, -dpos),)),
+            Keybind("toggle_search", Key.SPACE, KeyAction.PRESS, callback=start_search),
+            Keybind("reset_scene", Key.BACKSLASH, KeyAction.RELEASE, callback=reset_scene),
+        )
+        gs.logger.info(
+            "Keys: arrows move the peg in x/y, K/J move it up/down, Space starts or stops a spiral search, Backslash "
+            "puts the peg back."
+        )
+
     if camera is not None:
         camera.start_recording(save_to_filename="out/tactile_peg_insertion.mp4", fps=RECORDING_FPS)
-    n_steps = 100 if "PYTEST_VERSION" in os.environ else round(args.seconds / DT)
     try:
-        start_search()
-        for _ in range(n_steps):
-            control_step()
-            if phase == "hold":
-                break
+        if args.vis:
+            while scene.viewer.is_alive():
+                control_step()
+        else:
+            n_steps = 100 if "PYTEST_VERSION" in os.environ else round(args.seconds / DT)
+            start_search()
+            for _ in range(n_steps):
+                control_step()
+                if phase == "hold":
+                    break
+
+            peg_bottom_z = tensor_to_array(peg.get_pos())[2] - 0.5 * PEG_LENGTH
+            if found_time is None:
+                gs.logger.info("The search ended before the hole was found.")
+            else:
+                gs.logger.info(
+                    f"Search time {found_time:.2f} s, spiral radius {1e3 * found_radius:.1f} mm, insertion depth "
+                    f"{1e3 * (PLATE_TOP - peg_bottom_z):.1f} mm."
+                )
         if camera is not None:
             camera.stop_recording()
-
-        peg_bottom_z = tensor_to_array(peg.get_pos())[2] - 0.5 * PEG_LENGTH
-        if found_time is None:
-            gs.logger.info("The search ended before the hole was found.")
-        else:
-            gs.logger.info(
-                f"Search time {found_time:.2f} s, spiral radius {1e3 * found_radius:.1f} mm, insertion depth "
-                f"{1e3 * (PLATE_TOP - peg_bottom_z):.1f} mm."
-            )
-
-        def reset_scene():
-            nonlocal phase
-            scene.reset(start_state)
-            hand_target_pos[:] = hand_start_pos
-            phase = "hold"
-
-        if args.vis:
-            dpos = 0.002
-            scene.viewer.register_keybinds(
-                Keybind("move_forward", Key.UP, KeyAction.HOLD, callback=move, args=((-dpos, 0, 0),)),
-                Keybind("move_back", Key.DOWN, KeyAction.HOLD, callback=move, args=((dpos, 0, 0),)),
-                Keybind("move_left", Key.LEFT, KeyAction.HOLD, callback=move, args=((0, -dpos, 0),)),
-                Keybind("move_right", Key.RIGHT, KeyAction.HOLD, callback=move, args=((0, dpos, 0),)),
-                Keybind("move_up", Key.K, KeyAction.HOLD, callback=move, args=((0, 0, dpos),)),
-                Keybind("move_down", Key.J, KeyAction.HOLD, callback=move, args=((0, 0, -dpos),)),
-                Keybind("toggle_search", Key.SPACE, KeyAction.PRESS, callback=start_search),
-                Keybind("reset_scene", Key.BACKSLASH, KeyAction.RELEASE, callback=reset_scene),
-            )
-            gs.logger.info(
-                "Keys: arrows move the peg in x/y, K/J move it up/down, Space starts or stops a spiral search, Backslash "
-                "puts the peg back."
-            )
-        while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-            control_step()
     finally:
         # The plot is written out here, since a recorder still running when the script exits fails at teardown.
         scene.stop_recording()

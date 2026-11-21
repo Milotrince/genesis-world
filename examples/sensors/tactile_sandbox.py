@@ -5,8 +5,9 @@ Sensor types: ContactDepthProbe, ContactProbe, ElastomerTaxel, KinematicTaxel, P
 Note that the sensor readings here have not been calibrated to any units, and is purely for visualization purposes.
 
 Without the viewer, a scripted sequence presses the objects into the pad, slides and twists them, then lifts them off.
-With the viewer (-v), the same sequence runs, and the keyboard then drives the objects:
+With the viewer (-v), the keyboard drives the objects from their start pose, held above the pad.
 
+Keyboard controls (-v):
     Up / Down       move the objects along -x / +x
     Left / Right    move the objects along -y / +y
     j / k           lower / raise the objects
@@ -394,7 +395,7 @@ def main() -> None:
             lookat=camera_lookat,
         )
 
-    if args.vis and "PYTEST_VERSION" not in os.environ:
+    if args.vis:
         _plot_tactile_sensor(scene, args.sensor, sensor, n_envs=4, plot_normal=probe_normal_axis)
     scene.build(n_envs=4, env_spacing=(SENSOR_OBJ_SIZE * 1.2, SENSOR_OBJ_SIZE * 1.2))
 
@@ -487,34 +488,36 @@ def main() -> None:
     if camera is not None:
         camera.start_recording(save_to_filename="out/tactile_sandbox.mp4", fps=round(1.0 / scene.dt))
 
-    # The scripted sequence calls the same functions as the keys, one call per step, with idle steps for the objects
-    # to settle.
-    n_press = round((OBJECT_INITIAL_CLEARANCE + OBJECT_MAX_PENETRATION) / KEY_DPOS)
-    # Press the objects into the pad.
-    for _ in range(n_press):
-        translate(2, True)
-        step_objects()
-    for _ in range(10):
-        step_objects()
-    # Slide them along +x, then twist them about z.
-    for _ in range(10):
-        translate(0, False)
-        step_objects()
-    for _ in range(6):
-        rotate(2, False)
-        step_objects()
-    for _ in range(10):
-        step_objects()
-    # Lift them off.
-    for _ in range(n_press):
-        translate(2, False)
-        step_objects()
-    for _ in range(10):
-        step_objects()
+    if args.vis:
+        while scene.viewer.is_alive():
+            step_objects()
+    else:
+        # The scripted sequence calls the same functions as the keys, one call per step, with idle steps for the objects
+        # to settle.
+        n_press = round((OBJECT_INITIAL_CLEARANCE + OBJECT_MAX_PENETRATION) / KEY_DPOS)
+        # Press the objects into the pad.
+        for _ in range(n_press):
+            translate(2, True)
+            step_objects()
+        for _ in range(10):
+            step_objects()
+        # Slide them along +x, then twist them about z.
+        for _ in range(10):
+            translate(0, False)
+            step_objects()
+        for _ in range(6):
+            rotate(2, False)
+            step_objects()
+        for _ in range(10):
+            step_objects()
+        # Lift them off.
+        for _ in range(n_press):
+            translate(2, False)
+            step_objects()
+        for _ in range(10):
+            step_objects()
     if camera is not None:
         camera.stop_recording()
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        step_objects()
 
 
 if __name__ == "__main__":

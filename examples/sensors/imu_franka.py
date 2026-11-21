@@ -3,7 +3,7 @@
 The IMU reads the linear acceleration and the angular velocity of its mount point, and the plot (-v) shows the noisy
 readings against the ground truth. A green arrow draws the acceleration of the hand link from `get_links_acc`.
 
-With the viewer (-v), drag the arm with the mouse to shake the IMU, during the circle and after it.
+With the viewer (-v), the arm holds the start of the circle, and the mouse drags it to shake the IMU.
 """
 
 import argparse
@@ -139,32 +139,45 @@ def main():
     rate = np.deg2rad(2.0)
 
     acc_arrow = None
+
+    def step():
+        nonlocal acc_arrow
+        scene.step()
+        if acc_arrow is not None:
+            scene.clear_debug_object(acc_arrow)
+        acc_arrow = scene.draw_debug_arrow(
+            pos=end_effector.get_pos(),
+            vec=0.05 * franka.get_links_acc(end_effector.idx_local)[0],
+            color=(0.0, 1.0, 0.0, 0.8),
+        )
+
     try:
-        steps = int(args.seconds / args.dt) if "PYTEST_VERSION" not in os.environ else 5
-        for i in tqdm(range(steps)):
-            scene.step()
-
-            if acc_arrow is not None:
-                scene.clear_debug_object(acc_arrow)
-            acc_arrow = scene.draw_debug_arrow(
-                pos=end_effector.get_pos(),
-                vec=0.05 * franka.get_links_acc(end_effector.idx_local)[0],
-                color=(0.0, 1.0, 0.0, 0.8),
-            )
-
-            # control franka to move in a circle and draw the target positions
-            pos = circle_center + np.array([np.cos(i * rate), np.sin(i * rate), 0]) * circle_radius
+        if args.vis:
             qpos = franka.inverse_kinematics(
                 link=end_effector,
-                pos=pos,
+                pos=circle_center + np.array([circle_radius, 0.0, 0.0]),
                 quat=np.array([0.0, 1.0, 0.0, 0.0]),
             )
+            franka.set_dofs_position(qpos)
             franka.control_dofs_position(qpos[:-2], motors_dof)
-            scene.draw_debug_sphere(pos, radius=0.01, color=(1.0, 0.0, 0.0, 0.5))
+            while scene.viewer.is_alive():
+                step()
+        else:
+            steps = int(args.seconds / args.dt) if "PYTEST_VERSION" not in os.environ else 5
+            for i in tqdm(range(steps)):
+                step()
+
+                # control franka to move in a circle and draw the target positions
+                pos = circle_center + np.array([np.cos(i * rate), np.sin(i * rate), 0]) * circle_radius
+                qpos = franka.inverse_kinematics(
+                    link=end_effector,
+                    pos=pos,
+                    quat=np.array([0.0, 1.0, 0.0, 0.0]),
+                )
+                franka.control_dofs_position(qpos[:-2], motors_dof)
+                scene.draw_debug_sphere(pos, radius=0.01, color=(1.0, 0.0, 0.0, 0.5))
         if camera is not None:
             camera.stop_recording()
-        while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-            scene.step()
     except KeyboardInterrupt:
         gs.logger.info("Simulation interrupted, exiting.")
     finally:

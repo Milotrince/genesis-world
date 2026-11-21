@@ -5,8 +5,9 @@ soft and nearly incompressible, the plush worm is soft, light and compressible. 
 so each squashes by its own amount. '--coupler' selects how the rigid robot and the soft objects interact: the
 semi-analytic primal (SAP) coupler with hydroelastic contact, or the incremental potential contact (IPC) coupler, which
 needs 'pyuipc' and a CUDA GPU. The run logs whether each object ended up placed, and how much it squashed in the grip.
+With the viewer (-v), the scripted sequence is skipped: the hand waits open in its start pose, and the keys drive it.
 
-Keyboard controls (-v), once the scripted sequence is over:
+Keyboard controls (-v):
 Up/Down    - Move the hand away from/towards the camera (+y/-y)
 Left/Right - Move the hand left/right (-x/+x)
 K/J        - Move the hand up/down
@@ -211,47 +212,8 @@ def main():
         for _ in range(n_settle):
             track_target()
 
-    is_ci = "PYTEST_VERSION" in os.environ
-    path_step, n_settle, n_grip = (HAND_SPEED, 20, 40) if not is_ci else (0.05, 1, 1)
     if camera is not None:
         camera.start_recording(save_to_filename="out/soft_grasp.mp4", fps=50)
-
-    objects = tuple(zip(soft_entities, (BOWL_POS, BOX_POS, BOX_POS), (BOWL_SIZE, BOX_SIZE, BOX_SIZE)))
-    drop_offsets_x = (0.0, -0.05, 0.05)
-    squash_ratios = []
-    for (entity, container_pos, container_size), drop_offset_x in zip(objects[: 1 if is_ci else None], drop_offsets_x):
-        verts_pos = entity.get_verts_pos()
-        center = tensor_to_array(verts_pos.mean(dim=0))
-        # The squash is measured across the fingers, on the vertices between the fingertip pads.
-        is_gripped = ((verts_pos - verts_pos.mean(dim=0))[:, [0, 2]].abs() < 0.01).all(dim=-1)
-        rest_width = verts_pos[is_gripped, 1].max() - verts_pos[is_gripped, 1].min()
-        grasp_z = center[2] + TIP_DEPTH
-        move_to((center[0], center[1], grasp_z + 0.1))
-        move_to((center[0], center[1], grasp_z))
-        set_gripper(close=True)
-        for _ in range(n_grip):
-            track_target()
-        move_to((center[0], center[1], grasp_z + 0.15))
-        verts_pos = entity.get_verts_pos()
-        squash_ratios.append(1.0 - (verts_pos[is_gripped, 1].max() - verts_pos[is_gripped, 1].min()) / rest_width)
-        move_to((container_pos[0] + drop_offset_x, container_pos[1], container_size[2] + TIP_DEPTH + 0.06))
-        set_gripper(close=False)
-        for _ in range(n_grip):
-            track_target()
-    if camera is not None:
-        camera.stop_recording()
-
-    for (entity, container_pos, container_size), name, squash_ratio in zip(
-        objects, ("tomato", "jelly", "plush worm"), squash_ratios
-    ):
-        center = tensor_to_array(entity.get_verts_pos().mean(dim=0))
-        is_placed = np.all(np.abs(center[:2] - container_pos[:2]) < 0.5 * np.array(container_size[:2]) - WALL)
-        is_placed &= center[2] < container_size[2]
-        gs.logger.info(
-            f"The {name} is {'placed' if is_placed else 'not placed'}, squashed by {100.0 * squash_ratio:.0f}% across "
-            "the grip."
-        )
-
     if args.vis:
         scene.viewer.register_keybinds(
             Keybind("move_away", Key.UP, KeyAction.HOLD, callback=move, args=((0.0, HAND_SPEED, 0.0),)),
@@ -267,8 +229,49 @@ def main():
             "Keys: Up/Down move the hand away from/towards the camera, Left/Right move it left/right, K/J move it "
             "up/down, hold Space to close the gripper."
         )
-    while args.vis and scene.viewer.is_alive() and not is_ci:
-        track_target()
+        while scene.viewer.is_alive():
+            track_target()
+    else:
+        is_ci = "PYTEST_VERSION" in os.environ
+        path_step, n_settle, n_grip = (HAND_SPEED, 20, 40) if not is_ci else (0.05, 1, 1)
+
+        objects = tuple(zip(soft_entities, (BOWL_POS, BOX_POS, BOX_POS), (BOWL_SIZE, BOX_SIZE, BOX_SIZE)))
+        drop_offsets_x = (0.0, -0.05, 0.05)
+        squash_ratios = []
+        for (entity, container_pos, container_size), drop_offset_x in zip(
+            objects[: 1 if is_ci else None], drop_offsets_x
+        ):
+            verts_pos = entity.get_verts_pos()
+            center = tensor_to_array(verts_pos.mean(dim=0))
+            # The squash is measured across the fingers, on the vertices between the fingertip pads.
+            is_gripped = ((verts_pos - verts_pos.mean(dim=0))[:, [0, 2]].abs() < 0.01).all(dim=-1)
+            rest_width = verts_pos[is_gripped, 1].max() - verts_pos[is_gripped, 1].min()
+            grasp_z = center[2] + TIP_DEPTH
+            move_to((center[0], center[1], grasp_z + 0.1))
+            move_to((center[0], center[1], grasp_z))
+            set_gripper(close=True)
+            for _ in range(n_grip):
+                track_target()
+            move_to((center[0], center[1], grasp_z + 0.15))
+            verts_pos = entity.get_verts_pos()
+            squash_ratios.append(1.0 - (verts_pos[is_gripped, 1].max() - verts_pos[is_gripped, 1].min()) / rest_width)
+            move_to((container_pos[0] + drop_offset_x, container_pos[1], container_size[2] + TIP_DEPTH + 0.06))
+            set_gripper(close=False)
+            for _ in range(n_grip):
+                track_target()
+
+        for (entity, container_pos, container_size), name, squash_ratio in zip(
+            objects, ("tomato", "jelly", "plush worm"), squash_ratios
+        ):
+            center = tensor_to_array(entity.get_verts_pos().mean(dim=0))
+            is_placed = np.all(np.abs(center[:2] - container_pos[:2]) < 0.5 * np.array(container_size[:2]) - WALL)
+            is_placed &= center[2] < container_size[2]
+            gs.logger.info(
+                f"The {name} is {'placed' if is_placed else 'not placed'}, squashed by {100.0 * squash_ratio:.0f}% "
+                "across the grip."
+            )
+    if camera is not None:
+        camera.stop_recording()
 
 
 if __name__ == "__main__":

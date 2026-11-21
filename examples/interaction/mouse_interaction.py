@@ -1,7 +1,7 @@
 """Drag a sphere, a duck and a ring of boxes around with the mouse.
 
-The objects are first tossed into the air and fall back onto the ground. Then they can be grabbed and dragged with the
-mouse until the viewer closes, and Esc quits.
+The objects drop onto the ground, and the mouse grabs and drags them from the first frame until the viewer closes. Esc
+quits.
 """
 
 import argparse
@@ -119,20 +119,20 @@ def main():
 
     if camera is not None:
         camera.start_recording(save_to_filename="out/mouse_interaction.mp4", fps=30)
-    # Toss every object up and towards the centre, spinning about a horizontal axis.
-    vel_up_spin = torch.tensor((4.0, 3.0, -2.0, 0.0), dtype=gs.tc_float, device=gs.device)
-    for entity in (sphere, duck, *boxes):
-        vel_inward = -1.5 * entity.get_pos()[..., :2]
-        entity.set_dofs_velocity(torch.cat((vel_inward, vel_up_spin.expand(*vel_inward.shape[:-1], -1)), dim=-1))
-    horizon = 20 if "PYTEST_VERSION" in os.environ else 200
-    for i_step in range(horizon):
-        scene.step()
+    # The viewer is always open, so the scripted toss runs under the test suite alone, which cannot drag anything.
+    if "PYTEST_VERSION" in os.environ:
+        # Toss every object up and towards the centre, spinning about a horizontal axis.
+        vel_up_spin = torch.tensor((4.0, 3.0, -2.0, 0.0), dtype=gs.tc_float, device=gs.device)
+        for entity in (sphere, duck, *boxes):
+            vel_inward = -1.5 * entity.get_pos()[..., :2]
+            entity.set_dofs_velocity(torch.cat((vel_inward, vel_up_spin.expand(*vel_inward.shape[:-1], -1)), dim=-1))
+        for _ in range(20):
+            scene.step()
+    else:
+        while is_running and scene.viewer.is_alive():
+            scene.step()
     if camera is not None:
         camera.stop_recording()
-
-    # The viewer stays open once the toss is over, so the objects can still be dragged around with the mouse.
-    while is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        scene.step()
 
 
 if __name__ == "__main__":
