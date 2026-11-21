@@ -4,8 +4,9 @@ Walk a trained Go2 across rough ground, a slope, stairs and stepping stones, bes
 The robot starts on the mixed row of the terrain and heads along it, through the four tiles. A translucent kinematic Go2
 follows the commanded velocity and heading from the pose of the robot every two seconds, with the joint targets of the
 policy, so that the gap between the two shows how well the policy tracks its command. Without --ckpt, the policy shipped
-with Genesis is downloaded. With the viewer (-v), the walk runs, then the keyboard steers the robot:
+with Genesis is downloaded. With the viewer (-v), the robot walks from the start of the row, and the keyboard steers it.
 
+Keyboard controls (-v):
     Up / Down       speed up / slow down
     Left / Right    turn left / right
 """
@@ -153,16 +154,20 @@ def main():
         env.camera.follow_entity(env.robot, smoothing=0.9)
         env.camera.start_recording(save_to_filename="out/go2_terrain_eval.mp4", fps=round(1.0 / env.dt))
     obs = env.get_observations()
-    # Four tiles at the walking speed, from one end of the row to the other.
-    n_steps = round((env.n_tiles * env.tile_size - 3.0) / speed / env.dt) if "PYTEST_VERSION" not in os.environ else 5
-    for i_step in range(n_steps):
-        obs = step(i_step, obs)
+    if args.vis:
+        i_step = 0
+        while env.scene.viewer.is_alive():
+            obs = step(i_step, obs)
+            i_step += 1
+    else:
+        # Four tiles at the walking speed, from one end of the row to the other.
+        n_steps = (
+            round((env.n_tiles * env.tile_size - 3.0) / speed / env.dt) if "PYTEST_VERSION" not in os.environ else 5
+        )
+        for i_step in range(n_steps):
+            obs = step(i_step, obs)
     if env.camera is not None:
         env.camera.stop_recording()
-    i_step = n_steps
-    while args.vis and env.scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        obs = step(i_step, obs)
-        i_step += 1
 
 
 if __name__ == "__main__":

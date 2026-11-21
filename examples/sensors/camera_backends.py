@@ -6,7 +6,7 @@ Rasterizer, Raytracer and BatchRenderer.
 Test the attachment, add light, batch rendering functionalities.
 
 A backend whose optional dependency is missing is skipped: the Raytracer needs LuisaRenderPy, and the BatchRenderer
-needs gs_madrona and a CUDA GPU (-g). With the viewer (-v), drag the sphere or the box with the mouse.
+needs gs_madrona and a CUDA GPU (-g). With the viewer (-v), the mouse drags the sphere or the box, and no PNG is saved.
 """
 
 import argparse
@@ -198,18 +198,19 @@ def main():
     if video_camera is not None:
         video_camera.start_recording(save_to_filename="out/camera_backends.mp4", fps=round(1.0 / scene.dt))
 
-    for i in range(args.steps):
-        scene.step()
-        if i % 10 == 0:
-            for cam_name, camera in cameras.items():
-                rgb = camera.read().rgb[0]
-                plt.imsave(os.path.join(args.output_dir, f"{cam_name}_step{i:03d}.png"), tensor_to_array(rgb))
-            gs.logger.info(f"Step {i}: saved {len(cameras)} images to '{args.output_dir}'")
+    if args.vis:
+        while scene.viewer.is_alive():
+            scene.step()
+    else:
+        for i in range(args.steps):
+            scene.step()
+            if i % 10 == 0:
+                for cam_name, camera in cameras.items():
+                    rgb = camera.read().rgb[0]
+                    plt.imsave(os.path.join(args.output_dir, f"{cam_name}_step{i:03d}.png"), tensor_to_array(rgb))
+                gs.logger.info(f"Step {i}: saved {len(cameras)} images to '{args.output_dir}'")
     if video_camera is not None:
         video_camera.stop_recording()
-
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        scene.step()
 
 
 if __name__ == "__main__":

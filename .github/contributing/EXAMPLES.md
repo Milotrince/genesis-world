@@ -63,14 +63,15 @@ it first.
 
 - **Headless by default.** Without `-v`, the script runs a scripted scenario that shows its feature end to end, then
   exits. It never idles or waits for input.
-- **`-r/--record`** adds a camera framed like the viewer and records the scripted scenario to `out/<script>.mp4`.
-- **Interactive with `-v`.** The scripted scenario still runs, then the script keeps stepping while the viewer is
-  alive. Scenes about objects attach `MouseInteractionPlugin`, so the user can drag them. Scenes about an agent (a
-  robot, a drone) register keyboard controls, avoid the keys of the default viewer controls, and log their keymap at
-  start. The module docstring lists the same keymap.
+- **`-r/--record`** adds a camera framed like the viewer and records the run to `out/<script>.mp4`: the scripted
+  scenario headless, the interactive session with `-v`.
+- **Interactive with `-v`.** The scripted scenario is skipped, and the user controls the scene from the first frame
+  while the viewer is alive. Scenes about objects attach `MouseInteractionPlugin`, so the user can drag them. Scenes
+  about an agent (a robot, a drone) register keyboard controls, avoid the keys of the default viewer controls, and log
+  their keymap at start. The module docstring lists the same keymap.
 
-Keep the loops in this order: the scripted `for` loops, then `camera.stop_recording()`, then the
-`while args.vis and scene.viewer.is_alive()` loop, skipped under `PYTEST_VERSION`. Write a scripted phase as the same
+Branch on `args.vis` once the scene is built: the interactive `while scene.viewer.is_alive()` loop under `-v`, the
+scripted `for` loops otherwise. `camera.stop_recording()` follows whichever ran. Write a scripted phase as the same
 calls the keys make, one phase after the other.
 
 The examples about the viewer itself (`viewer_plugin/`, `gui/`) always open the viewer, since it is their subject.

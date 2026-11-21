@@ -7,9 +7,10 @@ holds the corners, and the contact of the cloth with itself and with the table. 
 share of the near-half vertices that end up over the far half, and how far the near edge lands from the far edge.
 
 The IPC solver runs on a CUDA GPU whatever the backend, which only selects the device of the rigid solver. With the
-viewer (-v), the keys below then drive the hand of the Franka on the right, so it can grab the towel and drag it.
+viewer (-v), the scripted fold is skipped: both hands wait open in front of the overhanging corners, and the keys below
+drive the hand of the Franka on the right, so it can grab the towel and drag it.
 
-Keyboard controls:
+Keyboard controls (-v):
 Up        - Move forward (-x)
 Down      - Move backward (+x)
 Left      - Move left (-y)
@@ -170,7 +171,7 @@ def main():
             for y_sign in (1.0, -1.0)
         ]
     )
-    # The target of each hand, written by the scripted fold and then by the keys.
+    # The target of each hand, written by the scripted fold or by the keys.
     targets_pos = pinch_pos - (HAND_TO_PINCH + 0.06) * approach_dir
     targets_quat = np.tile(pinch_quat, (2, 1))
     is_gripper_closed = np.zeros(2, dtype=gs.np_bool)
@@ -200,110 +201,111 @@ def main():
             targets_quat[:] = gu.slerp(starts_quat, goals_quat, np.full(2, ratio))
             track_targets()
 
-    is_pytest = "PYTEST_VERSION" in os.environ
-    n_approach, n_close, n_fold, n_settle, n_retreat = (10, 10, 30, 10, 10) if is_pytest else (100, 50, 300, 50, 100)
-
-    towel_verts_pos_0 = tensor_to_array(towel.get_verts_pos())
     if camera is not None:
         camera.start_recording(save_to_filename="out/ipc_fold_towel.mp4", fps=RECORDING_FPS)
+    if args.vis:
 
-    # Slide the open fingers around the overhanging corners, then pinch.
-    move_hands_to(pinch_pos - HAND_TO_PINCH * approach_dir, targets_quat.copy(), n_approach)
-    is_gripper_closed[:] = True
-    for _ in range(n_close):
-        track_targets()
+        def move(dpos):
+            targets_pos[0] += dpos
 
-    # Swing the pinched corners about the fold line. The wrists turn at half the rate of the swing, so that the hands
-    # end pointing down onto the far half instead of upside down. The swing stops short of a half turn and a little
-    # high, so that the near half lands on the far half rather than in it.
-    fold_center = np.array([0.0, 0.0, TABLE_HEIGHT])
-    for i_step in range(n_fold):
-        angle = np.pi * 0.96 * (0.5 - 0.5 * np.cos(np.pi * (i_step + 1) / n_fold))
-        fold_R = gu.axis_angle_to_R(np.array([0.0, 1.0, 0.0]), angle)
-        wrist_quat = gu.R_to_quat(gu.axis_angle_to_R(np.array([0.0, 1.0, 0.0]), 0.5 * angle))
-        targets_quat[:] = gu.transform_quat_by_quat(np.tile(pinch_quat, (2, 1)), np.tile(wrist_quat, (2, 1)))
-        pinch_dir = gu.transform_by_quat(approach_dir, wrist_quat)
-        fold_pos = fold_center + (pinch_pos - fold_center) @ fold_R.T + [0.0, 0.0, 0.03 * angle / np.pi]
-        targets_pos[:] = fold_pos - HAND_TO_PINCH * pinch_dir
-        track_targets()
+        def rotate(axis_idx, delta):
+            delta_xyz = np.zeros(3)
+            delta_xyz[axis_idx] = delta
+            targets_quat[0] = gu.transform_quat_by_quat(targets_quat[0], gu.xyz_to_quat(delta_xyz))
 
-    # Release, let the cloth settle, then lift the hands away.
-    is_gripper_closed[:] = False
-    for _ in range(n_settle):
-        track_targets()
-    move_hands_to(targets_pos + [0.0, 0.0, 0.15], targets_quat.copy(), n_retreat)
+        def reset_target():
+            targets_pos[0], targets_quat[0] = target_init_pos, target_init_quat
 
+        def set_gripper(close):
+            is_gripper_closed[0] = close
+
+        is_running = True
+
+        def stop():
+            nonlocal is_running
+            is_running = False
+
+        scene.viewer.register_keybinds(
+            Keybind("move_forward", Key.UP, KeyAction.HOLD, callback=move, args=((-DELTA_POS, 0, 0),)),
+            Keybind("move_back", Key.DOWN, KeyAction.HOLD, callback=move, args=((DELTA_POS, 0, 0),)),
+            Keybind("move_left", Key.LEFT, KeyAction.HOLD, callback=move, args=((0, -DELTA_POS, 0),)),
+            Keybind("move_right", Key.RIGHT, KeyAction.HOLD, callback=move, args=((0, DELTA_POS, 0),)),
+            Keybind("move_up", Key.K, KeyAction.HOLD, callback=move, args=((0, 0, DELTA_POS),)),
+            Keybind("move_down", Key.J, KeyAction.HOLD, callback=move, args=((0, 0, -DELTA_POS),)),
+            Keybind("yaw_left", Key.N, KeyAction.HOLD, callback=rotate, args=(2, DELTA_ROT)),
+            Keybind("yaw_right", Key.M, KeyAction.HOLD, callback=rotate, args=(2, -DELTA_ROT)),
+            Keybind("pitch_up", Key.U, KeyAction.HOLD, callback=rotate, args=(1, DELTA_ROT)),
+            Keybind("pitch_down", Key.Y, KeyAction.HOLD, callback=rotate, args=(1, -DELTA_ROT)),
+            Keybind("roll_left", Key.T, KeyAction.HOLD, callback=rotate, args=(0, DELTA_ROT)),
+            Keybind("roll_right", Key.G, KeyAction.HOLD, callback=rotate, args=(0, -DELTA_ROT)),
+            Keybind("reset_target", Key.BACKSLASH, KeyAction.RELEASE, callback=reset_target),
+            Keybind("close_gripper", Key.SPACE, KeyAction.PRESS, callback=set_gripper, args=(True,)),
+            Keybind("open_gripper", Key.SPACE, KeyAction.RELEASE, callback=set_gripper, args=(False,)),
+            Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
+        )
+        gs.logger.info(
+            "Keys: arrows move in x/y, K/J move up/down, N/M yaw, U/Y pitch, T/G roll, Backslash resets the target, "
+            "hold Space to close the gripper, Esc quits."
+        )
+        while is_running and scene.viewer.is_alive():
+            track_targets()
+    else:
+        if "PYTEST_VERSION" in os.environ:
+            n_approach, n_close, n_fold, n_settle, n_retreat = 10, 10, 30, 10, 10
+        else:
+            n_approach, n_close, n_fold, n_settle, n_retreat = 100, 50, 300, 50, 100
+
+        towel_verts_pos_0 = tensor_to_array(towel.get_verts_pos())
+
+        # Slide the open fingers around the overhanging corners, then pinch.
+        move_hands_to(pinch_pos - HAND_TO_PINCH * approach_dir, targets_quat.copy(), n_approach)
+        is_gripper_closed[:] = True
+        for _ in range(n_close):
+            track_targets()
+
+        # Swing the pinched corners about the fold line. The wrists turn at half the rate of the swing, so that the
+        # hands end pointing down onto the far half instead of upside down. The swing stops short of a half turn and a
+        # little high, so that the near half lands on the far half rather than in it.
+        fold_center = np.array([0.0, 0.0, TABLE_HEIGHT])
+        for i_step in range(n_fold):
+            angle = np.pi * 0.96 * (0.5 - 0.5 * np.cos(np.pi * (i_step + 1) / n_fold))
+            fold_R = gu.axis_angle_to_R(np.array([0.0, 1.0, 0.0]), angle)
+            wrist_quat = gu.R_to_quat(gu.axis_angle_to_R(np.array([0.0, 1.0, 0.0]), 0.5 * angle))
+            targets_quat[:] = gu.transform_quat_by_quat(np.tile(pinch_quat, (2, 1)), np.tile(wrist_quat, (2, 1)))
+            pinch_dir = gu.transform_by_quat(approach_dir, wrist_quat)
+            fold_pos = fold_center + (pinch_pos - fold_center) @ fold_R.T + [0.0, 0.0, 0.03 * angle / np.pi]
+            targets_pos[:] = fold_pos - HAND_TO_PINCH * pinch_dir
+            track_targets()
+
+        # Release, let the cloth settle, then lift the hands away.
+        is_gripper_closed[:] = False
+        for _ in range(n_settle):
+            track_targets()
+        move_hands_to(targets_pos + [0.0, 0.0, 0.15], targets_quat.copy(), n_retreat)
+
+        # Fold quality: a near-half vertex is folded when it lies over the footprint of the far half and above the cloth
+        # of the far half. The edge error is the distance from each near-edge vertex to its far-edge counterpart.
+        towel_verts_pos = tensor_to_array(towel.get_verts_pos())
+        x_0, y_0 = towel_verts_pos_0[..., 0], towel_verts_pos_0[..., 1]
+        is_near_half = x_0 < -gs.EPS
+        is_far_half = x_0 > gs.EPS
+        half_width = 0.5 * TOWEL_SIZE + 0.01
+        x, y, z = towel_verts_pos[..., 0], towel_verts_pos[..., 1], towel_verts_pos[..., 2]
+        is_over_far_half = (x > -0.01) & (x < half_width) & (np.abs(y) < half_width) & (z > z[is_far_half].mean())
+        folded_ratio = np.count_nonzero(is_over_far_half & is_near_half) / np.count_nonzero(is_near_half)
+        is_near_edge = x_0 < x_0.min() + gs.EPS
+        is_far_edge = x_0 > x_0.max() - gs.EPS
+        near_edge_order, far_edge_order = np.argsort(y_0[is_near_edge]), np.argsort(y_0[is_far_edge])
+        edge_gap = np.linalg.norm(
+            towel_verts_pos[is_near_edge][near_edge_order, :2] - towel_verts_pos[is_far_edge][far_edge_order, :2],
+            axis=-1,
+        )
+        gs.logger.info(
+            f"Fold quality: {100.0 * folded_ratio:.0f}% of the near half lies over the far half, near edge "
+            f"{1e3 * edge_gap.mean():.1f} mm from the far edge on average ({1e3 * edge_gap.max():.1f} mm at worst)."
+        )
     if camera is not None:
         camera.stop_recording()
-
-    # Fold quality: a near-half vertex is folded when it lies over the footprint of the far half and above the cloth
-    # of the far half. The edge error is the distance from each near-edge vertex to the far-edge vertex it should meet.
-    towel_verts_pos = tensor_to_array(towel.get_verts_pos())
-    x_0, y_0 = towel_verts_pos_0[..., 0], towel_verts_pos_0[..., 1]
-    is_near_half = x_0 < -gs.EPS
-    is_far_half = x_0 > gs.EPS
-    half_width = 0.5 * TOWEL_SIZE + 0.01
-    x, y, z = towel_verts_pos[..., 0], towel_verts_pos[..., 1], towel_verts_pos[..., 2]
-    is_over_far_half = (x > -0.01) & (x < half_width) & (np.abs(y) < half_width) & (z > z[is_far_half].mean())
-    folded_ratio = np.count_nonzero(is_over_far_half & is_near_half) / np.count_nonzero(is_near_half)
-    is_near_edge = x_0 < x_0.min() + gs.EPS
-    is_far_edge = x_0 > x_0.max() - gs.EPS
-    near_edge_order, far_edge_order = np.argsort(y_0[is_near_edge]), np.argsort(y_0[is_far_edge])
-    edge_gap = np.linalg.norm(
-        towel_verts_pos[is_near_edge][near_edge_order, :2] - towel_verts_pos[is_far_edge][far_edge_order, :2], axis=-1
-    )
-    gs.logger.info(
-        f"Fold quality: {100.0 * folded_ratio:.0f}% of the near half lies over the far half, near edge "
-        f"{1e3 * edge_gap.mean():.1f} mm from the far edge on average ({1e3 * edge_gap.max():.1f} mm at worst)."
-    )
-
-    if not args.vis or is_pytest:
-        return
-
-    def move(dpos):
-        targets_pos[0] += dpos
-
-    def rotate(axis_idx, delta):
-        delta_xyz = np.zeros(3)
-        delta_xyz[axis_idx] = delta
-        targets_quat[0] = gu.transform_quat_by_quat(targets_quat[0], gu.xyz_to_quat(delta_xyz))
-
-    def reset_target():
-        targets_pos[0], targets_quat[0] = target_init_pos, target_init_quat
-
-    def set_gripper(close):
-        is_gripper_closed[0] = close
-
-    is_running = True
-
-    def stop():
-        nonlocal is_running
-        is_running = False
-
-    scene.viewer.register_keybinds(
-        Keybind("move_forward", Key.UP, KeyAction.HOLD, callback=move, args=((-DELTA_POS, 0, 0),)),
-        Keybind("move_back", Key.DOWN, KeyAction.HOLD, callback=move, args=((DELTA_POS, 0, 0),)),
-        Keybind("move_left", Key.LEFT, KeyAction.HOLD, callback=move, args=((0, -DELTA_POS, 0),)),
-        Keybind("move_right", Key.RIGHT, KeyAction.HOLD, callback=move, args=((0, DELTA_POS, 0),)),
-        Keybind("move_up", Key.K, KeyAction.HOLD, callback=move, args=((0, 0, DELTA_POS),)),
-        Keybind("move_down", Key.J, KeyAction.HOLD, callback=move, args=((0, 0, -DELTA_POS),)),
-        Keybind("yaw_left", Key.N, KeyAction.HOLD, callback=rotate, args=(2, DELTA_ROT)),
-        Keybind("yaw_right", Key.M, KeyAction.HOLD, callback=rotate, args=(2, -DELTA_ROT)),
-        Keybind("pitch_up", Key.U, KeyAction.HOLD, callback=rotate, args=(1, DELTA_ROT)),
-        Keybind("pitch_down", Key.Y, KeyAction.HOLD, callback=rotate, args=(1, -DELTA_ROT)),
-        Keybind("roll_left", Key.T, KeyAction.HOLD, callback=rotate, args=(0, DELTA_ROT)),
-        Keybind("roll_right", Key.G, KeyAction.HOLD, callback=rotate, args=(0, -DELTA_ROT)),
-        Keybind("reset_target", Key.BACKSLASH, KeyAction.RELEASE, callback=reset_target),
-        Keybind("close_gripper", Key.SPACE, KeyAction.PRESS, callback=set_gripper, args=(True,)),
-        Keybind("open_gripper", Key.SPACE, KeyAction.RELEASE, callback=set_gripper, args=(False,)),
-        Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
-    )
-    gs.logger.info(
-        "Keys: arrows move in x/y, K/J move up/down, N/M yaw, U/Y pitch, T/G roll, Backslash resets the target, "
-        "hold Space to close the gripper, Esc quits."
-    )
-    while is_running and scene.viewer.is_alive():
-        track_targets()
 
 
 if __name__ == "__main__":

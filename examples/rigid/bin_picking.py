@@ -7,7 +7,7 @@ the run logs how many objects reached the tray. Objects at rest hibernate, so th
 neighbour wakes them. With '--suction' the fingers stay closed and a weld constraint, added and removed at runtime,
 holds the object as a suction cup would.
 
-With the viewer (-v), the keyboard drives the hand once the bin is empty:
+Keyboard controls (-v):
 Up        - Move forward (-x)
 Down      - Move backward (+x)
 Left      - Move left (-y)
@@ -237,62 +237,23 @@ def main():
         x, y, _ = obj.get_pos().tolist()
         return abs(x - center[0]) < half_size[0] and abs(y - center[1]) < half_size[1]
 
-    # Pick the objects from the top of the pile down. A missed grasp or an object dropped on the way back into the bin
-    # is retried from the new position of the object, twice at most.
-    for asset_name, obj in sorted(zip(asset_names, objects), key=lambda item: -item[1].get_pos()[2].item()):
-        for i_attempt in range(n_attempts):
-            if not is_inside(obj, BIN_POS, BIN_HALF_SIZE):
-                break
-            x, y, _ = obj.get_pos().tolist()
-            top_z = obj.get_AABB()[1, 2].item()
-            # The hand is long along its fingers, so it lies parallel to the bin wall nearest to the object.
-            is_near_x_wall = BIN_HALF_SIZE[0] - abs(x - BIN_POS[0]) < BIN_HALF_SIZE[1] - abs(y - BIN_POS[1])
-            hand_quat = HAND_QUATS[int(is_near_x_wall)]
-            move_hand((x, y, top_z + 0.25), steps=150, plan=True)
-            # The fingers close 2 cm below the top of the object, and the suction cup presses on it.
-            move_hand((x, y, top_z + PAD_DEPTH - (0.0 if args.suction else 0.02)), steps=120)
-            grasp(obj)
-            for _ in range(int(30 * step_scale)):
-                scene.step()
-            move_hand((x, y, top_z + 0.25), steps=80)
-            if obj.get_pos()[2].item() > BIN_POS[2] + 0.12:
-                hand_quat = HAND_QUATS[0]
-                move_hand((TRAY_POS[0], TRAY_POS[1], TRAY_POS[2] + 0.35), steps=250, plan=True)
-                # Set the object down on the tray floor before letting go, so that it neither bounces out nor hangs
-                # on a finger.
-                move_hand((TRAY_POS[0], TRAY_POS[1], TRAY_POS[2] + 0.17), steps=60)
-            release()
-            for _ in range(int(30 * step_scale)):
-                scene.step()
-            if is_inside(obj, TRAY_POS, (0.5 * TRAY_SIZE, 0.5 * TRAY_SIZE)):
-                gs.logger.info(f"The {asset_name} is in the tray.")
-                break
-            gs.logger.info(f"Attempt {i_attempt + 1} at the {asset_name} failed.")
-        move_hand((TRAY_POS[0], TRAY_POS[1], TRAY_POS[2] + 0.35), steps=60)
-
-    n_in_tray = sum(is_inside(obj, TRAY_POS, (0.5 * TRAY_SIZE, 0.5 * TRAY_SIZE)) for obj in objects)
-    gs.logger.info(f"{n_in_tray} of {len(objects)} objects ended up in the tray.")
-
-    if camera is not None:
-        camera.stop_recording()
-
-    # Keybind callbacks run on the viewer thread, so they only set the requests that the main loop carries out.
-    target_pos = hand.get_pos()
-    is_grasp_requested = False
-    is_running = True
-
-    def move(delta):
-        target_pos[:] += target_pos.new_tensor(delta)
-
-    def request_grasp(is_requested):
-        nonlocal is_grasp_requested
-        is_grasp_requested = is_requested
-
-    def stop():
-        nonlocal is_running
-        is_running = False
-
     if args.vis:
+        # Keybind callbacks run on the viewer thread, so they only set the requests that the main loop carries out.
+        target_pos = hand.get_pos()
+        is_grasp_requested = False
+        is_running = True
+
+        def move(delta):
+            target_pos[:] += target_pos.new_tensor(delta)
+
+        def request_grasp(is_requested):
+            nonlocal is_grasp_requested
+            is_grasp_requested = is_requested
+
+        def stop():
+            nonlocal is_running
+            is_running = False
+
         step = 0.003
         scene.viewer.register_keybinds(
             Keybind("move_forward", Key.UP, KeyAction.HOLD, callback=move, args=((-step, 0.0, 0.0),)),
@@ -306,19 +267,58 @@ def main():
             Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
         )
         gs.logger.info("Keys: arrows move in x/y, K/J move up/down, hold Space to grasp, Esc quits.")
-    is_grasping = False
-    while args.vis and scene.viewer.is_alive() and is_running and "PYTEST_VERSION" not in os.environ:
-        if is_grasp_requested and not is_grasping:
-            # The suction cup takes the object nearest to the fingertips.
-            fingertips_pos = hand.get_pos() - hand.get_pos().new_tensor((0.0, 0.0, PAD_DEPTH))
-            grasp(min(objects, key=lambda obj: (obj.get_pos() - fingertips_pos).norm().item()))
-            is_grasping = True
-        elif not is_grasp_requested and is_grasping:
-            release()
-            is_grasping = False
-        qpos = franka.inverse_kinematics(link=hand, pos=target_pos, quat=hand_quat)
-        franka.control_dofs_position(qpos[:7], arm_dofs)
-        scene.step()
+        is_grasping = False
+        while scene.viewer.is_alive() and is_running:
+            if is_grasp_requested and not is_grasping:
+                # The suction cup takes the object nearest to the fingertips.
+                fingertips_pos = hand.get_pos() - hand.get_pos().new_tensor((0.0, 0.0, PAD_DEPTH))
+                grasp(min(objects, key=lambda obj: (obj.get_pos() - fingertips_pos).norm().item()))
+                is_grasping = True
+            elif not is_grasp_requested and is_grasping:
+                release()
+                is_grasping = False
+            qpos = franka.inverse_kinematics(link=hand, pos=target_pos, quat=hand_quat)
+            franka.control_dofs_position(qpos[:7], arm_dofs)
+            scene.step()
+    else:
+        # Pick the objects from the top of the pile down. A missed grasp or an object dropped on the way back into the
+        # bin is retried from the new position of the object, twice at most.
+        for asset_name, obj in sorted(zip(asset_names, objects), key=lambda item: -item[1].get_pos()[2].item()):
+            for i_attempt in range(n_attempts):
+                if not is_inside(obj, BIN_POS, BIN_HALF_SIZE):
+                    break
+                x, y, _ = obj.get_pos().tolist()
+                top_z = obj.get_AABB()[1, 2].item()
+                # The hand is long along its fingers, so it lies parallel to the bin wall nearest to the object.
+                is_near_x_wall = BIN_HALF_SIZE[0] - abs(x - BIN_POS[0]) < BIN_HALF_SIZE[1] - abs(y - BIN_POS[1])
+                hand_quat = HAND_QUATS[int(is_near_x_wall)]
+                move_hand((x, y, top_z + 0.25), steps=150, plan=True)
+                # The fingers close 2 cm below the top of the object, and the suction cup presses on it.
+                move_hand((x, y, top_z + PAD_DEPTH - (0.0 if args.suction else 0.02)), steps=120)
+                grasp(obj)
+                for _ in range(int(30 * step_scale)):
+                    scene.step()
+                move_hand((x, y, top_z + 0.25), steps=80)
+                if obj.get_pos()[2].item() > BIN_POS[2] + 0.12:
+                    hand_quat = HAND_QUATS[0]
+                    move_hand((TRAY_POS[0], TRAY_POS[1], TRAY_POS[2] + 0.35), steps=250, plan=True)
+                    # Set the object down on the tray floor before letting go, so that it neither bounces out nor
+                    # hangs on a finger.
+                    move_hand((TRAY_POS[0], TRAY_POS[1], TRAY_POS[2] + 0.17), steps=60)
+                release()
+                for _ in range(int(30 * step_scale)):
+                    scene.step()
+                if is_inside(obj, TRAY_POS, (0.5 * TRAY_SIZE, 0.5 * TRAY_SIZE)):
+                    gs.logger.info(f"The {asset_name} is in the tray.")
+                    break
+                gs.logger.info(f"Attempt {i_attempt + 1} at the {asset_name} failed.")
+            move_hand((TRAY_POS[0], TRAY_POS[1], TRAY_POS[2] + 0.35), steps=60)
+
+        n_in_tray = sum(is_inside(obj, TRAY_POS, (0.5 * TRAY_SIZE, 0.5 * TRAY_SIZE)) for obj in objects)
+        gs.logger.info(f"{n_in_tray} of {len(objects)} objects ended up in the tray.")
+
+    if camera is not None:
+        camera.stop_recording()
 
 
 if __name__ == "__main__":

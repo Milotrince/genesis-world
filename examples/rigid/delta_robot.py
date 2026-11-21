@@ -7,11 +7,12 @@ controlled. The joint targets come from the closed-form inverse kinematics of th
 track them under PD control. A suction cup under the platform picks each box as it rides past on the conveyor (a slab
 on a prismatic joint) through a weld constraint added at runtime, and drops it into the bin of its color.
 
-Keyboard controls (-v), once the scripted sort is over:
+Keyboard controls (-v):
 Up/Down    - Move the platform along -x/+x
 Left/Right - Move the platform along -y/+y
 K/J        - Move the platform up/down
 Space      - Hold to grip the box under the suction cup, release to drop it
+B          - Hold to run the belt
 Esc        - Quit
 """
 
@@ -311,45 +312,9 @@ def main():
 
     if camera is not None:
         camera.start_recording(save_to_filename="out/delta_robot.mp4", fps=50)
-    cell.control_dofs_velocity([BELT_SPEED], belt_dof)
-    # Platform heights above the center of a box on the belt: hovering, then with the suction cup on its top face.
-    hover = np.array([0.0, 0.0, 0.5 * BOX_SIZE + TOOL_LENGTH + 0.08])
-    grasp = np.array([0.0, 0.0, 0.5 * BOX_SIZE + TOOL_LENGTH - 0.004])
-    if "PYTEST_VERSION" not in os.environ:
-        n_boxes, n_approach, n_descend, n_lift, n_carry, n_home = N_BOXES, 100, 30, 30, 80, 60
-    else:
-        n_boxes, n_approach, n_descend, n_lift, n_carry, n_home = 1, 20, 20, 20, 20, 0
-    for i_box, box in enumerate(boxes[:n_boxes]):
-        # Follow the box down while it rides on, grip it, lift it, and carry it over its bin, beside the previous one.
-        for n_steps, offset in ((n_approach, hover), (n_descend, grasp)):
-            for _ in range(n_steps):
-                step_towards(tensor_to_array(box.get_pos()) + offset)
-        grip(True)
-        for _ in range(n_lift):
-            step_towards(tensor_to_array(box.get_pos()) + hover)
-        bin_drop = (
-            (-0.05, 0.05)[i_box // 2 % 2],
-            (-BIN_Y, BIN_Y)[i_box % 2],
-            BIN_SIZE[2] + 0.08 + BOX_SIZE + TOOL_LENGTH,
-        )
-        for _ in range(n_carry):
-            step_towards(bin_drop)
-        grip(False)
-    for _ in range(n_home):
-        step_towards(base_pos + HOME_POS)
-    if camera is not None:
-        camera.stop_recording()
-
-    boxes_pos = np.stack([tensor_to_array(box.get_pos()) for box in boxes])
-    n_sorted = sum(
-        abs(boxes_pos[i_box, 0]) < 0.5 * BIN_SIZE[0]
-        and abs(boxes_pos[i_box, 1] - (-BIN_Y, BIN_Y)[i_box % 2]) < 0.5 * BIN_SIZE[1]
-        and boxes_pos[i_box, 2] < BIN_SIZE[2]
-        for i_box in range(N_BOXES)
-    )
-    gs.logger.info(f"{n_sorted} of {N_BOXES} boxes sorted into the bin of their color.")
 
     if args.vis:
+        # The belt stands still until B brings the next boxes within reach of the robot.
         cell.control_dofs_velocity([0.0], belt_dof)
         is_running = True
 
@@ -366,11 +331,57 @@ def main():
             Keybind("move_down", Key.J, KeyAction.HOLD, callback=move, args=((0.0, 0.0, -0.002),)),
             Keybind("grip", Key.SPACE, KeyAction.PRESS, callback=grip, args=(True,)),
             Keybind("release", Key.SPACE, KeyAction.RELEASE, callback=grip, args=(False,)),
+            Keybind(
+                "run_belt", Key.B, KeyAction.PRESS, callback=cell.control_dofs_velocity, args=([BELT_SPEED], belt_dof)
+            ),
+            Keybind("stop_belt", Key.B, KeyAction.RELEASE, callback=cell.control_dofs_velocity, args=([0.0], belt_dof)),
             Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
         )
-        gs.logger.info("Keys: arrows move the platform in x/y, K/J move it up/down, hold Space to grip, Esc quits.")
-        while is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+        gs.logger.info(
+            "Keys: arrows move the platform in x/y, K/J move it up/down, hold Space to grip, hold B to run the belt, "
+            "Esc quits."
+        )
+        while is_running and scene.viewer.is_alive():
             track_target()
+    else:
+        cell.control_dofs_velocity([BELT_SPEED], belt_dof)
+        # Platform heights above the center of a box on the belt: hovering, then with the suction cup on its top face.
+        hover = np.array([0.0, 0.0, 0.5 * BOX_SIZE + TOOL_LENGTH + 0.08])
+        grasp = np.array([0.0, 0.0, 0.5 * BOX_SIZE + TOOL_LENGTH - 0.004])
+        if "PYTEST_VERSION" not in os.environ:
+            n_boxes, n_approach, n_descend, n_lift, n_carry, n_home = N_BOXES, 100, 30, 30, 80, 60
+        else:
+            n_boxes, n_approach, n_descend, n_lift, n_carry, n_home = 1, 20, 20, 20, 20, 0
+        for i_box, box in enumerate(boxes[:n_boxes]):
+            # Follow the box down as it rides on, grip it, lift it, and carry it over its bin beside the previous one.
+            for n_steps, offset in ((n_approach, hover), (n_descend, grasp)):
+                for _ in range(n_steps):
+                    step_towards(tensor_to_array(box.get_pos()) + offset)
+            grip(True)
+            for _ in range(n_lift):
+                step_towards(tensor_to_array(box.get_pos()) + hover)
+            bin_drop = (
+                (-0.05, 0.05)[i_box // 2 % 2],
+                (-BIN_Y, BIN_Y)[i_box % 2],
+                BIN_SIZE[2] + 0.08 + BOX_SIZE + TOOL_LENGTH,
+            )
+            for _ in range(n_carry):
+                step_towards(bin_drop)
+            grip(False)
+        for _ in range(n_home):
+            step_towards(base_pos + HOME_POS)
+
+        boxes_pos = np.stack([tensor_to_array(box.get_pos()) for box in boxes])
+        n_sorted = sum(
+            abs(boxes_pos[i_box, 0]) < 0.5 * BIN_SIZE[0]
+            and abs(boxes_pos[i_box, 1] - (-BIN_Y, BIN_Y)[i_box % 2]) < 0.5 * BIN_SIZE[1]
+            and boxes_pos[i_box, 2] < BIN_SIZE[2]
+            for i_box in range(N_BOXES)
+        )
+        gs.logger.info(f"{n_sorted} of {N_BOXES} boxes sorted into the bin of their color.")
+
+    if camera is not None:
+        camera.stop_recording()
 
 
 if __name__ == "__main__":

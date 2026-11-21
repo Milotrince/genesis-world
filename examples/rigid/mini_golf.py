@@ -7,7 +7,7 @@ link. It picks the stroke speed of each green from that rolling-resistance model
 watches where the ball stops, and corrects the speed of its next putt until the ball ends in the hole. The headless
 run logs how far each ball rolled.
 
-Keyboard controls (-v), once the scripted putts are over:
+Keyboard controls (-v):
 Left/Right - Select the green
 Up/Down    - Raise/lower the stroke speed
 Space      - Putt the ball of the selected green from its tee
@@ -275,24 +275,6 @@ def main():
 
     if camera is not None:
         camera.start_recording(save_to_filename="out/mini_golf.mp4", fps=50)
-    for i_green in range(n_greens):
-        # The rolling distance grows as the square of the stroke speed, so a putt that misses the hole corrects the
-        # speed of the next one by the square root of the ratio of the distances.
-        for i_attempt in range(n_attempts):
-            putt(i_green, greens_speed[i_green])
-            for _ in range(n_roll):
-                track_target()
-            distance = tensor_to_array(balls[i_green].get_pos())[0] - TEE_X
-            gs.logger.info(
-                f"Green {i_green} (friction_rolling {GREENS_FRICTION_ROLLING[i_green]}), putt {i_attempt + 1} at "
-                f"{greens_speed[i_green]:.2f} m/s: ball rolled {distance:.2f} m, hole at {HOLE_DISTANCE:.2f} m."
-            )
-            if abs(distance - HOLE_DISTANCE) < HOLE_RADIUS:
-                break
-            greens_speed[i_green] *= math.sqrt(HOLE_DISTANCE / distance)
-    if camera is not None:
-        camera.stop_recording()
-
     if args.vis:
         i_green_selected = 0
         stroke_speed = float(greens_speed[0])
@@ -326,11 +308,29 @@ def main():
             Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
         )
         gs.logger.info("Keys: Left/Right select the green, Up/Down change the stroke speed, Space putts, Esc quits.")
-        while is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+        while is_running and scene.viewer.is_alive():
             if is_putt_requested:
                 is_putt_requested = False
                 putt(i_green_selected, stroke_speed)
             track_target()
+    else:
+        for i_green in range(n_greens):
+            # The rolling distance grows as the square of the stroke speed, so a putt that misses the hole corrects the
+            # speed of the next one by the square root of the ratio of the distances.
+            for i_attempt in range(n_attempts):
+                putt(i_green, greens_speed[i_green])
+                for _ in range(n_roll):
+                    track_target()
+                distance = tensor_to_array(balls[i_green].get_pos())[0] - TEE_X
+                gs.logger.info(
+                    f"Green {i_green} (friction_rolling {GREENS_FRICTION_ROLLING[i_green]}), putt {i_attempt + 1} at "
+                    f"{greens_speed[i_green]:.2f} m/s: ball rolled {distance:.2f} m, hole at {HOLE_DISTANCE:.2f} m."
+                )
+                if abs(distance - HOLE_DISTANCE) < HOLE_RADIUS:
+                    break
+                greens_speed[i_green] *= math.sqrt(HOLE_DISTANCE / distance)
+    if camera is not None:
+        camera.stop_recording()
 
 
 if __name__ == "__main__":

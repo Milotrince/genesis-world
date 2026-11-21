@@ -5,9 +5,10 @@ solid, so the water carries the duck through the coupling of the two solvers. Th
 tops it up. Pulling the plug deactivates the water particles that reach the drain, at a set flow rate, and turns on a
 vortex force field that swirls the water, the duck and a ring of bath toys around it. The water level and the
 position of the duck are logged along the way. The water is drawn as its particles. Particle scenes are slow on CPU,
-so '-g' speeds the run up a lot.
+so '-g' speeds the run up a lot. With the viewer (-v), the scripted run is skipped: the duck drops into the part-full
+tub with the faucet off and the plug in, and the keys toggle each.
 
-Keyboard controls (with -v, once the scripted run is over):
+Keyboard controls (-v):
 1 - Toggle the faucet
 2 - Pull or replace the plug
 
@@ -288,35 +289,35 @@ def main():
 
     if camera is not None:
         camera.start_recording(save_to_filename="out/sph_mpm_bathtub.mp4", fps=25)
-    # The duck drops in and settles, the faucet tops the tub up and pushes the duck along, then the plug is pulled.
-    n_settle, n_fill, n_drain = (60, 150, 300) if "PYTEST_VERSION" not in os.environ else (10, 10, 10)
-    for i_step in range(n_settle + n_fill + n_drain):
-        if i_step == n_settle:
-            toggle_faucet()
-        if i_step == n_settle + n_fill:
-            toggle_faucet()
-            toggle_plug()
-        step()
-        if i_step % 20 == 19:
-            # The particles sample the water on a lattice of the particle size, which gives its volume and depth.
-            n_water_particles = sum(entity.get_particles_active().sum().item() for entity in (water, faucet.entity))
-            water_level = n_water_particles * particle_size**3 / (size_x * size_y)
-            duck_pos = duck.get_particles_pos().mean(dim=0).tolist()
-            gs.logger.info(
-                f"t = {scene.get_time():.2f} s: water level {100.0 * water_level:.1f} cm ({n_water_particles} "
-                f"particles), duck at ({duck_pos[0]:+.3f}, {duck_pos[1]:+.3f}, {duck_pos[2]:.3f}) m."
-            )
-    if camera is not None:
-        camera.stop_recording()
-
     if args.vis:
         scene.viewer.register_keybinds(
             Keybind("toggle_faucet", Key._1, KeyAction.PRESS, callback=toggle_faucet),
             Keybind("toggle_plug", Key._2, KeyAction.PRESS, callback=toggle_plug),
         )
         gs.logger.info("Keys: 1 toggles the faucet, 2 pulls or replaces the plug.")
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        step()
+        while scene.viewer.is_alive():
+            step()
+    else:
+        # The duck drops in and settles, the faucet tops the tub up and pushes the duck along, then the plug is pulled.
+        n_settle, n_fill, n_drain = (60, 150, 300) if "PYTEST_VERSION" not in os.environ else (10, 10, 10)
+        for i_step in range(n_settle + n_fill + n_drain):
+            if i_step == n_settle:
+                toggle_faucet()
+            if i_step == n_settle + n_fill:
+                toggle_faucet()
+                toggle_plug()
+            step()
+            if i_step % 20 == 19:
+                # The particles sample the water on a lattice of the particle size, which gives its volume and depth.
+                n_water_particles = sum(entity.get_particles_active().sum().item() for entity in (water, faucet.entity))
+                water_level = n_water_particles * particle_size**3 / (size_x * size_y)
+                duck_pos = duck.get_particles_pos().mean(dim=0).tolist()
+                gs.logger.info(
+                    f"t = {scene.get_time():.2f} s: water level {100.0 * water_level:.1f} cm ({n_water_particles} "
+                    f"particles), duck at ({duck_pos[0]:+.3f}, {duck_pos[1]:+.3f}, {duck_pos[2]:.3f}) m."
+                )
+    if camera is not None:
+        camera.stop_recording()
 
 
 if __name__ == "__main__":

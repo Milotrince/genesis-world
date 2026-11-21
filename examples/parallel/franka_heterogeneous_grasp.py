@@ -24,7 +24,7 @@ Variant Assignment Rules:
        - Environment 1 -> Variant 1 (second morph in list)
        - Variants 2 and 3 are unused
 
-With the viewer (-v), drag the objects or the arms with the mouse, during the grasp and after it.
+With the viewer (-v), the arms hold their start pose beside the objects, and the mouse drags either.
 
 Usage:
     python heterogeneous_simulation.py -v -b 4  # 4 environments (matches 4 variants)
@@ -131,39 +131,42 @@ def main():
     print("heterogeneous AABB", AABB)
     print("heterogeneous mass", mass)
 
-    end_effector = franka.get_link("hand")
-    qpos = franka.inverse_kinematics(
-        link=end_effector,
-        pos=np.array([[0.65, 0.0, 0.125 + TABLE_HEIGHT]] * args.num_envs),
-        quat=np.array([[0, 1, 0, 0]] * args.num_envs),
-    )
-    franka.control_dofs_position(qpos[..., :-2], motors_dof)
-
-    # hold
-    for _ in range(n_hold_steps):
-        scene.step()
-
-    # grasp
-    finder_pos = 0.0
-    for _ in range(n_hold_steps):
+    if args.vis:
+        franka.control_dofs_position(franka.get_dofs_position())
+        while scene.viewer.is_alive():
+            scene.step()
+    else:
+        end_effector = franka.get_link("hand")
+        qpos = franka.inverse_kinematics(
+            link=end_effector,
+            pos=np.array([[0.65, 0.0, 0.125 + TABLE_HEIGHT]] * args.num_envs),
+            quat=np.array([[0, 1, 0, 0]] * args.num_envs),
+        )
         franka.control_dofs_position(qpos[..., :-2], motors_dof)
-        franka.control_dofs_position(np.array([[finder_pos, finder_pos]] * args.num_envs), fingers_dof)
-        scene.step()
 
-    # lift
-    qpos = franka.inverse_kinematics(
-        link=end_effector,
-        pos=np.array([[0.65, 0.0, 0.3 + TABLE_HEIGHT]] * args.num_envs),
-        quat=np.array([[0, 1, 0, 0]] * args.num_envs),
-    )
-    for _ in range(2 * n_hold_steps):
-        franka.control_dofs_position(qpos[..., :-2], motors_dof)
-        franka.control_dofs_position(np.array([[finder_pos, finder_pos]] * args.num_envs), fingers_dof)
-        scene.step()
+        # hold
+        for _ in range(n_hold_steps):
+            scene.step()
+
+        # grasp
+        finder_pos = 0.0
+        for _ in range(n_hold_steps):
+            franka.control_dofs_position(qpos[..., :-2], motors_dof)
+            franka.control_dofs_position(np.array([[finder_pos, finder_pos]] * args.num_envs), fingers_dof)
+            scene.step()
+
+        # lift
+        qpos = franka.inverse_kinematics(
+            link=end_effector,
+            pos=np.array([[0.65, 0.0, 0.3 + TABLE_HEIGHT]] * args.num_envs),
+            quat=np.array([[0, 1, 0, 0]] * args.num_envs),
+        )
+        for _ in range(2 * n_hold_steps):
+            franka.control_dofs_position(qpos[..., :-2], motors_dof)
+            franka.control_dofs_position(np.array([[finder_pos, finder_pos]] * args.num_envs), fingers_dof)
+            scene.step()
     if camera is not None:
         camera.stop_recording()
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        scene.step()
 
 
 if __name__ == "__main__":

@@ -3,9 +3,10 @@
 The robot is an MJCF model built inline: a box chassis on four wheels whose hinges are driven by velocity control, and a
 blade fixed to the front of the chassis, yawed so that the snow it meets slides off its trailing end. The snow is an MPM
 `Snow` layer a few centimetres deep, which compacts and hardens as the blade piles it up. The scripted run makes one
-straight pass and logs the share of the snow moved out of the cleared lane and the height of the berm.
+straight pass and logs the share of the snow moved out of the cleared lane and the height of the berm. With the viewer
+(-v), the scripted pass is skipped: the robot stands still in front of the untouched snow, and the keys drive it.
 
-Keyboard controls (with -v, once the scripted pass is over):
+Keyboard controls (-v):
 Up    - Drive forward
 Down  - Drive backward
 Left  - Turn left
@@ -172,7 +173,7 @@ def main():
     ]
     robot.set_dofs_kv(50.0, wheels_dof)
 
-    # Throttle and turn commands in [-1, 1], set by the scripted pass and by the arrow keys alike.
+    # Throttle and turn commands in [-1, 1], set by the scripted pass or by the arrow keys.
     command = np.zeros(2)
 
     def set_command(i_axis: int, value: float):
@@ -184,33 +185,8 @@ def main():
         robot.control_dofs_velocity(np.repeat((speed_left, speed_right), 2) / WHEEL_RADIUS, wheels_dof)
         scene.step()
 
-    snow_pos_init = tensor_to_array(snow.get_particles_pos())
-
     if camera is not None:
         camera.start_recording(save_to_filename="out/rigid_mpm_snowplow.mp4", fps=30)
-    n_pass, n_settle = (1000, 100) if "PYTEST_VERSION" not in os.environ else (20, 5)
-    set_command(0, 1.0)
-    for _ in range(n_pass):
-        drive()
-    set_command(0, 0.0)
-    for _ in range(n_settle):
-        drive()
-    if camera is not None:
-        camera.stop_recording()
-
-    # The lane is the swath of the yawed blade along the path of the robot, up to the end of the layer.
-    lane_half_width = BLADE_HALF_SIZE[1] * math.cos(math.radians(BLADE_YAW_DEG))
-    snow_pos = tensor_to_array(snow.get_particles_pos())
-    is_in_lane_init = np.abs(snow_pos_init[:, 1]) < lane_half_width
-    is_in_lane = (np.abs(snow_pos[:, 1]) < lane_half_width) & (snow_pos[:, 0] < SNOW_UPPER[0])
-    share_moved = 1.0 - np.count_nonzero(is_in_lane & is_in_lane_init) / np.count_nonzero(is_in_lane_init)
-    berm_height = np.percentile(snow_pos[~is_in_lane, 2], 99)
-    gs.logger.info(
-        f"Snow moved out of the lane: {100.0 * share_moved:.0f}%. Berm height: {100.0 * berm_height:.1f} cm, on a "
-        f"{100.0 * SNOW_UPPER[2]:.0f} cm layer."
-    )
-
-    # The keys are registered once the scripted pass is over, so that a key press cannot interfere with it.
     if args.vis:
         scene.viewer.register_keybinds(
             Keybind("forward", Key.UP, KeyAction.PRESS, callback=set_command, args=(0, 1.0)),
@@ -223,8 +199,31 @@ def main():
             Keybind("stop_right", Key.RIGHT, KeyAction.RELEASE, callback=set_command, args=(1, 0.0)),
         )
         gs.logger.info("Keys: Up/Down drive forward/backward, Left/Right turn.")
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        drive()
+        while scene.viewer.is_alive():
+            drive()
+    else:
+        snow_pos_init = tensor_to_array(snow.get_particles_pos())
+        n_pass, n_settle = (1000, 100) if "PYTEST_VERSION" not in os.environ else (20, 5)
+        set_command(0, 1.0)
+        for _ in range(n_pass):
+            drive()
+        set_command(0, 0.0)
+        for _ in range(n_settle):
+            drive()
+
+        # The lane is the swath of the yawed blade along the path of the robot, up to the end of the layer.
+        lane_half_width = BLADE_HALF_SIZE[1] * math.cos(math.radians(BLADE_YAW_DEG))
+        snow_pos = tensor_to_array(snow.get_particles_pos())
+        is_in_lane_init = np.abs(snow_pos_init[:, 1]) < lane_half_width
+        is_in_lane = (np.abs(snow_pos[:, 1]) < lane_half_width) & (snow_pos[:, 0] < SNOW_UPPER[0])
+        share_moved = 1.0 - np.count_nonzero(is_in_lane & is_in_lane_init) / np.count_nonzero(is_in_lane_init)
+        berm_height = np.percentile(snow_pos[~is_in_lane, 2], 99)
+        gs.logger.info(
+            f"Snow moved out of the lane: {100.0 * share_moved:.0f}%. Berm height: {100.0 * berm_height:.1f} cm, on a "
+            f"{100.0 * SNOW_UPPER[2]:.0f} cm layer."
+        )
+    if camera is not None:
+        camera.stop_recording()
 
 
 if __name__ == "__main__":

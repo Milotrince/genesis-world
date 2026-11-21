@@ -5,9 +5,10 @@ sword. The blade is much thinner than an MPM grid cell, so the solver runs with 
 which keeps the particles on either side of a thin rigid geom from interacting through the cells it crosses. The arm
 whips its base joint, so the blade sweeps a horizontal ring at about 3 m/s and slices each fruit falling through it
 across: a slower stroke pushes the fruit away whole. The blade cuts on its strokes in both directions, which alternate,
-and the fruits drop one or two at a time. The run logs the pieces of each fruit.
+and the fruits drop one or two at a time. The run logs the pieces of each fruit. With the viewer (-v), the scripted
+rounds are skipped: the blade rests level beside the drop zone, no fruit has fallen yet, and the keys drive it.
 
-Keyboard controls (-v), once the scripted rounds are over:
+Keyboard controls (-v):
 Left/Right - Whip the blade to the left/right
 Up/Down    - Raise/lower the blade
 T          - Drop the next fruit, while any is left
@@ -258,33 +259,6 @@ def main():
         fruit.set_position((*fruit.morph.pos[:2], DROP_HEIGHT))
         n_dropped += 1
 
-    # Each round whips the blade the other way, and drops each of its fruits so that the fruit falls through the cut
-    # height as the blade reaches its azimuth.
-    n_cut = 0
-    fruits_n_pieces = np.zeros(len(fruits), dtype=gs.np_int)
-    for i_round, (side, fruits_idx) in enumerate(ROUNDS):
-        crossings_step = [round(SWING_MIDDLE_STEPS + side * FRUITS[i][3] * SWING_STEPS_PER_RAD) for i in fruits_idx]
-        whip_step = fall_steps - min(crossings_step)
-        n_steps = whip_step + max(crossings_step) + ROUND_END_STEPS
-        for i_step in range(3 if "PYTEST_VERSION" in os.environ else n_steps):
-            if i_step == whip_step:
-                aim(side)
-            if i_step == whip_step + READY_STEPS:
-                ready()
-            for i_fruit, crossing_step in zip(fruits_idx, crossings_step):
-                if i_step == whip_step + crossing_step - fall_steps:
-                    drop(fruits[i_fruit])
-                if 0 <= i_step - whip_step - crossing_step <= COUNT_WINDOW_STEPS:
-                    fruits_n_pieces[i_fruit] = max(fruits_n_pieces[i_fruit], count_pieces(fruits[i_fruit]))
-                if i_step == whip_step + crossing_step + COUNT_WINDOW_STEPS:
-                    n_cut += fruits_n_pieces[i_fruit] >= 2
-                    n_pieces = fruits_n_pieces[i_fruit]
-                    gs.logger.info(f"Round {i_round + 1}: the {FRUITS[i_fruit][0]} is cut into {n_pieces} piece(s).")
-            scene.step()
-    gs.logger.info(f"Cut {n_cut} of {n_dropped} dropped fruits in two.")
-    if camera is not None:
-        camera.stop_recording()
-
     if args.vis:
         is_running = True
 
@@ -320,11 +294,40 @@ def main():
             Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
         )
         gs.logger.info("Keys: Left/Right whip the blade, Up/Down raise/lower it, T drops a fruit, Esc quits.")
-        while is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+        while is_running and scene.viewer.is_alive():
             if ready_countdown == 0:
                 ready()
             ready_countdown -= 1
             scene.step()
+    else:
+        # Each round whips the blade the other way, and drops each of its fruits so that the fruit falls through the cut
+        # height as the blade reaches its azimuth.
+        n_cut = 0
+        fruits_n_pieces = np.zeros(len(fruits), dtype=gs.np_int)
+        for i_round, (side, fruits_idx) in enumerate(ROUNDS):
+            crossings_step = [round(SWING_MIDDLE_STEPS + side * FRUITS[i][3] * SWING_STEPS_PER_RAD) for i in fruits_idx]
+            whip_step = fall_steps - min(crossings_step)
+            n_steps = whip_step + max(crossings_step) + ROUND_END_STEPS
+            for i_step in range(3 if "PYTEST_VERSION" in os.environ else n_steps):
+                if i_step == whip_step:
+                    aim(side)
+                if i_step == whip_step + READY_STEPS:
+                    ready()
+                for i_fruit, crossing_step in zip(fruits_idx, crossings_step):
+                    if i_step == whip_step + crossing_step - fall_steps:
+                        drop(fruits[i_fruit])
+                    if 0 <= i_step - whip_step - crossing_step <= COUNT_WINDOW_STEPS:
+                        fruits_n_pieces[i_fruit] = max(fruits_n_pieces[i_fruit], count_pieces(fruits[i_fruit]))
+                    if i_step == whip_step + crossing_step + COUNT_WINDOW_STEPS:
+                        n_cut += fruits_n_pieces[i_fruit] >= 2
+                        n_pieces = fruits_n_pieces[i_fruit]
+                        gs.logger.info(
+                            f"Round {i_round + 1}: the {FRUITS[i_fruit][0]} is cut into {n_pieces} piece(s)."
+                        )
+                scene.step()
+        gs.logger.info(f"Cut {n_cut} of {n_dropped} dropped fruits in two.")
+    if camera is not None:
+        camera.stop_recording()
 
 
 if __name__ == "__main__":

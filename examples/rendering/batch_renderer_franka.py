@@ -1,11 +1,11 @@
 """A Franka in several parallel environments, seen by cameras of the batch renderer, one of them attached to the arm.
 
 Each step, the script exports the images of one camera (or of every camera with --render-all-cameras) to the output
-directory. The batch renderer needs gs_madrona and a CUDA GPU. With the viewer (-v), drag the arm with the mouse.
+directory. The batch renderer needs gs_madrona and a CUDA GPU. With the viewer (-v), drag the arm with the mouse, and no
+image is exported.
 """
 
 import argparse
-import os
 
 import numpy as np
 
@@ -131,27 +131,30 @@ def main():
 
     if video_camera is not None:
         video_camera.start_recording(save_to_filename="out/batch_renderer_franka.mp4", fps=round(1.0 / scene.dt))
-    for i in range(args.steps):
-        scene.step()
-        if args.render_all_cameras:
-            color, depth, seg, normal = scene.render_all_cameras(
-                rgb=True, depth=i % 2 == 1, segmentation=i % 2 == 1, normal=True
-            )
-            exporter.export_frame_all_cameras(i, rgb=color, depth=depth, segmentation=seg, normal=normal)
-        else:
-            color, depth, seg, normal = cam_1.render(
-                rgb=False,
-                depth=True,
-                segmentation=True,
-                colorize_seg=True,
-                normal=False,
-            )
-            exporter.export_frame_single_camera(i, cam_1.idx, rgb=seg, depth=depth, segmentation=None, normal=normal)
+    if args.vis:
+        while scene.viewer.is_alive():
+            scene.step()
+    else:
+        for i in range(args.steps):
+            scene.step()
+            if args.render_all_cameras:
+                color, depth, seg, normal = scene.render_all_cameras(
+                    rgb=True, depth=i % 2 == 1, segmentation=i % 2 == 1, normal=True
+                )
+                exporter.export_frame_all_cameras(i, rgb=color, depth=depth, segmentation=seg, normal=normal)
+            else:
+                color, depth, seg, normal = cam_1.render(
+                    rgb=False,
+                    depth=True,
+                    segmentation=True,
+                    colorize_seg=True,
+                    normal=False,
+                )
+                exporter.export_frame_single_camera(
+                    i, cam_1.idx, rgb=seg, depth=depth, segmentation=None, normal=normal
+                )
     if video_camera is not None:
         video_camera.stop_recording()
-
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        scene.step()
 
 
 if __name__ == "__main__":

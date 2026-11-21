@@ -3,8 +3,9 @@ SurfaceDistanceProbe sensors on the palm and fingertips of a Shadow Hand measure
 and a box.
 
 Without the viewer, the hand follows a scripted sweep past both objects and logs the distances. With the viewer (-v),
-the same sweep runs, and the keyboard then drives the hand:
+the keyboard drives the hand from its start pose.
 
+Keyboard controls (-v):
     Up / Down       move the hand along +x / -x
     Left / Right    move the hand along +y / -y
     j / k           move the hand down / up
@@ -163,27 +164,28 @@ def main():
     if camera is not None:
         camera.start_recording(save_to_filename="out/surface_distance_shadowhand.mp4", fps=round(1.0 / scene.dt))
 
-    # The same moves the arrow keys and j/k issue, one per step: the hand climbs, sweeps past the duck, then dips
-    # towards the box.
-    scripted_moves = ((2, False, 15), (1, False, 25), (0, True, 15), (2, True, 20), (1, True, 10))
-    if "PYTEST_VERSION" in os.environ:
-        scripted_moves = scripted_moves[:1]
-    i_step = 0
-    for index, is_negative, n_steps in scripted_moves:
-        for _ in range(n_steps):
-            translate(index, is_negative)
+    if args.vis:
+        while scene.viewer.is_alive():
             robot.control_dofs_position(hand_pos, dofs_idx_local=slice(0, 3))
             scene.step()
-            if i_step % 10 == 0:
-                distances = torch.cat([sensor.read() for sensor in sensors], dim=-1)
-                gs.logger.info(f"Step {i_step}: palm and fingertip distances {tensor_to_array(distances).round(3)}")
-            i_step += 1
+    else:
+        # The same moves the arrow keys and j/k issue, one per step: the hand climbs, sweeps past the duck, then dips
+        # towards the box.
+        scripted_moves = ((2, False, 15), (1, False, 25), (0, True, 15), (2, True, 20), (1, True, 10))
+        if "PYTEST_VERSION" in os.environ:
+            scripted_moves = scripted_moves[:1]
+        i_step = 0
+        for index, is_negative, n_steps in scripted_moves:
+            for _ in range(n_steps):
+                translate(index, is_negative)
+                robot.control_dofs_position(hand_pos, dofs_idx_local=slice(0, 3))
+                scene.step()
+                if i_step % 10 == 0:
+                    distances = torch.cat([sensor.read() for sensor in sensors], dim=-1)
+                    gs.logger.info(f"Step {i_step}: palm and fingertip distances {tensor_to_array(distances).round(3)}")
+                i_step += 1
     if camera is not None:
         camera.stop_recording()
-
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        robot.control_dofs_position(hand_pos, dofs_idx_local=slice(0, 3))
-        scene.step()
 
 
 if __name__ == "__main__":

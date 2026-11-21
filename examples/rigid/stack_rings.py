@@ -6,7 +6,7 @@ at build time. The toy is built at 55% of its size, so that the widest ring fits
 The rings start scattered on the table. The robot grasps each one by its outer rim, lifts it above the peg, centers its
 hole over the peg from the measured position of the ring, lowers it onto the peg and lets it drop.
 
-Keyboard controls (-v), once the scripted stacking is over:
+Keyboard controls (-v):
 Up/Down    - Move the hand along -x/+x
 Left/Right - Move the hand along -y/+y
 K/J        - Move the hand up/down
@@ -186,47 +186,8 @@ def main():
 
     if camera is not None:
         camera.start_recording(save_to_filename="out/stack_rings.mp4", fps=50)
-    if "PYTEST_VERSION" not in os.environ:
-        n_rings, n_reach, n_grasp, n_settle, n_carry, n_insert = len(rings), 150, 40, 30, 150, 60
-    else:
-        n_rings, n_reach, n_grasp, n_settle, n_carry, n_insert = 1, 20, 10, 10, 20, 10
-    peg_top = TABLE_HEIGHT + SCALE * (BASE_HEIGHT + POLE_HEIGHT)
-    for i_ring, ring in enumerate(rings[:n_rings]):
-        # Reach over the ring from above, the fingertips just clear of the table, and let the arm settle before the
-        # fingers close on the rim across a diameter.
-        ring_pos = tensor_to_array(ring.get_pos())
-        grasp_pos = np.array([*ring_pos[:2], ring_pos[2] - 0.5 * SCALE * RING_HEIGHT + FINGERTIP_OFFSET + 0.002])
-        toggle_gripper(close=False)
-        for waypoint, n_steps in ((grasp_pos + (0.0, 0.0, 0.12), n_reach), (grasp_pos, n_grasp)):
-            for _ in range(n_steps):
-                step_towards(waypoint)
-        for is_closed in (False, True):
-            toggle_gripper(close=is_closed)
-            for _ in range(n_settle):
-                track_target()
-        # Carry the ring until its bottom clears the peg, then lower it onto the peg down to just above the stack. The
-        # hand is steered so that the ring, measured where it actually sits in the hand, reaches each waypoint.
-        ring_top_z = peg_top + 0.5 * SCALE * RING_HEIGHT + 0.02
-        ring_insert_z = max(peg_top - 0.03, TABLE_HEIGHT + SCALE * (BASE_HEIGHT + (i_ring + 0.5) * RING_HEIGHT) + 0.01)
-        for ring_target_z, n_steps in ((ring_top_z, n_carry), (ring_insert_z, n_insert)):
-            for _ in range(n_steps):
-                ring_offset = tensor_to_array(hand.get_pos()) - tensor_to_array(ring.get_pos())
-                step_towards(np.array([*PEG_POS, ring_target_z]) + ring_offset)
-        toggle_gripper(close=False)
-        for _ in range(n_settle):
-            track_target()
-        for _ in range(n_settle):
-            step_towards(np.array([*target_pos[:2], TABLE_HEIGHT + 0.4]))
-    if camera is not None:
-        camera.stop_recording()
-
-    rings_pos = np.stack([tensor_to_array(ring.get_pos()) for ring in rings])
-    n_stacked = np.count_nonzero(
-        (np.linalg.norm(rings_pos[:, :2] - PEG_POS, axis=-1) < 0.005) & (rings_pos[:, 2] < peg_top)
-    )
-    gs.logger.info(f"{n_stacked} of {len(rings)} rings on the peg.")
-
     if args.vis:
+        toggle_gripper(close=False)
         is_running = True
 
         def stop():
@@ -250,8 +211,51 @@ def main():
             "Keys: arrows move the hand in x/y, K/J move it up/down, N/M rotate it, hold Space to close the gripper, "
             "Esc quits."
         )
-        while is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+        while is_running and scene.viewer.is_alive():
             track_target()
+    else:
+        if "PYTEST_VERSION" not in os.environ:
+            n_rings, n_reach, n_grasp, n_settle, n_carry, n_insert = len(rings), 150, 40, 30, 150, 60
+        else:
+            n_rings, n_reach, n_grasp, n_settle, n_carry, n_insert = 1, 20, 10, 10, 20, 10
+        peg_top = TABLE_HEIGHT + SCALE * (BASE_HEIGHT + POLE_HEIGHT)
+        for i_ring, ring in enumerate(rings[:n_rings]):
+            # Reach over the ring from above, the fingertips just clear of the table, and let the arm settle before the
+            # fingers close on the rim across a diameter.
+            ring_pos = tensor_to_array(ring.get_pos())
+            grasp_pos = np.array([*ring_pos[:2], ring_pos[2] - 0.5 * SCALE * RING_HEIGHT + FINGERTIP_OFFSET + 0.002])
+            toggle_gripper(close=False)
+            for waypoint, n_steps in ((grasp_pos + (0.0, 0.0, 0.12), n_reach), (grasp_pos, n_grasp)):
+                for _ in range(n_steps):
+                    step_towards(waypoint)
+            for is_closed in (False, True):
+                toggle_gripper(close=is_closed)
+                for _ in range(n_settle):
+                    track_target()
+            # Carry the ring until its bottom clears the peg, then lower it onto the peg down to just above the stack.
+            # The hand is steered so that the ring, measured where it actually sits in the hand, reaches each waypoint.
+            ring_top_z = peg_top + 0.5 * SCALE * RING_HEIGHT + 0.02
+            ring_insert_z = max(
+                peg_top - 0.03, TABLE_HEIGHT + SCALE * (BASE_HEIGHT + (i_ring + 0.5) * RING_HEIGHT) + 0.01
+            )
+            for ring_target_z, n_steps in ((ring_top_z, n_carry), (ring_insert_z, n_insert)):
+                for _ in range(n_steps):
+                    ring_offset = tensor_to_array(hand.get_pos()) - tensor_to_array(ring.get_pos())
+                    step_towards(np.array([*PEG_POS, ring_target_z]) + ring_offset)
+            toggle_gripper(close=False)
+            for _ in range(n_settle):
+                track_target()
+            for _ in range(n_settle):
+                step_towards(np.array([*target_pos[:2], TABLE_HEIGHT + 0.4]))
+
+        rings_pos = np.stack([tensor_to_array(ring.get_pos()) for ring in rings])
+        n_stacked = np.count_nonzero(
+            (np.linalg.norm(rings_pos[:, :2] - PEG_POS, axis=-1) < 0.005) & (rings_pos[:, 2] < peg_top)
+        )
+        gs.logger.info(f"{n_stacked} of {len(rings)} rings on the peg.")
+
+    if camera is not None:
+        camera.stop_recording()
 
 
 if __name__ == "__main__":

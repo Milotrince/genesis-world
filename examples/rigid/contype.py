@@ -7,8 +7,8 @@ Green Cube: contype=2, conaffinity=2 (0010) -> collide with Plane and Blue Cube
 Blue Cube:  contype=3, conaffinity=3 (0011) -> collide with Plane, Red Cube, and Green Cube
 Dragon:     contype=4, conaffinity=4 (0100) -> collide with Plane only
 
-With the viewer (-v), drag the cubes and the dragon into each other with the mouse to see which pairs collide, during
-the drop and after it.
+Mouse controls (-v): drag the cubes and the dragon into each other to see which pairs collide, during the drop and
+after it.
 """
 
 import argparse
@@ -104,12 +104,14 @@ def main():
     if camera is not None:
         camera.start_recording(save_to_filename="out/contype.mp4", fps=round(1.0 / scene.dt))
 
-    for _ in range(200 if "PYTEST_VERSION" not in os.environ else 90):
-        scene.step()
+    if args.vis:
+        while scene.viewer.is_alive():
+            scene.step()
+    else:
+        for _ in range(200 if "PYTEST_VERSION" not in os.environ else 90):
+            scene.step()
     if camera is not None:
         camera.stop_recording()
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        scene.step()
 
 
 if __name__ == "__main__":

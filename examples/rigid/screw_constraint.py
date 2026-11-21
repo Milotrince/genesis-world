@@ -1,6 +1,8 @@
 """Nut screwed onto a fixed bolt by a screw constraint, seated on the bolt head, then unscrewed off the tip.
 
-Without the viewer, this runs a scripted sequence. With it, the keyboard drives the nut:
+Without the viewer, this runs a scripted sequence.
+
+Keyboard controls (-v):
 Up      - Turn the nut clockwise, seen from the tip of the bolt
 Down    - Turn the nut counterclockwise, seen from the tip of the bolt
 \\       - Reset the nut onto the bolt

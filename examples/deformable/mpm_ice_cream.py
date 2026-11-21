@@ -1,11 +1,11 @@
 """A soft-serve machine extrudes ice cream onto a cone that a Franka circles under the nozzle, so the serve coils up.
 
-The serve is an elasto-plastic MPM material poured by an emitter at the nozzle, a star of round jets that gives the
-strand its ridges: it yields and flows as it is laid down, then holds its shape under its own weight. The robot holds
-the cone attached to its hand and moves it around a small circle under the nozzle while lowering it, which lays the
-strand in rings stacked on top of each other, then pulls the cone out of the machine and presents it. The run logs the
-height and the width of the serve, read from the particle positions, after the serve and after the presentation. MPM is
-slow on CPU, so pass -g to run on GPU.
+The serve is an elasto-plastic MPM material poured by an emitter at the nozzle, a cog of jets that gives the strand its
+ridges: it yields and flows as it is laid down, then holds its shape under its own weight. The robot holds the cone
+attached to its hand and moves it around a small circle under the nozzle while lowering it, which lays the strand in
+rings stacked on top of each other, then pulls the cone out of the machine and presents it. The run logs the height and
+the width of the serve, read from the particle positions, after the serve and after the presentation. MPM is slow on
+CPU, so pass -g to run on GPU.
 
 With the viewer (-v), the scripted serve is skipped: the robot holds the empty cone under the nozzle, and the keys
 drive it.
@@ -37,14 +37,14 @@ DT = 4e-3
 
 # Tip of the nozzle of the dispenser, placed so that the nozzle hangs at this point.
 NOZZLE_POS = np.array([0.55, 0.0, 0.25])
-# Star-shaped nozzle: a core surrounded by points, each a round jet, whose ring turns slowly so that the ridges twist.
-STAR_CORE_DIAMETER = 0.01
-STAR_POINT_DIAMETER = 0.006
-STAR_N_POINTS = 6
-STAR_RING_RADIUS = 0.5 * (STAR_CORE_DIAMETER + STAR_POINT_DIAMETER)
-STAR_TWIST_RATE = 1.0
-NOZZLE_DIAMETER = 2.0 * STAR_RING_RADIUS + STAR_POINT_DIAMETER
-EXTRUSION_SPEED = 0.15
+# Cog-shaped nozzle: a round core with square teeth around its rim, each fed by its own jet, whose ring turns slowly so
+# that the ridges twist.
+COG_CORE_DIAMETER = 0.016
+COG_TOOTH_SIZE = 0.004
+COG_N_TEETH = 12
+COG_TWIST_RATE = 1.0
+NOZZLE_DIAMETER = COG_CORE_DIAMETER + 2.0 * COG_TOOTH_SIZE
+EXTRUSION_SPEED = 0.12
 # Cone: radius of its rim, length from the rim down to its tip, and the distance from the rim down to where the fingers
 # hold it. The hand holds the cone with its axis this far ahead of the hand.
 CONE_RADIUS = 0.028
@@ -118,6 +118,8 @@ def main():
         ),
         mpm_options=gs.options.MPMOptions(
             grid_density=192,
+            # Particles finer than the grid spacing draw the ridges of the strand in more detail.
+            particle_size=0.0025,
             lower_bound=(PRESENT_POS[0] - 0.07, NOZZLE_POS[1] - 0.08, NOZZLE_POS[2] - 0.22),
             upper_bound=(NOZZLE_POS[0] + 0.08, PRESENT_POS[1] + 0.07, PRESENT_POS[2] + 0.12),
         ),
@@ -196,7 +198,7 @@ def main():
                 debug=True,
             ),
         ),
-        max_particles=8000,
+        max_particles=12000,
     )
 
     camera = None
@@ -233,28 +235,35 @@ def main():
         scene.step()
 
     extruded_length = 0.0
-    star_angle = 0.0
+    cog_angle = 0.0
 
     def extrude(speed=EXTRUSION_SPEED):
-        nonlocal extruded_length, star_angle
+        nonlocal extruded_length, cog_angle
         # Each call to 'emit' keeps its own count of the length extruded, so the slab is counted here once for all the
-        # jets of the star, which then leave the nozzle together, one particle length at a time.
+        # jets of the cog, which then leave the nozzle together, one particle length at a time.
         extruded_length += speed * DT
-        star_angle += STAR_TWIST_RATE * DT
+        cog_angle += COG_TWIST_RATE * DT
         if extruded_length < emitter.entity.particle_size:
             return
-        # The core jet sits on the axis of the nozzle, and the point jets on a ring around it.
-        points_angle = star_angle + 2.0 * math.pi * np.arange(STAR_N_POINTS) / STAR_N_POINTS
-        jets_pos = np.tile(NOZZLE_POS, (STAR_N_POINTS + 1, 1))
-        jets_pos[1:, 0] += STAR_RING_RADIUS * np.cos(points_angle)
-        jets_pos[1:, 1] += STAR_RING_RADIUS * np.sin(points_angle)
-        for i_jet, jet_pos in enumerate(jets_pos):
+        emitter.emit(
+            droplet_shape="circle",
+            droplet_size=COG_CORE_DIAMETER,
+            droplet_length=extruded_length,
+            pos=NOZZLE_POS,
+            direction=(0.0, 0.0, -1.0),
+            speed=speed,
+        )
+        # Each tooth sits against the rim of the core, turned to face outwards. A droplet emitted downwards turns the
+        # opposite way to its angle about the vertical.
+        for tooth_angle in cog_angle + 2.0 * math.pi * np.arange(COG_N_TEETH) / COG_N_TEETH:
+            tooth_dir = np.array([math.cos(tooth_angle), math.sin(tooth_angle), 0.0])
             emitter.emit(
-                droplet_shape="circle",
-                droplet_size=STAR_POINT_DIAMETER if i_jet else STAR_CORE_DIAMETER,
+                droplet_shape="square",
+                droplet_size=COG_TOOTH_SIZE,
                 droplet_length=extruded_length,
-                pos=jet_pos,
+                pos=NOZZLE_POS + 0.5 * (COG_CORE_DIAMETER + COG_TOOTH_SIZE) * tooth_dir,
                 direction=(0.0, 0.0, -1.0),
+                theta=-tooth_angle,
                 speed=speed,
             )
         extruded_length = 0.0
