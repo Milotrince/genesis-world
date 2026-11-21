@@ -8,8 +8,7 @@ Demonstrates:
 - Custom user panels via register_panel()
 - Scene rebuild (add entities, change scale)
 
-A scripted sweep first drives every joint of the Panda through its range, then the overlay takes over until the viewer
-closes.
+The overlay controls the scene from the first frame until the viewer closes.
 """
 
 import argparse
@@ -81,25 +80,31 @@ def main():
 
     plugin.register_panel(custom_panel)
 
-    # The sweep moves every joint between its limits, each one out of phase with the previous one.
-    dofs_lower, dofs_upper = panda.get_dofs_limit()
-    dofs_mid = 0.5 * (dofs_lower + dofs_upper)
-    dofs_amplitude = 0.4 * (dofs_upper - dofs_lower)
-    dofs_phase = torch.arange(panda.n_dofs, dtype=gs.tc_float, device=gs.device)
-    horizon = 5 if "PYTEST_VERSION" in os.environ else 300
+    # The finger actuator of panda.xml takes its target in [0, 255]. Its own gains, set here, take it in metres.
+    fingers_dof = (7, 8)
+    panda.set_dofs_kp(100.0, fingers_dof)
+    panda.set_dofs_kv(10.0, fingers_dof)
     if camera is not None:
         camera.start_recording(save_to_filename="out/imgui_joint_control.mp4", fps=30)
-    for i_step in range(horizon):
-        phase = 2.0 * math.pi * i_step / horizon
-        panda.control_dofs_position(dofs_mid + dofs_amplitude * torch.sin(phase + dofs_phase))
-        scene.step()
+    # The viewer is always open, so the scripted sweep runs under the test suite alone, which cannot use the overlay.
+    if "PYTEST_VERSION" in os.environ:
+        # The sweep moves every joint between its limits, each one out of phase with the previous one.
+        dofs_lower, dofs_upper = panda.get_dofs_limit()
+        dofs_mid = 0.5 * (dofs_lower + dofs_upper)
+        dofs_amplitude = 0.4 * (dofs_upper - dofs_lower)
+        dofs_phase = torch.arange(panda.n_dofs, dtype=gs.tc_float, device=gs.device)
+        horizon = 5
+        for i_step in range(horizon):
+            phase = 2.0 * math.pi * i_step / horizon
+            panda.control_dofs_position(dofs_mid + dofs_amplitude * torch.sin(phase + dofs_phase))
+            scene.step()
+    else:
+        # step() honors the GUI: it advances only while playing, and applies a pending Rebuild Scene first. The viewer
+        # paces the loop to real time (ViewerOptions.realtime_factor), so no manual sleep is needed here.
+        while scene.viewer.is_alive():
+            scene.step()
     if camera is not None:
         camera.stop_recording()
-
-    # step() honors the GUI: it advances only while playing, and applies a pending Rebuild Scene first. The viewer
-    # paces the loop to real time (ViewerOptions.realtime_factor), so no manual sleep is needed here.
-    while scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        scene.step()
 
 
 if __name__ == "__main__":

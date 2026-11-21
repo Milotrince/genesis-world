@@ -1,8 +1,8 @@
 """A Franka falls limp under gravity, simulated in a background thread while the viewer renders on the main thread.
 
 The simulation thread steps the scene without refreshing the viewer, and the viewer (-v) runs its own render loop on
-the main thread, at its own rate. Without the viewer, the simulation thread runs alone. With the viewer, drag the arm
-with the mouse.
+the main thread, at its own rate. Without the viewer, the simulation thread runs a fixed number of steps alone. With
+the viewer, drag the arm with the mouse.
 """
 
 import argparse
@@ -13,12 +13,14 @@ import genesis as gs
 
 
 def run_sim(scene, n_steps, camera, is_interactive):
-    for _ in range(n_steps):
-        scene.step(refresh_visualizer=False)
+    if is_interactive:
+        while scene.viewer.is_alive():
+            scene.step(refresh_visualizer=False)
+    else:
+        for _ in range(n_steps):
+            scene.step(refresh_visualizer=False)
     if camera is not None:
         camera.stop_recording()
-    while is_interactive and scene.viewer.is_alive():
-        scene.step(refresh_visualizer=False)
 
 
 def main():
@@ -79,10 +81,9 @@ def main():
     if camera is not None:
         camera.start_recording(save_to_filename="out/rasterizer_render_async.mp4", fps=round(1.0 / scene.dt))
 
-    is_interactive = args.vis and "PYTEST_VERSION" not in os.environ
-    sim_thread = threading.Thread(target=run_sim, args=(scene, args.steps, camera, is_interactive))
+    sim_thread = threading.Thread(target=run_sim, args=(scene, args.steps, camera, args.vis))
     sim_thread.start()
-    if is_interactive:
+    if args.vis:
         scene.viewer.run()
     sim_thread.join()
 

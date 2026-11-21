@@ -6,8 +6,7 @@ The piston strikes the bob of a pendulum hanging from a ball joint (a spherical 
 jointed parts are one MJCF model built inline. Hibernation is on, so every part at rest, ahead of the reaction or
 behind it, sleeps and costs nothing to simulate until something hits it.
 
-With the viewer (-v), the machine is set back up once the scripted run ends. Drag the first domino towards the others
-with the mouse to run the chain again, or poke any other part.
+Mouse controls (-v): drag the first domino towards the others to run the chain, or poke any other part.
 """
 
 import argparse
@@ -303,23 +302,21 @@ def main():
 
     if camera is not None:
         camera.start_recording(save_to_filename="out/rube_goldberg.mp4", fps=40)
-    # A flick of the first domino towards the others, about its bottom edge, as a push with the mouse gives it.
-    dominos[0].set_dofs_velocity((0.3, 0.0, 0.0, 0.0, 2.5, 0.0))
-    n_steps = round(args.seconds / DT) if "PYTEST_VERSION" not in os.environ else 50
-    bell_swing_max = 0.0
-    for _ in range(n_steps):
-        scene.step()
-        bell_swing_max = max(bell_swing_max, abs(float(machine.get_dofs_position(bell_dof)[0])))
+    if args.vis:
+        gs.logger.info("Drag the first domino towards the others to run the chain.")
+        while scene.viewer.is_alive():
+            scene.step()
+    else:
+        # A flick of the first domino towards the others, about its bottom edge, as a push with the mouse gives it.
+        dominos[0].set_dofs_velocity((0.3, 0.0, 0.0, 0.0, 2.5, 0.0))
+        n_steps = round(args.seconds / DT) if "PYTEST_VERSION" not in os.environ else 50
+        bell_swing_max = 0.0
+        for _ in range(n_steps):
+            scene.step()
+            bell_swing_max = max(bell_swing_max, abs(float(machine.get_dofs_position(bell_dof)[0])))
+        gs.logger.info(f"The bell swung by up to {math.degrees(bell_swing_max):.1f} degrees.")
     if camera is not None:
         camera.stop_recording()
-    gs.logger.info(f"The bell swung by up to {math.degrees(bell_swing_max):.1f} degrees.")
-
-    # The machine is set back up, ready for the user to push the first domino again.
-    if args.vis:
-        scene.reset()
-        gs.logger.info("Drag the first domino towards the others to run the chain again.")
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        scene.step()
 
 
 if __name__ == "__main__":

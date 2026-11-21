@@ -1,12 +1,16 @@
 """A soft-serve machine extrudes ice cream onto a cone that a Franka circles under the nozzle, so the serve coils up.
 
-The serve is an elasto-plastic MPM material poured by an emitter at the nozzle: it yields and flows as it is laid down,
-then holds its shape under its own weight. The robot holds the cone attached to its hand and moves it around a small
-circle under the nozzle while lowering it, which lays the strand in rings stacked on top of each other, then pulls the
-cone out of the machine and presents it. The run logs the height and the width of the serve, read from the particle
-positions, after the serve and after the presentation. MPM is slow on CPU, so pass -g to run on GPU.
+The serve is an elasto-plastic MPM material poured by an emitter at the nozzle, a cog of jets that gives the strand its
+ridges: it yields and flows as it is laid down, then holds its shape under its own weight. The robot holds the cone
+attached to its hand and moves it around a small circle under the nozzle while lowering it, which lays the strand in
+rings stacked on top of each other, then pulls the cone out of the machine and presents it. The run logs the height and
+the width of the serve, read from the particle positions, after the serve and after the presentation. MPM is slow on
+CPU, so pass -g to run on GPU.
 
-Keyboard controls (-v), once the scripted serve and presentation are over:
+With the viewer (-v), the scripted serve is skipped: the robot holds the empty cone under the nozzle, and the keys
+drive it.
+
+Keyboard controls (-v):
 Up/Down    - Move the cone along -x/+x
 Left/Right - Move the cone along -y/+y
 K/J        - Move the cone up/down
@@ -33,7 +37,13 @@ DT = 4e-3
 
 # Tip of the nozzle of the dispenser, placed so that the nozzle hangs at this point.
 NOZZLE_POS = np.array([0.55, 0.0, 0.25])
-NOZZLE_DIAMETER = 0.022
+# Cog-shaped nozzle: a round core with square teeth around its rim, each fed by its own jet, whose ring turns slowly so
+# that the ridges twist.
+COG_CORE_DIAMETER = 0.016
+COG_TOOTH_SIZE = 0.004
+COG_N_TEETH = 12
+COG_TWIST_RATE = 1.0
+NOZZLE_DIAMETER = COG_CORE_DIAMETER + 2.0 * COG_TOOTH_SIZE
 EXTRUSION_SPEED = 0.12
 # Cone: radius of its rim, length from the rim down to its tip, and the distance from the rim down to where the fingers
 # hold it. The hand holds the cone with its axis this far ahead of the hand.
@@ -41,10 +51,14 @@ CONE_RADIUS = 0.028
 CONE_LENGTH = 0.11
 CONE_GRIP_DEPTH = 0.045
 CONE_REACH = 0.1
+LIP_RADIUS = 0.006
 # Path of the rim center: the radius and the period of the circle under the nozzle, and the gap to the nozzle at start.
-CIRCLE_RADIUS = 0.015
+CIRCLE_RADIUS = 0.012
 CIRCLE_PERIOD = 0.7
 RIM_GAP = 0.025
+# Gap kept between the tip of the nozzle and the top of the serve, and the top speed at which the cone sinks to keep it.
+SERVE_GAP = 0.012
+SINK_SPEED_MAX = 0.04
 # Rim center of the cone once the robot presents the serve, out of the machine and towards the camera.
 PRESENT_POS = np.array([0.4, 0.05, 0.24])
 
@@ -68,13 +82,17 @@ def cone_mjcf():
     body = ET.SubElement(ET.SubElement(mjcf, "worldbody"), "body", name="cone")
     ET.SubElement(ET.SubElement(mjcf, "default"), "geom", density="300", rgba="0.85 0.6 0.3 1")
     ET.SubElement(body, "geom", type="mesh", mesh="cone")
-    # A lip of capsules around the rim holds the base of the serve while the cone circles.
+    # A lip of capsules around the rim holds the base of the serve while the cone moves.
     angles = np.linspace(0.0, 2.0 * np.pi, 17)
-    lip = (CONE_RADIUS - 0.004) * np.stack((np.sin(angles), np.cos(angles)), axis=-1) + (0.0, CONE_REACH)
+    lip = (CONE_RADIUS - LIP_RADIUS) * np.stack((np.sin(angles), np.cos(angles)), axis=-1) + (0.0, CONE_REACH)
+    x_lip = -CONE_GRIP_DEPTH - LIP_RADIUS
     for (y_start, z_start), (y_end, z_end) in zip(lip[:-1], lip[1:]):
-        x_lip = -CONE_GRIP_DEPTH - 0.004
         ET.SubElement(
-            body, "geom", type="capsule", fromto=f"{x_lip} {y_start} {z_start} {x_lip} {y_end} {z_end}", size="0.004"
+            body,
+            "geom",
+            type="capsule",
+            fromto=f"{x_lip} {y_start} {z_start} {x_lip} {y_end} {z_end}",
+            size=f"{LIP_RADIUS}",
         )
     return ET.tostring(mjcf, encoding="unicode")
 
@@ -95,12 +113,19 @@ def main():
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
             dt=DT,
-            substeps=10,
+            # The small elastic range of the serve makes it stiff (see its material), which takes short substeps.
+            substeps=25,
         ),
         mpm_options=gs.options.MPMOptions(
             grid_density=192,
-            lower_bound=(PRESENT_POS[0] - 0.07, NOZZLE_POS[1] - 0.08, NOZZLE_POS[2] - 0.17),
+            # Particles finer than the grid spacing draw the ridges of the strand in more detail.
+            particle_size=0.0025,
+            lower_bound=(PRESENT_POS[0] - 0.07, NOZZLE_POS[1] - 0.08, NOZZLE_POS[2] - 0.22),
             upper_bound=(NOZZLE_POS[0] + 0.08, PRESENT_POS[1] + 0.07, PRESENT_POS[2] + 0.12),
+        ),
+        # The particles of the serve are drawn larger than they are, so that they overlap into one creamy surface.
+        vis_options=gs.options.VisOptions(
+            particle_size_scale=2.5,
         ),
         viewer_options=gs.options.ViewerOptions(
             camera_pos=camera_pos,
@@ -157,17 +182,23 @@ def main():
     )
     cone.attach(franka, "hand", pos=(0.0, 0.0, 0.0))
     emitter = scene.add_emitter(
-        material=gs.materials.MPM.ElastoPlastic(
-            E=2e4,
-            nu=0.3,
-            rho=600.0,
-            von_mises_yield_stress=800.0,
+        spec=gs.entities.MPM(
+            # A yield stress far below the elastic modulus leaves the serve a small elastic range, so that it flows and
+            # slumps where it is loaded past its yield stress and keeps the shape it took, with no spring back.
+            material=gs.materials.MPM.ElastoPlastic(
+                E=1e5,
+                nu=0.3,
+                rho=600.0,
+                von_mises_yield_stress=500.0,
+            ),
+            surface=gs.surfaces.Rough(
+                color=(0.98, 0.95, 0.88),
+            ),
+            vis=gs.options.EntityVisOptions(
+                debug=True,
+            ),
         ),
-        max_particles=8000,
-        surface=gs.surfaces.Rough(
-            color=(0.98, 0.95, 0.88),
-            vis_mode="particle",
-        ),
+        max_particles=12000,
     )
 
     camera = None
@@ -177,6 +208,7 @@ def main():
             pos=camera_pos,
             lookat=camera_lookat,
             fov=45,
+            debug=True,
         )
 
     scene.build()
@@ -202,58 +234,106 @@ def main():
         franka.control_dofs_position(q, motors_dof)
         scene.step()
 
-    def extrude():
+    extruded_length = 0.0
+    cog_angle = 0.0
+
+    def extrude(speed=EXTRUSION_SPEED):
+        nonlocal extruded_length, cog_angle
+        # Each call to 'emit' keeps its own count of the length extruded, so the slab is counted here once for all the
+        # jets of the cog, which then leave the nozzle together, one particle length at a time.
+        extruded_length += speed * DT
+        cog_angle += COG_TWIST_RATE * DT
+        if extruded_length < emitter.entity.particle_size:
+            return
         emitter.emit(
             droplet_shape="circle",
-            droplet_size=NOZZLE_DIAMETER,
+            droplet_size=COG_CORE_DIAMETER,
+            droplet_length=extruded_length,
             pos=NOZZLE_POS,
             direction=(0.0, 0.0, -1.0),
-            speed=EXTRUSION_SPEED,
+            speed=speed,
         )
+        # Each tooth sits against the rim of the core, turned to face outwards. A droplet emitted downwards turns the
+        # opposite way to its angle about the vertical.
+        for tooth_angle in cog_angle + 2.0 * math.pi * np.arange(COG_N_TEETH) / COG_N_TEETH:
+            tooth_dir = np.array([math.cos(tooth_angle), math.sin(tooth_angle), 0.0])
+            emitter.emit(
+                droplet_shape="square",
+                droplet_size=COG_TOOTH_SIZE,
+                droplet_length=extruded_length,
+                pos=NOZZLE_POS + 0.5 * (COG_CORE_DIAMETER + COG_TOOTH_SIZE) * tooth_dir,
+                direction=(0.0, 0.0, -1.0),
+                theta=-tooth_angle,
+                speed=speed,
+            )
+        extruded_length = 0.0
+
+    def get_serve_pos():
+        return tensor_to_array(emitter.entity.get_particles_pos())[
+            tensor_to_array(emitter.entity.get_particles_active())
+        ]
 
     def log_serve(label):
-        serve_pos = tensor_to_array(emitter.entity.get_particles_pos())
-        serve_pos = serve_pos[tensor_to_array(emitter.entity.get_particles_active())]
+        serve_pos = get_serve_pos()
         height = np.percentile(serve_pos[:, 2], 98) - rim_pos[2]
-        width = 2.0 * np.percentile(np.linalg.norm(serve_pos[:, :2] - rim_pos[:2], axis=-1), 98)
-        gs.logger.info(f"{label}: serve {100 * height:.1f} cm high and {100 * width:.1f} cm wide on the rim.")
+        dist_axis = np.linalg.norm(serve_pos[:, :2] - rim_pos[:2], axis=-1)
+        width = 2.0 * np.percentile(dist_axis, 98)
+        # A particle is on the cone while it stays above the rim, within 2 cm of its edge.
+        is_on_cone = (dist_axis < CONE_RADIUS + 0.02) & (serve_pos[:, 2] > rim_pos[2] - 0.01)
+        gs.logger.info(
+            f"{label}: serve {100 * height:.1f} cm high and {100 * width:.1f} cm wide on the rim, "
+            f"{100 * is_on_cone.mean():.1f}% of it on the cone."
+        )
 
-    if "PYTEST_VERSION" in os.environ:
-        n_serve, n_settle, n_out, n_up, n_hold = 20, 10, 5, 5, 5
-    else:
-        n_serve, n_settle, n_out, n_up, n_hold = (round(duration / DT) for duration in (2.0, 1.0, 2.5, 2.5, 1.0))
-    # Lower the cone as fast as a column as wide as the rim would grow at the flow rate of the nozzle, so that the nozzle
-    # stays just above the top of the serve.
-    flow_rate = 0.25 * math.pi * NOZZLE_DIAMETER**2 * EXTRUSION_SPEED
-    sink_speed = flow_rate / (math.pi * CONE_RADIUS**2)
+    # The viewer opens straight into the keyboard control, and the scripted serve runs headless alone.
+    if not args.vis:
+        if "PYTEST_VERSION" in os.environ:
+            n_serve, n_settle, n_out, n_up, n_hold = 20, 10, 5, 5, 5
+        else:
+            n_serve, n_settle, n_out, n_up, n_hold = (round(duration / DT) for duration in (1.7, 1.0, 2.5, 2.5, 1.0))
 
-    if camera is not None:
-        camera.start_recording(save_to_filename="out/mpm_ice_cream.mp4", fps=round(0.5 / DT))
-    for i_step in range(n_serve):
-        # The circle shrinks as the serve rises, so that the rings taper to a peak.
-        angle = 2.0 * math.pi * i_step * DT / CIRCLE_PERIOD
-        radius = CIRCLE_RADIUS * (1.0 - 0.8 * i_step / n_serve)
-        rim_pos[:] = rim_center + (radius * math.cos(angle), radius * math.sin(angle), -sink_speed * i_step * DT)
-        extrude()
-        track_target()
-    log_serve("Extruded")
-    for _ in range(n_settle):
-        track_target()
-    log_serve("Settled")
-    # Pull the cone straight out of the bay, then raise it towards the camera. Each move eases in and out, so the serve
-    # stays on the cone.
-    for pos_end, n_steps in ((np.array([PRESENT_POS[0], *rim_pos[1:]]), n_out), (PRESENT_POS, n_up)):
-        pos_start = rim_pos.copy()
-        for i_step in range(1, n_steps + 1):
-            ratio = i_step / n_steps
-            ratio = ratio * ratio * (3.0 - 2.0 * ratio)
-            rim_pos[:] = (1.0 - ratio) * pos_start + ratio * pos_end
+        if camera is not None:
+            camera.start_recording(save_to_filename="out/mpm_ice_cream.mp4", fps=round(0.5 / DT))
+        z_rim_target = rim_center[2]
+        for i_step in range(n_serve):
+            # The top of the serve is the highest particle off the axis of the nozzle, which leaves out the strand still
+            # coming down from it. The cone sinks to keep the nozzle just above it, so the strand never bridges a gap.
+            if i_step % 5 == 0:
+                serve_pos = get_serve_pos()
+                is_off_axis = np.linalg.norm(serve_pos[:, :2] - NOZZLE_POS[:2], axis=-1) > 0.6 * NOZZLE_DIAMETER
+                z_top = serve_pos[is_off_axis, 2].max(initial=rim_center[2])
+                z_rim_target = min(z_rim_target, rim_center[2] - (z_top - (NOZZLE_POS[2] - SERVE_GAP)))
+            rim_center[2] = max(rim_center[2] - SINK_SPEED_MAX * DT, z_rim_target)
+            # The circle shrinks as the serve rises, so that the rings taper to a peak.
+            angle = 2.0 * math.pi * i_step * DT / CIRCLE_PERIOD
+            radius = CIRCLE_RADIUS * (1.0 - 0.8 * i_step / n_serve)
+            rim_pos[:] = rim_center + (radius * math.cos(angle), radius * math.sin(angle), 0.0)
+            # The flow slows down over the last quarter of the serve, so that the tip ends small instead of curling.
+            extrude(speed=EXTRUSION_SPEED * (1.0 - 0.6 * max(0.0, 4.0 * i_step / n_serve - 3.0)))
             track_target()
-    for _ in range(n_hold):
-        track_target()
-    log_serve("Presented")
-    if camera is not None:
-        camera.stop_recording()
+        log_serve("Extruded")
+        # Keep circling while drawing the cone slowly away from the nozzle, so that the end of the strand lays down in a
+        # last ring and necks off into a soft tip, instead of standing up and folding over the edge.
+        for i_step in range(n_serve, n_serve + n_settle):
+            rim_center[2] -= 4.0 * DT * (rim_center[2] - (z_rim_target - 0.015))
+            angle = 2.0 * math.pi * i_step * DT / CIRCLE_PERIOD
+            rim_pos[:] = rim_center + (radius * math.cos(angle), radius * math.sin(angle), 0.0)
+            track_target()
+        log_serve("Settled")
+        # Pull the cone straight out of the bay, then raise it towards the camera. Each move eases in and out, so the
+        # serve stays on the cone.
+        for pos_end, n_steps in ((np.array([PRESENT_POS[0], *rim_pos[1:]]), n_out), (PRESENT_POS, n_up)):
+            pos_start = rim_pos.copy()
+            for i_step in range(1, n_steps + 1):
+                ratio = i_step / n_steps
+                ratio = ratio * ratio * (3.0 - 2.0 * ratio)
+                rim_pos[:] = (1.0 - ratio) * pos_start + ratio * pos_end
+                track_target()
+        for _ in range(n_hold):
+            track_target()
+        log_serve("Presented")
+        if camera is not None:
+            camera.stop_recording()
 
     if args.vis:
         is_running = True

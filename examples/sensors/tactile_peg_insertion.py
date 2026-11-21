@@ -7,7 +7,7 @@ follows the lateral push of the chamfer into the hole and inserts the peg. An `E
 reads the grip on the peg. The force arrow and the gel markers are drawn in the scene, and a live plot shows the
 readings against time.
 
-Keyboard controls (-v), once the scripted insertion ends:
+Keyboard controls (-v), with the peg gripped over its start pose:
 Up/Down    - Move the peg along -x/+x
 Left/Right - Move the peg along -y/+y
 K/J        - Move the peg up/down
@@ -42,6 +42,9 @@ HOLE_CHAMFER = 0.003
 PLATE_THICKNESS = 0.025
 PLATE_WIDTH = 0.16
 HOLE_POS = np.array((0.55, 0.0))
+# The plate rests on a work table beside the Franka.
+TABLE_HEIGHT = 0.3
+PLATE_TOP = TABLE_HEIGHT + PLATE_THICKNESS
 # The peg starts off the hole, as if the hole had been located by a camera with a centimetre of error.
 PEG_START_POS = HOLE_POS + np.array((-0.012, 0.009))
 
@@ -57,8 +60,20 @@ SPIRAL_RADIUS_MIN = 0.003
 INSERT_SPEED = 0.02
 
 
+def table_mjcf():
+    """MJCF model of a white work table of boxes, its top face TABLE_HEIGHT above the floor."""
+    mjcf = ET.Element("mujoco", model="table")
+    ET.SubElement(ET.SubElement(mjcf, "default"), "geom", rgba="0.95 0.95 0.95 1")
+    body = ET.SubElement(ET.SubElement(mjcf, "worldbody"), "body", name="table", pos=f"0.55 0 {TABLE_HEIGHT}")
+    ET.SubElement(body, "geom", type="box", size="0.35 0.7 0.015", pos="0 0 -0.015")
+    for x in (-0.31, 0.31):
+        for y in (-0.66, 0.66):
+            ET.SubElement(body, "geom", type="box", size="0.02 0.02 0.135", pos=f"{x} {y} -0.165")
+    return mjcf
+
+
 def plate_mjcf():
-    """MJCF model of the plate standing on the ground, with a chamfered square hole through it.
+    """MJCF model of the plate resting on the table, with a chamfered square hole through it.
 
     The plate is a picture frame of four convex pieces mitred along the diagonals, so that the chamfer of each piece
     meets its neighbours without a gap.
@@ -91,7 +106,9 @@ def plate_mjcf():
         vertex=" ".join(f"{coord:.6g}" for coord in piece.vertices.ravel()),
         face=" ".join(str(idx) for idx in piece.faces.ravel()),
     )
-    plate = ET.SubElement(ET.SubElement(mjcf, "worldbody"), "body", name="plate", pos=f"{HOLE_POS[0]} {HOLE_POS[1]} 0")
+    plate = ET.SubElement(
+        ET.SubElement(mjcf, "worldbody"), "body", name="plate", pos=f"{HOLE_POS[0]} {HOLE_POS[1]} {TABLE_HEIGHT}"
+    )
     for i_piece in range(4):
         ET.SubElement(plate, "geom", type="mesh", mesh="piece", euler=f"0 0 {90 * i_piece}")
     return mjcf
@@ -112,8 +129,8 @@ def main():
 
     gs.init(backend=gs.gpu if args.gpu else gs.cpu, precision="32", logging_level="info")
 
-    camera_pos = (0.78, -0.08, 0.3)
-    camera_lookat = (0.55, 0.0, 0.02)
+    camera_pos = (0.78, -0.08, TABLE_HEIGHT + 0.3)
+    camera_lookat = (0.55, 0.0, TABLE_HEIGHT + 0.02)
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
@@ -143,6 +160,11 @@ def main():
     )
     scene.add_entity(
         gs.morphs.MJCF(
+            file=table_mjcf(),
+        ),
+    )
+    scene.add_entity(
+        gs.morphs.MJCF(
             file=plate_mjcf(),
         ),
         material=gs.materials.Rigid(
@@ -160,7 +182,7 @@ def main():
         ),
     )
     # The peg is held by its upper end, its lower end hanging 3 cm above the plate.
-    peg_start_z = PLATE_THICKNESS + 0.03 + 0.5 * PEG_LENGTH
+    peg_start_z = PLATE_TOP + 0.03 + 0.5 * PEG_LENGTH
     peg = scene.add_entity(
         gs.morphs.Box(
             pos=(*PEG_START_POS, peg_start_z),
@@ -304,7 +326,7 @@ def main():
         force_z = plate_force[2]
         hand_z = tensor_to_array(end_effector.get_pos())[2]
         peg_pos = tensor_to_array(peg.get_pos())
-        peg_pos[2] = PLATE_THICKNESS + 0.001
+        peg_pos[2] = PLATE_TOP + 0.001
         if phase in ("search", "probe") and np.linalg.norm(peg_pos - path_last_pos) > 0.001:
             path_markers.append(scene.draw_debug_line(path_last_pos, peg_pos, radius=0.001, color=(0.1, 0.4, 1.0, 1.0)))
             path_last_pos[:] = peg_pos
@@ -356,51 +378,53 @@ def main():
         control_step()
     start_state = scene.get_state()
 
+    def reset_scene():
+        nonlocal phase
+        scene.reset(start_state)
+        hand_target_pos[:] = hand_start_pos
+        phase = "hold"
+
+    if args.vis:
+        dpos = 0.002
+        scene.viewer.register_keybinds(
+            Keybind("move_forward", Key.UP, KeyAction.HOLD, callback=move, args=((-dpos, 0, 0),)),
+            Keybind("move_back", Key.DOWN, KeyAction.HOLD, callback=move, args=((dpos, 0, 0),)),
+            Keybind("move_left", Key.LEFT, KeyAction.HOLD, callback=move, args=((0, -dpos, 0),)),
+            Keybind("move_right", Key.RIGHT, KeyAction.HOLD, callback=move, args=((0, dpos, 0),)),
+            Keybind("move_up", Key.K, KeyAction.HOLD, callback=move, args=((0, 0, dpos),)),
+            Keybind("move_down", Key.J, KeyAction.HOLD, callback=move, args=((0, 0, -dpos),)),
+            Keybind("toggle_search", Key.SPACE, KeyAction.PRESS, callback=start_search),
+            Keybind("reset_scene", Key.BACKSLASH, KeyAction.RELEASE, callback=reset_scene),
+        )
+        gs.logger.info(
+            "Keys: arrows move the peg in x/y, K/J move it up/down, Space starts or stops a spiral search, Backslash "
+            "puts the peg back."
+        )
+
     if camera is not None:
         camera.start_recording(save_to_filename="out/tactile_peg_insertion.mp4", fps=RECORDING_FPS)
-    n_steps = 100 if "PYTEST_VERSION" in os.environ else round(args.seconds / DT)
     try:
-        start_search()
-        for _ in range(n_steps):
-            control_step()
-            if phase == "hold":
-                break
+        if args.vis:
+            while scene.viewer.is_alive():
+                control_step()
+        else:
+            n_steps = 100 if "PYTEST_VERSION" in os.environ else round(args.seconds / DT)
+            start_search()
+            for _ in range(n_steps):
+                control_step()
+                if phase == "hold":
+                    break
+
+            peg_bottom_z = tensor_to_array(peg.get_pos())[2] - 0.5 * PEG_LENGTH
+            if found_time is None:
+                gs.logger.info("The search ended before the hole was found.")
+            else:
+                gs.logger.info(
+                    f"Search time {found_time:.2f} s, spiral radius {1e3 * found_radius:.1f} mm, insertion depth "
+                    f"{1e3 * (PLATE_TOP - peg_bottom_z):.1f} mm."
+                )
         if camera is not None:
             camera.stop_recording()
-
-        peg_bottom_z = tensor_to_array(peg.get_pos())[2] - 0.5 * PEG_LENGTH
-        if found_time is None:
-            gs.logger.info("The search ended before the hole was found.")
-        else:
-            gs.logger.info(
-                f"Search time {found_time:.2f} s, spiral radius {1e3 * found_radius:.1f} mm, insertion depth "
-                f"{1e3 * (PLATE_THICKNESS - peg_bottom_z):.1f} mm."
-            )
-
-        def reset_scene():
-            nonlocal phase
-            scene.reset(start_state)
-            hand_target_pos[:] = hand_start_pos
-            phase = "hold"
-
-        if args.vis:
-            dpos = 0.002
-            scene.viewer.register_keybinds(
-                Keybind("move_forward", Key.UP, KeyAction.HOLD, callback=move, args=((-dpos, 0, 0),)),
-                Keybind("move_back", Key.DOWN, KeyAction.HOLD, callback=move, args=((dpos, 0, 0),)),
-                Keybind("move_left", Key.LEFT, KeyAction.HOLD, callback=move, args=((0, -dpos, 0),)),
-                Keybind("move_right", Key.RIGHT, KeyAction.HOLD, callback=move, args=((0, dpos, 0),)),
-                Keybind("move_up", Key.K, KeyAction.HOLD, callback=move, args=((0, 0, dpos),)),
-                Keybind("move_down", Key.J, KeyAction.HOLD, callback=move, args=((0, 0, -dpos),)),
-                Keybind("toggle_search", Key.SPACE, KeyAction.PRESS, callback=start_search),
-                Keybind("reset_scene", Key.BACKSLASH, KeyAction.RELEASE, callback=reset_scene),
-            )
-            gs.logger.info(
-                "Keys: arrows move the peg in x/y, K/J move it up/down, Space starts or stops a spiral search, Backslash "
-                "puts the peg back."
-            )
-        while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-            control_step()
     finally:
         # The plot is written out here, since a recorder still running when the script exits fails at teardown.
         scene.stop_recording()

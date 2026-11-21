@@ -2,7 +2,7 @@
 
 The index fingertip, the middle fingertip and the wrist each follow a target, and the IK solves for all of them at once.
 
-With the viewer (-v), move the centre of the circles with the keyboard, during the scripted run and after it:
+Keyboard controls (-v):
 Up/Down    - Move the circles along -x/+x
 Left/Right - Move the circles along -y/+y
 K/J        - Move the circles up/down
@@ -101,9 +101,6 @@ def main():
         )
         gs.logger.info("Keys: Up/Down/Left/Right move the circles in the ground plane, K/J move them up/down.")
 
-    # The poses follow the targets along a continuous path, so they are shown at the pace of the simulation.
-    rate = gs.tools.Rate(1.0 / scene.dt)
-
     def track_circles(i):
         angle = i / 90 * np.pi
         index_finger_pos = center + np.array([np.cos(angle), np.sin(angle), 0]) * 0.1
@@ -118,18 +115,20 @@ def main():
 
         robot.set_qpos(qpos)
         scene.step()
-        if args.vis:
-            rate.sleep()
 
-    for i in range(n_steps):
-        track_circles(i)
+    if args.vis:
+        # The poses follow the targets along a continuous path, so they are shown at the pace of the simulation.
+        rate = gs.tools.Rate(1.0 / scene.dt)
+        i = 0
+        while scene.viewer.is_alive():
+            track_circles(i)
+            rate.sleep()
+            i += 1
+    else:
+        for i in range(n_steps):
+            track_circles(i)
     if camera is not None:
         camera.stop_recording()
-    # The viewer keeps the IK running on the circles the keys move.
-    i = n_steps
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        track_circles(i)
-        i += 1
 
 
 if __name__ == "__main__":

@@ -1,14 +1,14 @@
 """A Franka pokes blocks out of a Jenga-like tower with one fingertip, until it takes one block too many and the tower
 falls.
 
-The tower stands on a pedestal, three blocks per layer and each layer turned by a quarter turn. The hand points forward
-with its gripper open and its left finger pushes the middle block of three low layers until it sticks out of the far
-side, the outer blocks carrying the tower meanwhile. It then pushes both outer blocks of the lowest of those layers,
+The tower stands on a block on a table, three blocks per layer and each layer turned by a quarter turn. The hand points
+forward with its gripper open and its left finger pushes the middle block of three low layers until it sticks out of the
+far side, the outer blocks carrying the tower meanwhile. It then pushes both outer blocks of the lowest of those layers,
 which shifts the support of the tower past its centre of mass, and the tower topples. Contacts use the elliptic friction
 cone. With '--contact-patch' the contact points between the faces of the blocks come from the contact patch instead of
 the default multi-contact detection, and either run logs how much the tower settles before the first poke.
 
-With the viewer (-v), the keyboard drives the fingertips once the scripted pokes are over:
+Keyboard controls (-v):
 Up        - Push forward (+x)
 Down      - Pull back (-x)
 Left      - Move left (+y)
@@ -20,6 +20,7 @@ Esc       - Quit
 
 import argparse
 import os
+import xml.etree.ElementTree as ET
 
 import torch
 
@@ -36,8 +37,12 @@ LAYER_GAP = 5e-4
 # blocks a player looks for in a real tower. Pushing it out then drags nothing above it.
 MIDDLE_THINNING = 2e-3
 N_LAYERS = 12
-PEDESTAL_SIZE = (0.1, 0.1, 0.1)
-TOWER_POS = (0.55, 0.0, PEDESTAL_SIZE[2])
+# Height of the top of the table.
+TABLE_HEIGHT = 0.3
+# The tower stands on a block on the table, which raises the poked layers to a height the forward-pointing hand
+# reaches away from its joint limits.
+PEDESTAL_SIZE = (0.1, 0.1, 0.17)
+TOWER_POS = (0.55, 0.0, TABLE_HEIGHT + PEDESTAL_SIZE[2])
 # Distance from the origin of the hand to its fingertips, along its axis, and from its axis to the middle of the left
 # finger of the open gripper. Both closed fingers side by side are wider than a block, so the left finger of the open
 # gripper pokes alone, the right one passing beside the tower.
@@ -46,7 +51,19 @@ FINGER_OFFSET = 0.054
 # The hand points along +x, with its fingers closing along y.
 HAND_QUAT = (0.7071068, 0.0, 0.7071068, 0.0)
 # The fingers reach about 5 cm in front of the hand, which bounds how deep a poke goes into the tower.
-PUSH_DEPTH = 0.049
+# A deeper poke frees the first outer block far enough for the tower to fall before the second one is pushed.
+PUSH_DEPTH = 0.045
+
+
+def table_mjcf():
+    mjcf = ET.Element("mujoco", model="table")
+    ET.SubElement(ET.SubElement(mjcf, "default"), "geom", rgba="0.95 0.95 0.95 1")
+    body = ET.SubElement(ET.SubElement(mjcf, "worldbody"), "body", name="table", pos=f"0.55 0 {TABLE_HEIGHT}")
+    ET.SubElement(body, "geom", type="box", size="0.35 0.7 0.015", pos="0 0 -0.015")
+    for x in (-0.31, 0.31):
+        for y in (-0.66, 0.66):
+            ET.SubElement(body, "geom", type="box", size="0.02 0.02 0.135", pos=f"{x} {y} -0.165")
+    return ET.tostring(mjcf, encoding="unicode")
 
 
 def main():
@@ -59,8 +76,8 @@ def main():
 
     gs.init(backend=gs.gpu if args.gpu else gs.cpu, precision="32", seed=0)
 
-    camera_pos = (0.9, -0.95, 0.55)
-    camera_lookat = (0.48, 0.0, 0.2)
+    camera_pos = (0.9, -0.95, TOWER_POS[2] + 0.45)
+    camera_lookat = (0.48, 0.0, TOWER_POS[2] + 0.1)
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
@@ -86,13 +103,18 @@ def main():
         gs.morphs.Plane(),
     )
     scene.add_entity(
+        gs.morphs.MJCF(
+            file=table_mjcf(),
+        ),
+    )
+    scene.add_entity(
         gs.morphs.Box(
-            pos=(TOWER_POS[0], TOWER_POS[1], 0.5 * PEDESTAL_SIZE[2]),
+            pos=(TOWER_POS[0], TOWER_POS[1], TABLE_HEIGHT + 0.5 * PEDESTAL_SIZE[2]),
             size=PEDESTAL_SIZE,
             fixed=True,
         ),
-        surface=gs.surfaces.Rough(
-            color=(0.3, 0.3, 0.33),
+        surface=gs.surfaces.Default(
+            color=(0.95, 0.95, 0.95),
         ),
     )
     # Even layers run along x and odd ones along y. blocks[i_layer][i_block] counts the blocks of a layer from -y or -x.
@@ -181,62 +203,23 @@ def main():
     if camera is not None:
         camera.start_recording(save_to_filename="out/jenga.mp4", fps=25)
 
-    # Let the tower settle before the first poke.
-    blocks_pos_start = torch.stack([block.get_pos() for block in all_blocks])
-    for _ in range(int(100 * step_scale)):
-        scene.step()
-    blocks_drift = torch.stack([block.get_pos() for block in all_blocks]) - blocks_pos_start
-    gs.logger.info(
-        f"Contact {'patch' if args.contact_patch else 'multi-contact detection'}: the tower settled by "
-        f"{1e3 * blocks_drift[:, 2].abs().max().item():.2f} mm vertically and "
-        f"{1e3 * blocks_drift[:, :2].norm(dim=-1).max().item():.3f} mm horizontally."
-    )
-    top_z = blocks[-1][1].get_pos()[2].item()
-
-    # Push the middle block of layers 2, 4 and 6, then both outer blocks of layer 2, the second of which leaves the
-    # centre of mass of the tower above the far half of its support.
     x_near = TOWER_POS[0] - 0.5 * length
-    pokes = ((2, 1), (4, 1), (6, 1), (2, 2), (2, 0))
-    if "PYTEST_VERSION" in os.environ:
-        pokes = pokes[:1]
-    # The hand turns forward in front of the tower, then moves between pokes along straight lines clear of its face.
-    _, y, z = blocks[pokes[0][0]][pokes[0][1]].get_pos().tolist()
-    move_tips((x_near - 0.08, y, z + 0.05), steps=200, is_joint_space=True)
-    for i_layer, i_block in pokes:
-        _, y, z = blocks[i_layer][i_block].get_pos().tolist()
-        move_tips((x_near - 0.08, y, z), steps=80)
-        move_tips((x_near - 0.005, y, z), steps=60)
-        move_tips((x_near + PUSH_DEPTH, y, z), steps=150)
-        move_tips((x_near - 0.08, y, z), steps=60)
-        for _ in range(int(60 * step_scale)):
-            scene.step()
-        tower_drop = top_z - max(block.get_pos()[2].item() for block in blocks[-1])
-        block_shift = blocks[i_layer][i_block].get_pos()[0].item() - TOWER_POS[0]
-        gs.logger.info(
-            f"Pushed block {i_block} of layer {i_layer} by {1e3 * block_shift:.0f} mm: the top of the tower dropped by "
-            f"{1e3 * tower_drop:.1f} mm."
-        )
-        if tower_drop > 5 * height:
-            gs.logger.info("The tower toppled.")
-            for _ in range(int(100 * step_scale)):
-                scene.step()
-            break
-
-    if camera is not None:
-        camera.stop_recording()
-
-    # Keybind callbacks run on the viewer thread, so they only move the target that the main loop tracks.
-    tips_target = hand.get_pos() + hand.get_pos().new_tensor((TIP_DEPTH, FINGER_OFFSET, 0.0))
-    is_running = True
-
-    def move(delta):
-        tips_target[:] += tips_target.new_tensor(delta)
-
-    def stop():
-        nonlocal is_running
-        is_running = False
-
     if args.vis:
+        # The hand starts turned forward, its fingertip in front of the middle block of layer 2.
+        _, y, z = blocks[2][1].get_pos().tolist()
+        tips_target = hand.get_pos().new_tensor((x_near - 0.08, y, z))
+        tips_offset = tips_target.new_tensor((TIP_DEPTH, FINGER_OFFSET, 0.0))
+        franka.set_qpos(franka.inverse_kinematics(link=hand, pos=tips_target - tips_offset, quat=HAND_QUAT))
+        is_running = True
+
+        # Keybind callbacks run on the viewer thread, so they only move the target that the main loop tracks.
+        def move(delta):
+            tips_target[:] += tips_target.new_tensor(delta)
+
+        def stop():
+            nonlocal is_running
+            is_running = False
+
         step = 0.002
         scene.viewer.register_keybinds(
             Keybind("push", Key.UP, KeyAction.HOLD, callback=move, args=((step, 0.0, 0.0),)),
@@ -248,11 +231,53 @@ def main():
             Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
         )
         gs.logger.info("Keys: Up/Down push and pull, Left/Right move sideways, K/J move up/down, Esc quits.")
-    while args.vis and scene.viewer.is_alive() and is_running and "PYTEST_VERSION" not in os.environ:
-        hand_pos = tips_target - tips_target.new_tensor((TIP_DEPTH, FINGER_OFFSET, 0.0))
-        qpos = franka.inverse_kinematics(link=hand, pos=hand_pos, quat=HAND_QUAT)
-        franka.control_dofs_position(qpos[:7], arm_dofs)
-        scene.step()
+        while scene.viewer.is_alive() and is_running:
+            qpos = franka.inverse_kinematics(link=hand, pos=tips_target - tips_offset, quat=HAND_QUAT)
+            franka.control_dofs_position(qpos[:7], arm_dofs)
+            scene.step()
+    else:
+        # Let the tower settle before the first poke.
+        blocks_pos_start = torch.stack([block.get_pos() for block in all_blocks])
+        for _ in range(int(100 * step_scale)):
+            scene.step()
+        blocks_drift = torch.stack([block.get_pos() for block in all_blocks]) - blocks_pos_start
+        gs.logger.info(
+            f"Contact {'patch' if args.contact_patch else 'multi-contact detection'}: the tower settled by "
+            f"{1e3 * blocks_drift[:, 2].abs().max().item():.2f} mm vertically and "
+            f"{1e3 * blocks_drift[:, :2].norm(dim=-1).max().item():.3f} mm horizontally."
+        )
+        top_z = blocks[-1][1].get_pos()[2].item()
+
+        # Push the middle block of layers 2, 4 and 6, then both outer blocks of layer 2, the second of which leaves the
+        # centre of mass of the tower above the far half of its support.
+        pokes = ((2, 1), (4, 1), (6, 1), (2, 2), (2, 0))
+        if "PYTEST_VERSION" in os.environ:
+            pokes = pokes[:1]
+        # The hand turns forward in front of the tower, then moves between pokes along straight lines clear of its face.
+        _, y, z = blocks[pokes[0][0]][pokes[0][1]].get_pos().tolist()
+        move_tips((x_near - 0.08, y, z + 0.05), steps=200, is_joint_space=True)
+        for i_layer, i_block in pokes:
+            _, y, z = blocks[i_layer][i_block].get_pos().tolist()
+            move_tips((x_near - 0.08, y, z), steps=80)
+            move_tips((x_near - 0.005, y, z), steps=60)
+            move_tips((x_near + PUSH_DEPTH, y, z), steps=150)
+            move_tips((x_near - 0.08, y, z), steps=60)
+            for _ in range(int(60 * step_scale)):
+                scene.step()
+            tower_drop = top_z - max(block.get_pos()[2].item() for block in blocks[-1])
+            block_shift = blocks[i_layer][i_block].get_pos()[0].item() - TOWER_POS[0]
+            gs.logger.info(
+                f"Pushed block {i_block} of layer {i_layer} by {1e3 * block_shift:.0f} mm: the top of the tower "
+                f"dropped by {1e3 * tower_drop:.1f} mm."
+            )
+            if tower_drop > 5 * height:
+                gs.logger.info("The tower toppled.")
+                for _ in range(int(100 * step_scale)):
+                    scene.step()
+                break
+
+    if camera is not None:
+        camera.stop_recording()
 
 
 if __name__ == "__main__":

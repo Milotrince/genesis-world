@@ -1,6 +1,6 @@
 """A damped least-squares differential IK controller drives an arm along a circle traced by a target frame.
 
-With the viewer (-v), move the centre of the circle with the keyboard, during the scripted run and after it:
+Keyboard controls (-v):
 Up/Down    - Move the circle along +y/-y (away from/towards the camera)
 Left/Right - Move the circle along -x/+x
 K/J        - Move the circle up/down
@@ -115,9 +115,6 @@ def main():
         )
         gs.logger.info("Keys: Up/Down move the circle along +y/-y, Left/Right along -x/+x, K/J up/down.")
 
-    # The poses follow the target along a continuous path, so they are shown at the pace of the simulation.
-    rate = gs.tools.Rate(1.0 / scene.dt)
-
     def track_circle(i):
         target_pos = center + np.array([np.cos(i / 360 * np.pi), np.sin(i / 360 * np.pi), 0]) * r
         target_entity.set_qpos(np.concatenate([target_pos, target_quat]))
@@ -138,18 +135,20 @@ def main():
 
         robot.set_qpos(q)
         scene.step()
-        if args.vis:
-            rate.sleep()
 
-    for i in range(n_steps):
-        track_circle(i)
+    if args.vis:
+        # The poses follow the target along a continuous path, so they are shown at the pace of the simulation.
+        rate = gs.tools.Rate(1.0 / scene.dt)
+        i = 0
+        while scene.viewer.is_alive():
+            track_circle(i)
+            rate.sleep()
+            i += 1
+    else:
+        for i in range(n_steps):
+            track_circle(i)
     if camera is not None:
         camera.stop_recording()
-    # The viewer keeps the controller running on the circle the keys move.
-    i = n_steps
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        track_circle(i)
-        i += 1
 
 
 if __name__ == "__main__":

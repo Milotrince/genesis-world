@@ -1,8 +1,9 @@
 """A Crazyflie drone flown open-loop by differential propeller RPMs, from a scripted sequence of key commands.
 
 Headless, the script flies a short pre-planned sequence of the commands the keys issue: climb, tilt forward and
-back, then turn left and back. With the viewer (-v), the same sequence runs first, then the keyboard flies the drone,
-the keys adding to the scripted commands while they run:
+back, then turn left and back. With the viewer (-v), the keyboard flies the drone from the start.
+
+Keyboard controls (-v):
 Up         - Tilt forward (North)
 Down       - Tilt backward (South)
 Left       - Turn left
@@ -113,8 +114,13 @@ def main():
     dir_left = np.array([-1.0, 1.0, -1.0, 1.0])
     dir_right = -dir_left
 
-    is_running = True
+    def fly(n_steps):
+        for _ in range(n_steps):
+            drone.set_propellers_rpm(controller.update_rpms())
+            scene.step()
+
     if args.vis:
+        is_running = True
 
         def stop():
             nonlocal is_running
@@ -139,48 +145,42 @@ def main():
             ]
         scene.viewer.register_keybinds(*keybinds)
         gs.logger.info("Keys: Up/Down tilt, Left/Right turn, Space/Left Shift raise/lower the RPM, Esc quits.")
-
-    def fly(n_steps):
-        for _ in range(n_steps):
-            drone.set_propellers_rpm(controller.update_rpms())
-            scene.step()
-
-    # The scripted flight calls the same functions as the keys. A thrust key acts on every step it is held, while a
-    # tilt or turn key adds its direction on press and removes it on release.
-    n_tap = 20 if not is_test else 2
-    # Climb: raise the thrust, lower it as far below the hover RPM, then bring it back, so the drone climbs and stops.
-    for _ in range(2 * n_tap):
-        controller.accelerate()
-        fly(1)
-    for _ in range(4 * n_tap):
-        controller.decelerate()
-        fly(1)
-    for _ in range(2 * n_tap):
-        controller.accelerate()
-        fly(1)
-    # Tilt forward, twice as long backward, then forward again, which brings the drone back level.
-    controller.add_direction(dir_forward)
-    fly(n_tap)
-    controller.add_direction(dir_backward - dir_forward)
-    fly(2 * n_tap)
-    controller.add_direction(dir_forward - dir_backward)
-    fly(n_tap)
-    controller.add_direction(-dir_forward)
-    fly(5 * n_tap // 2)
-    # Turn left, twice as long right, then left again.
-    controller.add_direction(dir_left)
-    fly(n_tap)
-    controller.add_direction(dir_right - dir_left)
-    fly(2 * n_tap)
-    controller.add_direction(dir_left - dir_right)
-    fly(n_tap)
-    controller.add_direction(-dir_left)
-    fly(5 * n_tap // 2)
+        while is_running and scene.viewer.is_alive():
+            fly(1)
+    else:
+        # The scripted flight calls the same functions as the keys. A thrust key acts on every step it is held, while
+        # a tilt or turn key adds its direction on press and removes it on release.
+        n_tap = 20 if not is_test else 2
+        # Raise the thrust, lower it as far below the hover RPM, then bring it back, so the drone climbs and stops.
+        for _ in range(2 * n_tap):
+            controller.accelerate()
+            fly(1)
+        for _ in range(4 * n_tap):
+            controller.decelerate()
+            fly(1)
+        for _ in range(2 * n_tap):
+            controller.accelerate()
+            fly(1)
+        # Tilt forward, twice as long backward, then forward again, which brings the drone back level.
+        controller.add_direction(dir_forward)
+        fly(n_tap)
+        controller.add_direction(dir_backward - dir_forward)
+        fly(2 * n_tap)
+        controller.add_direction(dir_forward - dir_backward)
+        fly(n_tap)
+        controller.add_direction(-dir_forward)
+        fly(5 * n_tap // 2)
+        # Turn left, twice as long right, then left again.
+        controller.add_direction(dir_left)
+        fly(n_tap)
+        controller.add_direction(dir_right - dir_left)
+        fly(2 * n_tap)
+        controller.add_direction(dir_left - dir_right)
+        fly(n_tap)
+        controller.add_direction(-dir_left)
+        fly(5 * n_tap // 2)
     if camera is not None:
         camera.stop_recording()
-
-    while args.vis and is_running and scene.viewer.is_alive() and not is_test:
-        fly(1)
 
 
 if __name__ == "__main__":

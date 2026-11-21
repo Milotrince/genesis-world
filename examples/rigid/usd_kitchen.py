@@ -9,9 +9,10 @@ Usage
     python examples/rigid/usd_kitchen.py --full --vis       # the whole kitchen scene
     python examples/rigid/usd_kitchen.py -r                 # record the settle to out/usd_kitchen.mp4
 
-Headless, the scene runs a short bounded settle and exits. With ``-v``/``--vis`` the same settle runs in the
-interactive viewer, which then stays open until it is closed or ``Esc`` is pressed. Drag the entities with the mouse,
-during the settle and after it.
+Headless, the scene runs a short bounded settle and exits. With ``-v``/``--vis`` the interactive viewer stays open
+until it is closed or ``Esc`` is pressed.
+
+Mouse controls (-v): drag the entities.
 """
 
 import argparse
@@ -141,8 +142,10 @@ def main():
             x += size[0] + gap
     gs.logger.info(f"Scene built successfully with {len(all_entities)} entities.")
 
-    is_running = True
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/usd_kitchen.mp4", fps=round(1.0 / scene.dt))
     if args.vis:
+        is_running = True
 
         def stop():
             nonlocal is_running
@@ -152,16 +155,13 @@ def main():
             Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
         )
         gs.logger.info("Drag the entities with the mouse. Esc quits.")
-
-    if camera is not None:
-        camera.start_recording(save_to_filename="out/usd_kitchen.mp4", fps=round(1.0 / scene.dt))
-    for _ in range(200 if "PYTEST_VERSION" not in os.environ else 5):
-        scene.step()
+        while is_running and scene.viewer.is_alive():
+            scene.step()
+    else:
+        for _ in range(200 if "PYTEST_VERSION" not in os.environ else 5):
+            scene.step()
     if camera is not None:
         camera.stop_recording()
-
-    while args.vis and is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        scene.step()
 
 
 if __name__ == "__main__":

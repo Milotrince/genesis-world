@@ -5,7 +5,9 @@ instead of springing back. The robot holds a rolling pin attached to its hand an
 over the lump on a board, lowering it after every pass. The run logs the thickness and the footprint of the dough
 after each pass, read from the particle positions. MPM is slow on CPU, so pass -g to run on GPU.
 
-Keyboard controls (-v), once the scripted passes are over:
+With the viewer (-v), the scripted passes are skipped: the robot holds the pin above the lump, and the keys drive it.
+
+Keyboard controls (-v):
 Up/Down    - Move the pin along -x/+x
 Left/Right - Move the pin along -y/+y
 K/J        - Move the pin up/down
@@ -114,19 +116,23 @@ def main():
         ),
     )
     dough = scene.add_entity(
-        morph=gs.morphs.Box(
-            pos=(*BOARD_POS, BOARD_TOP + 0.5 * DOUGH_SIZE[2]),
-            size=DOUGH_SIZE,
-        ),
-        material=gs.materials.MPM.ElastoPlastic(
-            E=5e4,
-            nu=0.3,
-            rho=1100.0,
-            von_mises_yield_stress=800.0,
-        ),
-        surface=gs.surfaces.Rough(
-            color=(0.95, 0.87, 0.65),
-            vis_mode="particle",
+        spec=gs.entities.MPM(
+            morph=gs.morphs.Box(
+                pos=(*BOARD_POS, BOARD_TOP + 0.5 * DOUGH_SIZE[2]),
+                size=DOUGH_SIZE,
+            ),
+            material=gs.materials.MPM.ElastoPlastic(
+                E=5e4,
+                nu=0.3,
+                rho=1100.0,
+                von_mises_yield_stress=800.0,
+            ),
+            surface=gs.surfaces.Rough(
+                color=(0.95, 0.87, 0.65),
+            ),
+            vis=gs.options.EntityVisOptions(
+                debug=True,
+            ),
         ),
     )
     franka = scene.add_entity(
@@ -153,6 +159,7 @@ def main():
             pos=camera_pos,
             lookat=camera_lookat,
             fov=40,
+            debug=True,
         )
 
     scene.build()
@@ -191,18 +198,6 @@ def main():
 
     if camera is not None:
         camera.start_recording(save_to_filename="out/mpm_roll_dough.mp4", fps=round(1.0 / DT))
-    log_dough("Lump")
-    for i_pass, height in enumerate(PASSES_HEIGHT):
-        z_hand = BOARD_TOP + height + PIN_RADIUS + PIN_DEPTH
-        # Set the pin down behind the lump, roll it forward over the dough, then back.
-        move_to((x_start, BOARD_POS[1], z_hand), speed=0.1)
-        move_to((BOARD_POS[0] + PASS_HALF_LENGTH, BOARD_POS[1], z_hand), speed=0.15)
-        move_to((x_start, BOARD_POS[1], z_hand), speed=0.15)
-        log_dough(f"Pass {i_pass + 1}, pin {100 * height:.1f} cm above the board")
-    move_to((x_start, BOARD_POS[1], target_pos[2] + 0.06), speed=0.1)
-    if camera is not None:
-        camera.stop_recording()
-
     if args.vis:
         is_running = True
 
@@ -224,8 +219,20 @@ def main():
             Keybind("quit", Key.ESCAPE, KeyAction.RELEASE, callback=stop),
         )
         gs.logger.info("Keys: arrows move the pin in the horizontal plane, K/J move it up/down, Esc quits.")
-        while is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+        while is_running and scene.viewer.is_alive():
             track_target()
+    else:
+        log_dough("Lump")
+        for i_pass, height in enumerate(PASSES_HEIGHT):
+            z_hand = BOARD_TOP + height + PIN_RADIUS + PIN_DEPTH
+            # Set the pin down behind the lump, roll it forward over the dough, then back.
+            move_to((x_start, BOARD_POS[1], z_hand), speed=0.1)
+            move_to((BOARD_POS[0] + PASS_HALF_LENGTH, BOARD_POS[1], z_hand), speed=0.15)
+            move_to((x_start, BOARD_POS[1], z_hand), speed=0.15)
+            log_dough(f"Pass {i_pass + 1}, pin {100 * height:.1f} cm above the board")
+        move_to((x_start, BOARD_POS[1], target_pos[2] + 0.06), speed=0.1)
+    if camera is not None:
+        camera.stop_recording()
 
 
 if __name__ == "__main__":

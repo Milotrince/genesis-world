@@ -1,6 +1,7 @@
 """Depth cameras attached to rigid and kinematic links, with per-frame set_vverts on a deforming sphere.
 
-With the viewer (-v), drag the Go2 with the mouse to move the depth camera mounted on it, during the run and after it.
+With the viewer (-v), drag the Go2 with the mouse to move the depth camera mounted on it. Depth PNGs are saved by the
+headless run only.
 """
 
 import argparse
@@ -232,17 +233,19 @@ def main():
         return depth_imgs
 
     try:
-        for step in range(args.steps):
-            depth_imgs = deform_and_step(step)
-            if step % args.save_every == 0:
-                for i, name in enumerate(cams):
-                    exporter.export_frame_single_camera(step, i, depth=tensor_to_array(depth_imgs[name]))
+        if args.vis:
+            step = 0
+            while scene.viewer.is_alive():
+                deform_and_step(step)
+                step += 1
+        else:
+            for step in range(args.steps):
+                depth_imgs = deform_and_step(step)
+                if step % args.save_every == 0:
+                    for i, name in enumerate(cams):
+                        exporter.export_frame_single_camera(step, i, depth=tensor_to_array(depth_imgs[name]))
         if camera is not None:
             camera.stop_recording()
-        step = args.steps
-        while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-            deform_and_step(step)
-            step += 1
     except KeyboardInterrupt:
         print("\nInterrupted.", flush=True)
 

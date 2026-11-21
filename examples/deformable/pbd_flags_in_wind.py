@@ -2,9 +2,10 @@
 
 Force fields act on every particle of the scene as an acceleration. The scripted run turns them on one after the other:
 a steady wind first, then Perlin-noise turbulence on top of it, and finally the wind gives way to a point attractor in
-front of the poles, which gathers the three flags towards it.
+front of the poles, which gathers the three flags towards it. With the viewer (-v), the flags start in the steady wind
+alone, and the keys toggle each force field.
 
-Keyboard controls (with -v, once the scripted run is over):
+Keyboard controls (-v):
 1 - Toggle the wind
 2 - Toggle the turbulence
 3 - Toggle the point attractor
@@ -144,19 +145,6 @@ def main():
 
     if camera is not None:
         camera.start_recording(save_to_filename="out/pbd_flags_in_wind.mp4", fps=30)
-    n_wind, n_turbulence, n_attractor = (500, 750, 750) if "PYTEST_VERSION" not in os.environ else (10, 10, 10)
-    for _ in range(n_wind):
-        scene.step()
-    toggle(turbulence)
-    for _ in range(n_turbulence):
-        scene.step()
-    toggle(wind)
-    toggle(attractor)
-    for _ in range(n_attractor):
-        scene.step()
-    if camera is not None:
-        camera.stop_recording()
-
     if args.vis:
         scene.viewer.register_keybinds(
             Keybind("toggle_wind", Key._1, KeyAction.PRESS, callback=toggle, args=(wind,)),
@@ -164,8 +152,21 @@ def main():
             Keybind("toggle_attractor", Key._3, KeyAction.PRESS, callback=toggle, args=(attractor,)),
         )
         gs.logger.info("Keys: 1 toggles the wind, 2 the turbulence, 3 the point attractor.")
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        scene.step()
+        while scene.viewer.is_alive():
+            scene.step()
+    else:
+        n_wind, n_turbulence, n_attractor = (500, 750, 750) if "PYTEST_VERSION" not in os.environ else (10, 10, 10)
+        for _ in range(n_wind):
+            scene.step()
+        toggle(turbulence)
+        for _ in range(n_turbulence):
+            scene.step()
+        toggle(wind)
+        toggle(attractor)
+        for _ in range(n_attractor):
+            scene.step()
+    if camera is not None:
+        camera.stop_recording()
 
 
 if __name__ == "__main__":

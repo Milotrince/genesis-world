@@ -5,7 +5,8 @@ boxes, which the liquid meets through their surfaces. The hand points horizontal
 fingers closing on the side walls of the cup, and pours by turning its last joint, which rolls the cup about the
 approach axis. Particle scenes are slow on CPU, so '-g' speeds the run up a lot.
 
-With the viewer (-v), drag the cup with the mouse once the pour is over.
+With the viewer (-v), the scripted pour is skipped: the cup of water stands on the table next to the bowl, and the
+mouse drags it.
 """
 
 import argparse
@@ -222,40 +223,40 @@ def main():
     if camera is not None:
         camera.start_recording(save_to_filename="out/sph_pour.mp4", fps=25)
 
-    # Let the liquid settle in the cup, then slide the open fingers around its side walls from behind.
-    for _ in range(int(30 * step_scale)):
-        scene.step()
-    grip_z = CUP_POS[2] + 0.05
-    move_hand((CUP_POS[0], CUP_POS[1], grip_z), steps=100, standoff=0.1)
-    move_hand((CUP_POS[0], CUP_POS[1], grip_z), steps=60)
-    franka.control_dofs_force((-10.0, -10.0), fingers_dofs)
-    for _ in range(int(30 * step_scale)):
-        scene.step()
+    if args.vis:
+        while scene.viewer.is_alive():
+            scene.step()
+    else:
+        # Let the liquid settle in the cup, then slide the open fingers around its side walls from behind.
+        for _ in range(int(30 * step_scale)):
+            scene.step()
+        grip_z = CUP_POS[2] + 0.05
+        move_hand((CUP_POS[0], CUP_POS[1], grip_z), steps=100, standoff=0.1)
+        move_hand((CUP_POS[0], CUP_POS[1], grip_z), steps=60)
+        franka.control_dofs_force((-10.0, -10.0), fingers_dofs)
+        for _ in range(int(30 * step_scale)):
+            scene.step()
 
-    # Lift the cup, carry it over the bowl, then turn the last joint so that the cup rolls about the hand axis and the
-    # water pours over the rim facing the middle of the bowl.
-    move_hand((CUP_POS[0], CUP_POS[1], POUR_POS[2]), steps=80)
-    move_hand(POUR_POS, steps=120)
-    n_roll_steps = max(int(150 * step_scale), 2)
-    qpos = franka.get_qpos()
-    for i_step in range(1, n_roll_steps + 1):
-        qpos[6] = qpos[6] - POUR_ANGLE / n_roll_steps
-        franka.control_dofs_position(qpos[:7], arm_dofs)
-        scene.step()
-    for _ in range(int(60 * step_scale)):
-        scene.step()
+        # Lift the cup, carry it over the bowl, then turn the last joint so that the cup rolls about the hand axis and
+        # the water pours over the rim facing the middle of the bowl.
+        move_hand((CUP_POS[0], CUP_POS[1], POUR_POS[2]), steps=80)
+        move_hand(POUR_POS, steps=120)
+        n_roll_steps = max(int(150 * step_scale), 2)
+        qpos = franka.get_qpos()
+        for i_step in range(1, n_roll_steps + 1):
+            qpos[6] = qpos[6] - POUR_ANGLE / n_roll_steps
+            franka.control_dofs_position(qpos[:7], arm_dofs)
+            scene.step()
+        for _ in range(int(60 * step_scale)):
+            scene.step()
 
-    particles_pos = liquid.get_particles_pos()
-    particles_offset = particles_pos - particles_pos.new_tensor(BOWL_POS)
-    is_in_bowl = particles_offset[:, 2] < BOWL_SIZE[2]
-    is_in_bowl &= (particles_offset[:, :2].abs() < 0.5 * BOWL_SIZE[0] - WALL).all(dim=-1)
-    gs.logger.info(f"{100.0 * is_in_bowl.float().mean().item():.0f}% of the liquid landed in the bowl.")
-
+        particles_pos = liquid.get_particles_pos()
+        particles_offset = particles_pos - particles_pos.new_tensor(BOWL_POS)
+        is_in_bowl = particles_offset[:, 2] < BOWL_SIZE[2]
+        is_in_bowl &= (particles_offset[:, :2].abs() < 0.5 * BOWL_SIZE[0] - WALL).all(dim=-1)
+        gs.logger.info(f"{100.0 * is_in_bowl.float().mean().item():.0f}% of the liquid landed in the bowl.")
     if camera is not None:
         camera.stop_recording()
-
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        scene.step()
 
 
 if __name__ == "__main__":

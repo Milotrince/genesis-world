@@ -1,9 +1,10 @@
 """
 A lidar or a depth camera rides a Go2 (or a box) among a ring of cylinders and a ring of boxes, and draws its hits.
 
-Without the viewer, the robot follows a scripted patrol through the obstacles. With the viewer (-v), the same patrol
-runs, and the keyboard then drives the robot:
+Without the viewer, the robot follows a scripted patrol through the obstacles. With the viewer (-v), the keyboard
+drives the robot from the start pose.
 
+Keyboard controls (-v):
     Up / Down       move along +x / -x
     Left / Right    move along +y / -y
     j / k           move down / up
@@ -205,34 +206,36 @@ def main():
     if camera is not None:
         camera.start_recording(save_to_filename="out/lidar_go2.mp4", fps=round(1.0 / scene.dt))
 
-    # The scripted patrol calls the same functions as the keys, one call per step. The robot drives a 1.5 m square
-    # loop, which keeps it clear of the ring of cylinders, then raises its nose.
-    n_side_steps = 15 if "PYTEST_VERSION" not in os.environ else 2
-    for _ in range(8):
-        rotate(2, False)
-        step_pose()
-    for _ in range(n_side_steps):
-        translate(0, False)
-        step_pose()
-    for _ in range(n_side_steps):
-        translate(1, False)
-        step_pose()
-    for _ in range(16):
-        rotate(2, False)
-        step_pose()
-    for _ in range(n_side_steps):
-        translate(0, True)
-        step_pose()
-    for _ in range(n_side_steps):
-        translate(1, True)
-        step_pose()
-    for _ in range(4):
-        rotate(1, True)
-        step_pose()
+    if args.vis:
+        while scene.viewer.is_alive():
+            step_pose()
+    else:
+        # The scripted patrol calls the same functions as the keys, one call per step. The robot drives a 1.5 m square
+        # loop, which keeps it clear of the ring of cylinders, then raises its nose.
+        n_side_steps = 15 if "PYTEST_VERSION" not in os.environ else 2
+        for _ in range(8):
+            rotate(2, False)
+            step_pose()
+        for _ in range(n_side_steps):
+            translate(0, False)
+            step_pose()
+        for _ in range(n_side_steps):
+            translate(1, False)
+            step_pose()
+        for _ in range(16):
+            rotate(2, False)
+            step_pose()
+        for _ in range(n_side_steps):
+            translate(0, True)
+            step_pose()
+        for _ in range(n_side_steps):
+            translate(1, True)
+            step_pose()
+        for _ in range(4):
+            rotate(1, True)
+            step_pose()
     if camera is not None:
         camera.stop_recording()
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        step_pose()
 
 
 if __name__ == "__main__":

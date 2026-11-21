@@ -2,7 +2,8 @@
 at one vertex, and a stiff cube dragged around a circle by one of its vertices.
 
 The red markers show the fixed vertices and the moving target of the dragged vertex. The constraints run under the
-default coupler or under the SAP coupler (--coupler sap). With the viewer (-v), drag the FEM entities with the mouse.
+default coupler or under the SAP coupler (--coupler sap). Headless, the cube is dragged around its circle. With the
+viewer (-v), the cube stays pinned at the start of its circle, and the mouse drags the FEM entities.
 """
 
 import argparse
@@ -178,19 +179,21 @@ def main():
         debug_circle = scene.draw_debug_spheres(poss=target_positions, radius=0.01, color=(1, 0, 0, 1))
         cube.set_vertex_constraints(pinned_idx, target_positions)
 
-        for _ in tqdm(range(total_steps), total=total_steps):
-            if debug_circle is not None:
-                scene.clear_debug_object(debug_circle)
+        if args.vis:
+            while scene.viewer.is_alive():
+                scene.step()
+        else:
+            for _ in tqdm(range(total_steps), total=total_steps):
+                if debug_circle is not None:
+                    scene.clear_debug_object(debug_circle)
 
-            new_pos = get_next_circle_position()
-            debug_circle = scene.draw_debug_spheres(poss=new_pos, radius=0.01, color=(1, 0, 0, 1))
-            cube.update_constraint_targets(pinned_idx, new_pos)
+                new_pos = get_next_circle_position()
+                debug_circle = scene.draw_debug_spheres(poss=new_pos, radius=0.01, color=(1, 0, 0, 1))
+                cube.update_constraint_targets(pinned_idx, new_pos)
 
-            scene.step()
+                scene.step()
         if camera is not None:
             camera.stop_recording()
-        while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-            scene.step()
     except KeyboardInterrupt:
         gs.logger.info("Simulation interrupted, exiting.")
     finally:

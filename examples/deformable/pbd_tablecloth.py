@@ -5,7 +5,10 @@ The cloth is a position-based dynamics (PBD) cloth. Each hand pins the particles
 edge of the cloth next to the table and carry it across the table top, which drags the rest of the cloth over it, then
 lay the edge down past the far side. Particle scenes are slow on CPU, so '-g' speeds the run up.
 
-With the viewer (-v), the keyboard drives both hands together once the cloth lies on the table:
+With the viewer (-v), the scripted drape is skipped: the cloth lies flat on the floor beside the table, the arms wait
+in their start pose, and the keyboard drives both hands together.
+
+Keyboard controls (-v):
 Up        - Move forward (+x)
 Down      - Move backward (-x)
 Left      - Move left (+y)
@@ -166,52 +169,29 @@ def main():
     if camera is not None:
         camera.start_recording(save_to_filename="out/pbd_tablecloth.mp4", fps=50)
 
-    corners_y = (-0.5 * CLOTH_SIZE, 0.5 * CLOTH_SIZE)
-    table_far_x = TABLE_POS[0] + 0.5 * TABLE_SIZE[0]
-    carry_z = TABLE_SIZE[2] + 0.15
-    move_tips([(CLOTH_NEAR_X, y, 0.08) for y in corners_y], steps=80)
-    move_tips([(CLOTH_NEAR_X, y, 0.01) for y in corners_y], steps=40)
-    grab()
-    # Lift the edge above the table and carry it past the far side, which drags the rest of the cloth up over the near
-    # side and across the table top, then lower the edge past the far side and let go.
-    move_tips([(CLOTH_NEAR_X, y, carry_z) for y in corners_y], steps=80)
-    move_tips([(table_far_x + 0.08, y, carry_z) for y in corners_y], steps=200)
-    move_tips([(table_far_x + 0.08, y, 0.03) for y in corners_y], steps=100)
-    release()
-    move_tips([(table_far_x + 0.08, y, carry_z) for y in corners_y], steps=60)
-    for _ in range(int(50 * step_scale)):
-        scene.step()
-
-    particles_pos = cloth.get_particles_pos()
-    is_on_table = particles_pos[:, 2] > TABLE_SIZE[2] - 0.01
-    gs.logger.info(f"{100.0 * is_on_table.float().mean().item():.0f}% of the cloth lies on the table top.")
-
-    if camera is not None:
-        camera.stop_recording()
-
-    # Keybind callbacks run on the viewer thread, so they only move the targets and raise requests for the main loop.
-    tips_targets = [hand.get_pos() - hand.get_pos().new_tensor((0.0, 0.0, TIP_DEPTH)) for hand in hands]
-    is_running = True
-    is_grab_requested = False
-    is_release_requested = False
-
-    def move(delta):
-        for target in tips_targets:
-            target[:] += target.new_tensor(delta)
-
-    def request_grab():
-        nonlocal is_grab_requested
-        is_grab_requested = True
-
-    def request_release():
-        nonlocal is_release_requested
-        is_release_requested = True
-
-    def stop():
-        nonlocal is_running
-        is_running = False
-
     if args.vis:
+        # Keybind callbacks run on the viewer thread, so they only move the targets and raise requests for this loop.
+        tips_targets = [hand.get_pos() - hand.get_pos().new_tensor((0.0, 0.0, TIP_DEPTH)) for hand in hands]
+        is_running = True
+        is_grab_requested = False
+        is_release_requested = False
+
+        def move(delta):
+            for target in tips_targets:
+                target[:] += target.new_tensor(delta)
+
+        def request_grab():
+            nonlocal is_grab_requested
+            is_grab_requested = True
+
+        def request_release():
+            nonlocal is_release_requested
+            is_release_requested = True
+
+        def stop():
+            nonlocal is_running
+            is_running = False
+
         step = 0.003
         scene.viewer.register_keybinds(
             Keybind("move_forward", Key.UP, KeyAction.HOLD, callback=move, args=((step, 0.0, 0.0),)),
@@ -227,19 +207,41 @@ def main():
         gs.logger.info(
             "Keys: Up/Down/Left/Right move the hands, K/J move them up/down, G grabs, U releases, Esc quits."
         )
-    while args.vis and scene.viewer.is_alive() and is_running and "PYTEST_VERSION" not in os.environ:
-        if is_grab_requested:
-            is_grab_requested = False
-            grab()
-        if is_release_requested:
-            is_release_requested = False
-            release()
-        for franka, hand, quat, target in zip(frankas, hands, hands_quat, tips_targets):
-            qpos = franka.inverse_kinematics(
-                link=hand, pos=target + target.new_tensor((0.0, 0.0, TIP_DEPTH)), quat=quat
-            )
-            franka.control_dofs_position(qpos[:7], arm_dofs)
-        scene.step()
+        while scene.viewer.is_alive() and is_running:
+            if is_grab_requested:
+                is_grab_requested = False
+                grab()
+            if is_release_requested:
+                is_release_requested = False
+                release()
+            for franka, hand, quat, target in zip(frankas, hands, hands_quat, tips_targets):
+                qpos = franka.inverse_kinematics(
+                    link=hand, pos=target + target.new_tensor((0.0, 0.0, TIP_DEPTH)), quat=quat
+                )
+                franka.control_dofs_position(qpos[:7], arm_dofs)
+            scene.step()
+    else:
+        corners_y = (-0.5 * CLOTH_SIZE, 0.5 * CLOTH_SIZE)
+        table_far_x = TABLE_POS[0] + 0.5 * TABLE_SIZE[0]
+        carry_z = TABLE_SIZE[2] + 0.15
+        move_tips([(CLOTH_NEAR_X, y, 0.08) for y in corners_y], steps=80)
+        move_tips([(CLOTH_NEAR_X, y, 0.01) for y in corners_y], steps=40)
+        grab()
+        # Lift the edge above the table and carry it past the far side, which drags the rest of the cloth up over the
+        # near side and across the table top, then lower the edge past the far side and let go.
+        move_tips([(CLOTH_NEAR_X, y, carry_z) for y in corners_y], steps=80)
+        move_tips([(table_far_x + 0.08, y, carry_z) for y in corners_y], steps=200)
+        move_tips([(table_far_x + 0.08, y, 0.03) for y in corners_y], steps=100)
+        release()
+        move_tips([(table_far_x + 0.08, y, carry_z) for y in corners_y], steps=60)
+        for _ in range(int(50 * step_scale)):
+            scene.step()
+
+        particles_pos = cloth.get_particles_pos()
+        is_on_table = particles_pos[:, 2] > TABLE_SIZE[2] - 0.01
+        gs.logger.info(f"{100.0 * is_on_table.float().mean().item():.0f}% of the cloth lies on the table top.")
+    if camera is not None:
+        camera.stop_recording()
 
 
 if __name__ == "__main__":

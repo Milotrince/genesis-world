@@ -11,7 +11,7 @@ also captures the contact reaction.
 Three live plots show, for joints J0, J1 and J2, the comparison between the control torque, the sensor reading and
 their difference.
 
-With the viewer (-v), drag the arm with the mouse to load the joints by hand, during the push and after it.
+With the viewer (-v), the arm holds its pose in free space, and the mouse drags it to load the joints by hand.
 """
 
 import argparse
@@ -145,15 +145,18 @@ def main():
     qpos_push = franka.inverse_kinematics(link=end_effector, pos=[0.70, 0.0, 0.50], quat=[0.0, 1.0, 0.0, 0.0])
 
     try:
-        contact_step = steps // 2
-        for i in tqdm(range(steps)):
-            target = qpos_hold if i < contact_step else qpos_push
-            franka.control_dofs_position(target[:-2], motors_dof)
-            scene.step()
+        if args.vis:
+            franka.control_dofs_position(qpos_hold[:-2], motors_dof)
+            while scene.viewer.is_alive():
+                scene.step()
+        else:
+            contact_step = steps // 2
+            for i in tqdm(range(steps)):
+                target = qpos_hold if i < contact_step else qpos_push
+                franka.control_dofs_position(target[:-2], motors_dof)
+                scene.step()
         if camera is not None:
             camera.stop_recording()
-        while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-            scene.step()
     except KeyboardInterrupt:
         gs.logger.info("Simulation interrupted, exiting.")
     finally:

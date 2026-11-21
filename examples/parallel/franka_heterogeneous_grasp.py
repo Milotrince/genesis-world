@@ -24,7 +24,7 @@ Variant Assignment Rules:
        - Environment 1 -> Variant 1 (second morph in list)
        - Variants 2 and 3 are unused
 
-With the viewer (-v), drag the objects or the arms with the mouse, during the grasp and after it.
+With the viewer (-v), the arms hold their start pose beside the objects, and the mouse drags either.
 
 Usage:
     python heterogeneous_simulation.py -v -b 4  # 4 environments (matches 4 variants)
@@ -34,10 +34,24 @@ Usage:
 
 import argparse
 import os
+import xml.etree.ElementTree as ET
 
 import numpy as np
 
 import genesis as gs
+
+TABLE_HEIGHT = 0.3
+
+
+def table_mjcf():
+    mjcf = ET.Element("mujoco", model="table")
+    ET.SubElement(ET.SubElement(mjcf, "default"), "geom", rgba="0.95 0.95 0.95 1")
+    body = ET.SubElement(ET.SubElement(mjcf, "worldbody"), "body", name="table", pos=f"0.55 0 {TABLE_HEIGHT}")
+    ET.SubElement(body, "geom", type="box", size="0.35 0.7 0.015", pos="0 0 -0.015")
+    for x in (-0.31, 0.31):
+        for y in (-0.66, 0.66):
+            ET.SubElement(body, "geom", type="box", size="0.02 0.02 0.135", pos=f"{x} {y} -0.165")
+    return ET.tostring(mjcf, encoding="unicode")
 
 
 def main():
@@ -52,8 +66,8 @@ def main():
 
     gs.init(backend=gs.cpu, precision="32")
 
-    camera_pos = (3.5, -2.5, 2.5)
-    camera_lookat = (0.4, 0.0, 0.2)
+    camera_pos = (-1.5, -2.2, 1.0 + TABLE_HEIGHT)
+    camera_lookat = (0.5, 0.2, TABLE_HEIGHT)
 
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
@@ -66,16 +80,19 @@ def main():
     plane = scene.add_entity(
         gs.morphs.Plane(),
     )
+    scene.add_entity(
+        gs.morphs.MJCF(file=table_mjcf()),
+    )
     franka = scene.add_entity(
         gs.morphs.MJCF(file="xml/franka_emika_panda/panda.xml"),
     )
 
     # Define 4 geometry variants - see module docstring for variant assignment rules
     morphs_heterogeneous = [
-        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=(0.65, 0.0, 0.02)),  # Variant 0
-        gs.morphs.Box(size=(0.02, 0.02, 0.02), pos=(0.65, 0.0, 0.02)),  # Variant 1
-        gs.morphs.Sphere(radius=0.015, pos=(0.65, 0.0, 0.02)),  # Variant 2
-        gs.morphs.Sphere(radius=0.025, pos=(0.65, 0.0, 0.02)),  # Variant 3
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=(0.65, 0.0, 0.02 + TABLE_HEIGHT)),  # Variant 0
+        gs.morphs.Box(size=(0.02, 0.02, 0.02), pos=(0.65, 0.0, 0.02 + TABLE_HEIGHT)),  # Variant 1
+        gs.morphs.Sphere(radius=0.015, pos=(0.65, 0.0, 0.02 + TABLE_HEIGHT)),  # Variant 2
+        gs.morphs.Sphere(radius=0.025, pos=(0.65, 0.0, 0.02 + TABLE_HEIGHT)),  # Variant 3
     ]
     grasping_object = scene.add_entity(
         morph=morphs_heterogeneous,
@@ -94,7 +111,7 @@ def main():
             gs.vis.viewer_plugins.MouseInteractionPlugin(),
         )
 
-    scene.build(n_envs=args.num_envs, env_spacing=(1, 1))
+    scene.build(n_envs=args.num_envs, env_spacing=(1.0, 1.5))
     if camera is not None:
         camera.start_recording(save_to_filename="out/franka_heterogeneous_grasp.mp4", fps=round(1.0 / scene.dt))
 
@@ -102,7 +119,7 @@ def main():
     fingers_dof = np.arange(7, 9)
     franka.set_dofs_kp([100.0, 100.0], fingers_dof)
     franka.set_dofs_kv([10.0, 10.0], fingers_dof)
-    l_qpos = [-1.0124, 1.5559, 1.3662, -1.6878, -1.5799, 1.7757, 1.4602, 0.04, 0.04]
+    l_qpos = [0.0, 0.316, 0.0, -1.661, 0.0, 1.976, 0.785, 0.04, 0.04]
     if args.num_envs == 0:
         franka.set_qpos(np.array(l_qpos))
     else:
@@ -114,39 +131,42 @@ def main():
     print("heterogeneous AABB", AABB)
     print("heterogeneous mass", mass)
 
-    end_effector = franka.get_link("hand")
-    qpos = franka.inverse_kinematics(
-        link=end_effector,
-        pos=np.array([[0.65, 0.0, 0.135]] * args.num_envs),
-        quat=np.array([[0, 1, 0, 0]] * args.num_envs),
-    )
-    franka.control_dofs_position(qpos[..., :-2], motors_dof)
-
-    # hold
-    for _ in range(n_hold_steps):
-        scene.step()
-
-    # grasp
-    finder_pos = 0.0
-    for _ in range(n_hold_steps):
+    if args.vis:
+        franka.control_dofs_position(franka.get_dofs_position())
+        while scene.viewer.is_alive():
+            scene.step()
+    else:
+        end_effector = franka.get_link("hand")
+        qpos = franka.inverse_kinematics(
+            link=end_effector,
+            pos=np.array([[0.65, 0.0, 0.125 + TABLE_HEIGHT]] * args.num_envs),
+            quat=np.array([[0, 1, 0, 0]] * args.num_envs),
+        )
         franka.control_dofs_position(qpos[..., :-2], motors_dof)
-        franka.control_dofs_position(np.array([[finder_pos, finder_pos]] * args.num_envs), fingers_dof)
-        scene.step()
 
-    # lift
-    qpos = franka.inverse_kinematics(
-        link=end_effector,
-        pos=np.array([[0.65, 0.0, 0.3]] * args.num_envs),
-        quat=np.array([[0, 1, 0, 0]] * args.num_envs),
-    )
-    for _ in range(2 * n_hold_steps):
-        franka.control_dofs_position(qpos[..., :-2], motors_dof)
-        franka.control_dofs_position(np.array([[finder_pos, finder_pos]] * args.num_envs), fingers_dof)
-        scene.step()
+        # hold
+        for _ in range(n_hold_steps):
+            scene.step()
+
+        # grasp
+        finder_pos = 0.0
+        for _ in range(n_hold_steps):
+            franka.control_dofs_position(qpos[..., :-2], motors_dof)
+            franka.control_dofs_position(np.array([[finder_pos, finder_pos]] * args.num_envs), fingers_dof)
+            scene.step()
+
+        # lift
+        qpos = franka.inverse_kinematics(
+            link=end_effector,
+            pos=np.array([[0.65, 0.0, 0.3 + TABLE_HEIGHT]] * args.num_envs),
+            quat=np.array([[0, 1, 0, 0]] * args.num_envs),
+        )
+        for _ in range(2 * n_hold_steps):
+            franka.control_dofs_position(qpos[..., :-2], motors_dof)
+            franka.control_dofs_position(np.array([[finder_pos, finder_pos]] * args.num_envs), fingers_dof)
+            scene.step()
     if camera is not None:
         camera.stop_recording()
-    while args.vis and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
-        scene.step()
 
 
 if __name__ == "__main__":

@@ -2,7 +2,9 @@
 
 Three PID loops in cascade turn the target position into a desired velocity, the velocity error into thrust and tilt
 commands, and the attitude error into corrections that hold the drone level. A mixer spreads the commands over the four
-propeller RPMs. With the viewer (-v), move the target with the keyboard, during the route and after it:
+propeller RPMs.
+
+Keyboard controls (-v):
 Up/Down    - Move the target along +x/-x
 Left/Right - Move the target along +y/-y
 K/J        - Move the target up/down
@@ -129,19 +131,20 @@ def main():
         )
         gs.logger.info("Keys: Up/Down/Left/Right move the target in the ground plane, K/J move it up/down.")
 
-    # Each waypoint is the target until the drone comes within 10 cm of it or the step budget of the waypoint runs out.
-    points = [(1, 1, 2), (-1, 2, 1), (0, 0, 0.5)] if not is_test else [(1, 1, 2)]
-    for point in points:
-        target[:] = point
-        for _ in range(1000 if not is_test else 90):
-            if np.linalg.norm(target - tensor_to_array(drone.get_pos())) < 0.1:
-                break
+        while scene.viewer.is_alive():
             fly_step(target)
+    else:
+        # Each waypoint is the target until the drone comes within 10 cm of it or its step budget runs out.
+        points = [(1, 1, 2), (-1, 2, 1), (0, 0, 0.5)] if not is_test else [(1, 1, 2)]
+        for point in points:
+            target[:] = point
+            for _ in range(1000 if not is_test else 90):
+                if np.linalg.norm(target - tensor_to_array(drone.get_pos())) < 0.1:
+                    break
+                fly_step(target)
 
     if cam is not None:
         cam.stop_recording()
-    while args.vis and scene.viewer.is_alive() and not is_test:
-        fly_step(target)
 
 
 if __name__ == "__main__":

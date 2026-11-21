@@ -5,9 +5,10 @@ the handle of the tray, lifts it off the pick-up stand and swings it around its 
 over the delivery stand: the jellies slide into the lip of the tray, squash and tip against it, and spring back. The lip
 alone holds them, since the contact between particles and rigid geoms has no friction. Once they settle, the robot sets
 the tray down, lets go and backs away. The run logs the peak deformation of each jelly after the stop, how many jellies
-are still on the tray, and whether the tray rests on the delivery stand.
+are still on the tray, and whether the tray rests on the delivery stand. With the viewer (-v), the scripted delivery is
+skipped: the hand waits open above the fin of the tray on the pick-up stand, and the keys drive it.
 
-Keyboard controls (-v), once the scripted delivery is over:
+Keyboard controls (-v):
 Up/Down    - Move the hand away from/towards the base
 Left/Right - Swing the hand left/right
 K/J        - Move the hand up/down
@@ -268,63 +269,8 @@ def main():
     def release():
         franka.control_dofs_position([0.04, 0.04], fingers_dof)
 
-    if "PYTEST_VERSION" not in os.environ:
-        n_reach, n_grip, n_wobble = 60, 40, 200
-        delivery_angle = DELIVERY_ANGLE
-    else:
-        n_reach, n_grip, n_wobble = 5, 5, 5
-        delivery_angle = PICKUP_ANGLE + 0.05
-
     if camera is not None:
         camera.start_recording(save_to_filename="out/pbd_jelly_delivery.mp4", fps=50)
-    move_to(HAND_RADIUS, TRAY_Z + GRASP_Z, steps=n_reach)
-    grasp()
-    for _ in range(n_grip):
-        track_target()
-    move_to(HAND_RADIUS, TRAY_Z + GRASP_Z + LIFT_Z, steps=n_reach)
-
-    jellies_rest = []
-    for jelly in jellies:
-        particles_pos = tensor_to_array(jelly.get_particles_pos())
-        jellies_rest.append(particles_pos - particles_pos.mean(axis=0))
-    # Speed up gently, cruise, then stop dead over the delivery stand.
-    angular_speed = 0.0
-    while target[1] < delivery_angle:
-        angular_speed = min(angular_speed + CARRY_ACCELERATION / tray_radius * DT, CARRY_SPEED / tray_radius)
-        target[1] = min(target[1] + angular_speed * DT, delivery_angle)
-        track_target()
-    # The deformation of a jelly is the root-mean-square distance of its particles from its rest shape, once the rigid
-    # motion that best fits them is removed.
-    jellies_deformation_peak = np.zeros(len(jellies))
-    for _ in range(n_wobble):
-        track_target()
-        for i_jelly, (jelly, rest) in enumerate(zip(jellies, jellies_rest)):
-            particles_pos = tensor_to_array(jelly.get_particles_pos())
-            particles_pos -= particles_pos.mean(axis=0)
-            u, _, vt = np.linalg.svd(rest.T @ particles_pos)
-            deformation = np.sqrt(np.mean(np.sum((particles_pos - rest @ u @ vt) ** 2, axis=-1)))
-            jellies_deformation_peak[i_jelly] = max(jellies_deformation_peak[i_jelly], deformation)
-
-    move_to(HAND_RADIUS, TRAY_Z + GRASP_Z, steps=n_reach)
-    release()
-    for _ in range(n_grip):
-        track_target()
-    move_to(HAND_RADIUS - 0.1, TRAY_Z + GRASP_Z + 0.15, steps=n_reach)
-    if camera is not None:
-        camera.stop_recording()
-
-    for i_jelly, deformation in enumerate(jellies_deformation_peak):
-        gs.logger.info(f"Jelly {i_jelly}: peak deformation {1000.0 * deformation:.1f} mm after the stop.")
-    tray_pos, tray_quat = tensor_to_array(tray.get_pos()), tensor_to_array(tray.get_quat())
-    jellies_center = np.stack([tensor_to_array(jelly.get_particles_pos()).mean(axis=0) for jelly in jellies])
-    jellies_center_local = gu.inv_transform_by_trans_quat(jellies_center, tray_pos, tray_quat)
-    is_on_tray = (np.abs(jellies_center_local[:, :2]) < TRAY_HALF_SIZE).all(axis=-1) & (
-        jellies_center_local[:, 2] > 0.0
-    )
-    gs.logger.info(f"{np.count_nonzero(is_on_tray)} of {len(jellies)} jellies delivered on the tray.")
-    is_tray_on_stand = np.linalg.norm(tray_pos[:2] - stands_pos[1]) < 0.05 and abs(tray_pos[2] - TRAY_Z) < 0.01
-    gs.logger.info(f"Tray {'rests' if is_tray_on_stand else 'does not rest'} on the delivery stand.")
-
     if args.vis:
         is_running = True
 
@@ -350,8 +296,63 @@ def main():
             "Keys: Up/Down move the hand away from/towards the base, Left/Right swing it, K/J move it up/down, hold "
             "Space to grasp the tray, Esc quits."
         )
-        while is_running and scene.viewer.is_alive() and "PYTEST_VERSION" not in os.environ:
+        while is_running and scene.viewer.is_alive():
             track_target()
+    else:
+        if "PYTEST_VERSION" not in os.environ:
+            n_reach, n_grip, n_wobble = 60, 40, 200
+            delivery_angle = DELIVERY_ANGLE
+        else:
+            n_reach, n_grip, n_wobble = 5, 5, 5
+            delivery_angle = PICKUP_ANGLE + 0.05
+
+        move_to(HAND_RADIUS, TRAY_Z + GRASP_Z, steps=n_reach)
+        grasp()
+        for _ in range(n_grip):
+            track_target()
+        move_to(HAND_RADIUS, TRAY_Z + GRASP_Z + LIFT_Z, steps=n_reach)
+
+        jellies_rest = []
+        for jelly in jellies:
+            particles_pos = tensor_to_array(jelly.get_particles_pos())
+            jellies_rest.append(particles_pos - particles_pos.mean(axis=0))
+        # Speed up gently, cruise, then stop dead over the delivery stand.
+        angular_speed = 0.0
+        while target[1] < delivery_angle:
+            angular_speed = min(angular_speed + CARRY_ACCELERATION / tray_radius * DT, CARRY_SPEED / tray_radius)
+            target[1] = min(target[1] + angular_speed * DT, delivery_angle)
+            track_target()
+        # The deformation of a jelly is the root-mean-square distance of its particles from its rest shape, once the
+        # rigid motion that best fits them is removed.
+        jellies_deformation_peak = np.zeros(len(jellies))
+        for _ in range(n_wobble):
+            track_target()
+            for i_jelly, (jelly, rest) in enumerate(zip(jellies, jellies_rest)):
+                particles_pos = tensor_to_array(jelly.get_particles_pos())
+                particles_pos -= particles_pos.mean(axis=0)
+                u, _, vt = np.linalg.svd(rest.T @ particles_pos)
+                deformation = np.sqrt(np.mean(np.sum((particles_pos - rest @ u @ vt) ** 2, axis=-1)))
+                jellies_deformation_peak[i_jelly] = max(jellies_deformation_peak[i_jelly], deformation)
+
+        move_to(HAND_RADIUS, TRAY_Z + GRASP_Z, steps=n_reach)
+        release()
+        for _ in range(n_grip):
+            track_target()
+        move_to(HAND_RADIUS - 0.1, TRAY_Z + GRASP_Z + 0.15, steps=n_reach)
+
+        for i_jelly, deformation in enumerate(jellies_deformation_peak):
+            gs.logger.info(f"Jelly {i_jelly}: peak deformation {1000.0 * deformation:.1f} mm after the stop.")
+        tray_pos, tray_quat = tensor_to_array(tray.get_pos()), tensor_to_array(tray.get_quat())
+        jellies_center = np.stack([tensor_to_array(jelly.get_particles_pos()).mean(axis=0) for jelly in jellies])
+        jellies_center_local = gu.inv_transform_by_trans_quat(jellies_center, tray_pos, tray_quat)
+        is_on_tray = (np.abs(jellies_center_local[:, :2]) < TRAY_HALF_SIZE).all(axis=-1) & (
+            jellies_center_local[:, 2] > 0.0
+        )
+        gs.logger.info(f"{np.count_nonzero(is_on_tray)} of {len(jellies)} jellies delivered on the tray.")
+        is_tray_on_stand = np.linalg.norm(tray_pos[:2] - stands_pos[1]) < 0.05 and abs(tray_pos[2] - TRAY_Z) < 0.01
+        gs.logger.info(f"Tray {'rests' if is_tray_on_stand else 'does not rest'} on the delivery stand.")
+    if camera is not None:
+        camera.stop_recording()
 
 
 if __name__ == "__main__":
