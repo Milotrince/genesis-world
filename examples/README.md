@@ -145,6 +145,19 @@ Environments with their training and evaluation scripts, which need `rsl-rl`. Se
 | `grasp_env.py`, `grasp_train.py`, `grasp_eval.py`, `behavior_cloning.py` | Franka grasping, from reinforcement learning to vision-based behavior cloning |
 | `hover_env.py`, `hover_train.py`, `hover_eval.py` | Drone hovering |
 
+## mujoco
+
+MuJoCo's own demo models, loaded from their MJCF files with as few changes as possible. The files come unmodified from
+the `model/` directory of [google-deepmind/mujoco](https://github.com/google-deepmind/mujoco) (Apache 2.0).
+
+| Example | Shows |
+|---|---|
+| `cards.py` | `cards/cards.xml`: a textured deck of 54 cards spilling over a bar, in slow motion. Genesis applies no air drag, which makes the cards flutter in MuJoCo |
+| `dominos.py` | `sleep/dominos.xml`: a serpentine run of 96 dominoes falling end to end, with the elliptic friction cone and hibernation the model asks for |
+| `stonehenge.py` | `replicate/stonehenge.xml`: a wrecking ball rolling down a ramp into rings of trilithons built with `replicate` |
+| `humanoids_100.py` | `humanoid/100_humanoids.xml`: 100 passive humanoids collapsing into a pile, loaded as one entity, with its build time and step time |
+| `humanoid_100_objects.py` | `humanoid/humanoid100.xml`: 100 primitives raining on a passive humanoid in a walled arena |
+
 ## interaction
 
 | Example | Shows |
