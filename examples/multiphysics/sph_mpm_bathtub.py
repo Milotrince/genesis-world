@@ -3,7 +3,7 @@
 The water is a smoothed particle hydrodynamics (SPH) liquid and the duck a light elastic material point method (MPM)
 solid, so the water carries the duck through the coupling of the two solvers. The tub starts part full and the faucet
 tops it up. Pulling the plug deactivates the water particles that reach the drain, at a set flow rate, and turns on a
-vortex force field that swirls the water, the duck and a ring of foam balls around it. The water level and the
+vortex force field that swirls the water, the duck and a ring of bath toys around it. The water level and the
 position of the duck are logged along the way. The water is drawn as its particles. Particle scenes are slow on CPU,
 so '-g' speeds the run up a lot.
 
@@ -189,35 +189,44 @@ def main():
         ),
         max_particles=2000,
     )
+    # A stiff elastic material keeps the shape of the duck and the toys, which the water would otherwise squash.
+    toy_material = gs.materials.MPM.Elastic(
+        E=2e5,
+        rho=200.0,
+    )
     duck = scene.add_entity(
         morph=gs.morphs.Mesh(
-            file="meshes/duck.obj",
+            file="meshes/duck/duck.obj",
             pos=(0.0, 0.04, WALL + FILL_HEIGHT + 0.06),
-            scale=0.025,
+            scale=2.5e-4,
             euler=(90.0, 0.0, 90.0),
         ),
         # A rubber duck is hollow, so it floats as a solid much lighter than water.
-        material=gs.materials.MPM.Elastic(
-            E=5e4,
-            rho=200.0,
-        ),
-        surface=gs.surfaces.Default(
-            color=(1.0, 0.85, 0.1, 1.0),
-        ),
+        material=toy_material,
     )
-    # Foam balls float in a ring around the drain, so that the swirl of the water shows.
-    for angle in np.linspace(0.0, 2.0 * np.pi, num=6, endpoint=False):
+    # Bath toys float in a ring around the drain, so that the swirl of the water shows. Each one spans enough particles
+    # for the skinning of its mesh, which reads a dozen of them.
+    toys_angle = np.linspace(0.0, 2.0 * np.pi, num=5, endpoint=False)
+    toys_pos = np.stack(
+        (
+            DRAIN_POS[0] - 0.02 + 0.07 * np.cos(toys_angle),
+            0.07 * np.sin(toys_angle),
+            np.full(5, WALL + FILL_HEIGHT + 0.015),
+        ),
+        axis=-1,
+    )
+    for morph, color in (
+        (gs.morphs.Sphere(pos=toys_pos[0], radius=0.015), (0.9, 0.15, 0.15)),
+        (gs.morphs.Box(pos=toys_pos[1], size=(0.03, 0.03, 0.03)), (0.15, 0.35, 0.95)),
+        (gs.morphs.Cylinder(pos=toys_pos[2], radius=0.015, height=0.03), (0.2, 0.75, 0.25)),
+        (gs.morphs.Box(pos=toys_pos[3], size=(0.05, 0.025, 0.015)), (1.0, 0.55, 0.1)),
+        (gs.morphs.Sphere(pos=toys_pos[4], radius=0.015), (0.6, 0.25, 0.85)),
+    ):
         scene.add_entity(
-            morph=gs.morphs.Sphere(
-                pos=(DRAIN_POS[0] - 0.02 + 0.07 * np.cos(angle), 0.07 * np.sin(angle), WALL + FILL_HEIGHT + 0.015),
-                radius=0.015,
-            ),
-            material=gs.materials.MPM.Elastic(
-                E=5e4,
-                rho=200.0,
-            ),
+            morph=morph,
+            material=toy_material,
             surface=gs.surfaces.Default(
-                color=(1.0, 1.0, 1.0, 1.0),
+                color=color,
             ),
         )
     # A vortex about the vertical axis through the drain, swirling counterclockwise and pulling inwards.
