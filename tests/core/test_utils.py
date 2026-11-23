@@ -10,6 +10,7 @@ from unittest.mock import call, patch
 import numpy as np
 import torch
 
+import av
 import igl
 import pytest
 import scipy.linalg
@@ -269,6 +270,13 @@ def test_geom_numpy_vs_torch_consistency(batch_shape, tol):
             assert tensor_to_array(T).dtype == gs.np_float
             T_true = gu.trans_R_to_T(trans_mixed.astype(gs.np_float), R_mixed.astype(gs.np_float))
             assert_allclose(T, T_true, tol=tol)
+
+    # Vectors and quaternions of mixed precisions give rotated vectors of the higher one
+    for vec_mixed, quat_mixed in ((trans.astype(np.float16), quat), (trans, quat.astype(np.float16))):
+        vec_rotated = gu.transform_by_quat(*(torch.as_tensor(e, device=gs.device) for e in (vec_mixed, quat_mixed)))
+        assert tensor_to_array(vec_rotated).dtype == gs.np_float
+        vec_rotated_true = gu.transform_by_quat(vec_mixed.astype(gs.np_float), quat_mixed.astype(gs.np_float))
+        assert_allclose(vec_rotated, vec_rotated_true, tol=tol)
 
 
 @pytest.mark.required
@@ -1401,6 +1409,21 @@ def test_build_guard_requires_buildable_mixin():
             @gs.assert_built
             def step(self):
                 pass
+
+
+@pytest.mark.required
+def test_animate(tmp_path):
+    colors = ((255, 0, 0), (0, 255, 0), (0, 0, 255))
+    # The alpha channel of the first image is dropped, which gives it the shape of the others
+    imgs = [
+        np.full((48, 64, 4), (*colors[0], 128), dtype=np.uint8),
+        *(np.full((48, 64, 3), color, dtype=np.uint8) for color in colors[1:]),
+    ]
+    video_path = tmp_path / "video.mp4"
+    gs.tools.animate(imgs, video_path, fps=30)
+    with av.open(video_path) as container:
+        frames = np.stack([frame.to_ndarray(format="rgb24") for frame in container.decode(video=0)])
+    assert_allclose(frames, np.array(colors)[:, None, None], atol=5)
 
 
 if __name__ == "__main__":

@@ -5,9 +5,12 @@ point contact cannot resist with sliding friction alone: without torsional frict
 The elliptic cone with its auto-resolved high 'impratio' holds the ball against gravity without the tangential creep
 of the pyramidal cone, and its exact Coulomb bound brakes the spin at the rate set by 'friction_torsional' times the
 grip normal force. The checker pattern shows the rotation in the viewer.
+
+Mouse controls (-v): drag the ball to spin it in the pinch.
 """
 
 import argparse
+import os
 import xml.etree.ElementTree as ET
 
 import genesis as gs
@@ -47,9 +50,16 @@ def checkered_ball_mjcf():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--vis", action="store_true", help="Show visualization GUI")
+    parser.add_argument(
+        "-r", "--record", action="store_true", help="Record a video of the run to 'out/torsional_grasp.mp4'"
+    )
     args = parser.parse_args()
+    n_spin_steps = 300 if "PYTEST_VERSION" not in os.environ else 40
 
     gs.init(backend=gs.cpu)
+
+    camera_pos = (0.9, -0.9, 0.6)
+    camera_lookat = (0.0, 0.0, 0.3)
 
     scene = gs.Scene(
         rigid_options=gs.options.RigidOptions(
@@ -57,8 +67,8 @@ def main():
             enable_torsional_friction=True,
         ),
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(0.9, -0.9, 0.6),
-            camera_lookat=(0.0, 0.0, 0.3),
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
         ),
         show_viewer=args.vis,
     )
@@ -85,19 +95,40 @@ def main():
         ),
     )
 
-    scene.build()
+    camera = None
+    if args.record:
+        camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+        )
 
-    # Let the pinch settle, then spin the ball about the pinch axis.
-    for _ in range(50):
-        scene.step()
-    z_settled = float(ball.get_dofs_position()[..., 2])
-    ball.set_dofs_velocity([0.0, 0.0, 0.0, 0.0, 8.0, 0.0])
-    for i_step in range(300):
-        scene.step()
-        if (i_step < 100 and i_step % 20 == 19) or i_step % 100 == 99:
-            spin = float(ball.get_dofs_velocity()[..., 4])
-            sag = z_settled - float(ball.get_dofs_position()[..., 2])
-            print(f"step {i_step + 1}: spin {spin:.2f} rad/s, sag since settling {1e3 * sag:.2f} mm")
+    if args.vis:
+        scene.viewer.add_plugin(
+            gs.vis.viewer_plugins.MouseInteractionPlugin(),
+        )
+
+    scene.build()
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/torsional_grasp.mp4", fps=round(1.0 / scene.dt))
+
+    if args.vis:
+        while scene.viewer.is_alive():
+            scene.step()
+    else:
+        # Let the pinch settle, then spin the ball about the pinch axis.
+        for _ in range(50):
+            scene.step()
+        z_settled = float(ball.get_dofs_position()[..., 2])
+        ball.set_dofs_velocity([0.0, 0.0, 0.0, 0.0, 8.0, 0.0])
+        for i_step in range(n_spin_steps):
+            scene.step()
+            if (i_step < 100 and i_step % 20 == 19) or i_step % 100 == 99:
+                spin = float(ball.get_dofs_velocity()[..., 4])
+                sag = z_settled - float(ball.get_dofs_position()[..., 2])
+                print(f"step {i_step + 1}: spin {spin:.2f} rad/s, sag since settling {1e3 * sag:.2f} mm")
+    if camera is not None:
+        camera.stop_recording()
 
 
 if __name__ == "__main__":

@@ -10,7 +10,6 @@ import dataclasses
 import hashlib
 import io
 import json
-import math
 import os
 import pathlib
 import struct
@@ -301,7 +300,7 @@ def declared_schema(expect: dict) -> dict:
 def _surface_textures(surface: Options) -> Iterable[tuple[str, "gs.textures.ImageTexture"]]:
     """Yield every image texture a surface holds, under the name of the field it stands in.
 
-    A batch texture holds textures of its own, so a batch created from images yields each of them.
+    A batch texture and a dynamic texture hold textures of their own, so each image among them is yielded too.
     """
     textures = [(name, value) for name, value in dict(surface).items() if isinstance(value, gs.textures.Texture)]
     while textures:
@@ -310,6 +309,9 @@ def _surface_textures(surface: Options) -> Iterable[tuple[str, "gs.textures.Imag
             yield name, texture
         elif isinstance(texture, gs.textures.BatchTexture):
             textures.extend((name, held) for held in texture.textures if held is not None)
+        elif isinstance(texture, gs.textures.DynamicTexture):
+            variants = texture.variants.values() if isinstance(texture.variants, dict) else texture.variants
+            textures.extend((name, variant) for variant in variants if variant is not None)
 
 
 def pixel_less_textures(surface: Options) -> tuple[str, ...]:
@@ -706,8 +708,7 @@ def export_record(file: BinaryIO, value, expect=typing.Any) -> None:
     header = json.dumps({"arrays": arrays_spec, "value": held}).encode()
     file.write(struct.pack("<I", len(header)))
     file.write(header)
-    # Writing the arrays by decreasing item size starts each at a multiple of its own, so that every array loaded from
-    # the record is aligned without padding.
+    # The arrays follow by decreasing item size, the order in which 'load_record' reads them back.
     for array in sorted(exported.values, key=lambda array: -array.itemsize):
         # An object array holds references, which have no raw bytes to store.
         assert not array.dtype.hasobject
@@ -739,15 +740,14 @@ def load_record(file: BinaryIO, expect=typing.Any):
         (header_size,) = struct.unpack("<I", file.read(4))
         header = json.loads(file.read(header_size))
         arrays_spec = [(np.dtype(dtype), shape) for dtype, shape in header["arrays"]]
-        # A bytearray, so that the arrays viewing it are writable.
-        buffer = bytearray(sum(math.prod(shape) * dtype.itemsize for dtype, shape in arrays_spec))
-        if file.readinto(buffer) != len(buffer):
-            raise ValueError("The record is truncated.")
-        arrays, offset = [None] * len(arrays_spec), 0
+        # Each array gets its own allocation, since an array packed right after another one is misaligned for the
+        # vectorized loads of native code, which then crashes.
+        arrays = [None] * len(arrays_spec)
         for i in sorted(range(len(arrays_spec)), key=lambda i: -arrays_spec[i][0].itemsize):
             dtype, shape = arrays_spec[i]
-            arrays[i] = np.frombuffer(buffer, dtype=dtype, count=math.prod(shape), offset=offset).reshape(shape)
-            offset += arrays[i].nbytes
+            arrays[i] = np.empty(shape, dtype=dtype)
+            if file.readinto(arrays[i].data) != arrays[i].nbytes:
+                raise ValueError("The record is truncated.")
         return _load_value(header["value"], expect, arrays)
     except (struct.error, KeyError, IndexError, TypeError, OverflowError, gs.GenesisException) as e:
         raise ValueError("The file holds no record written by 'export_record' here.") from e
