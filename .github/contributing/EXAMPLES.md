@@ -5,8 +5,8 @@ Location: `examples/`, one folder per feature area. Every script lives in a fold
 ## Running Examples
 
 ```bash
-uv run examples/tutorials/hello_genesis.py
-uv run examples/rigid/single_franka.py
+uv run examples/tutorials/01_hello_genesis.py
+uv run examples/rigid/wrecking_ball.py -v
 ```
 
 ## Command-line convention
@@ -52,9 +52,30 @@ machine. A GPU only pays off past roughly fifty parallel environments, which alm
 A script that genuinely needs a GPU - a batched training or benchmark run, or a renderer that only exists on
 CUDA - hardcodes `backend=gs.gpu` and says why in a comment, rather than exposing a flag with a single usable
 value. Everything else takes `-g/--gpu` as an opt-in, or hardcodes `backend=gs.cpu` when it has no parser.
-The same rule covers a script that only works on CPU (see `rigid/hibernation.py`).
+The same rule covers a script that only works on CPU.
 
 Long-running scripts cut their horizon under `"PYTEST_VERSION" in os.environ` so the examples CI stays cheap.
+
+## Behaviour
+
+Every example outside `tutorials/` behaves the same way in three modes, so a user can run any of them without reading
+it first.
+
+- **Headless by default.** Without `-v`, the script runs a scripted scenario that shows its feature end to end, then
+  exits. It never idles or waits for input.
+- **`-r/--record`** adds a camera framed like the viewer and records the run to `out/<script>.mp4`: the scripted
+  scenario headless, the interactive session with `-v`.
+- **Interactive with `-v`.** The scripted scenario is skipped, and the user controls the scene from the first frame
+  while the viewer is alive. Scenes about objects attach `MouseInteractionPlugin`, so the user can drag them. Scenes
+  about an agent (a robot, a drone) register keyboard controls, avoid the keys of the default viewer controls, and log
+  their keymap at start. The module docstring lists the same keymap.
+
+Branch on `args.vis` once the scene is built: the interactive `while scene.viewer.is_alive()` loop under `-v`, the
+scripted `for` loops otherwise. `camera.stop_recording()` follows whichever ran. Write a scripted phase as the same
+calls the keys make, one phase after the other.
+
+The examples about the viewer itself (`viewer_plugin/`, `gui/`) always open the viewer, since it is their subject.
+Tutorials stay minimal and linear, and take `-v` only to open the viewer.
 
 ## Output files
 
@@ -77,20 +98,20 @@ Beyond it, two things matter most here:
 ## Key Examples
 
 ### Getting Started
-- `tutorials/hello_genesis.py` - Basic introduction
-- `tutorials/control_your_robot.py` - Robot control basics
-- `tutorials/parallel_simulation.py` - Batched environments
+- `tutorials/01_hello_genesis.py` - Basic introduction
+- `tutorials/03_control_your_robot.py` - Robot control basics
+- `tutorials/05_parallel_simulation.py` - Batched environments
 
 ### Robotics
-- `rigid/single_franka.py` - Single Franka arm
-- `rigid/ik_franka.py` - Inverse kinematics
-- `rigid/domain_randomization.py` - Domain randomization
+- `rigid/diffik_controller.py` - Differential inverse kinematics
+- `rigid/ik_shadow_hand.py` - Multi-link inverse kinematics
+- `parallel/domain_randomization.py` - Domain randomization
 
 ### Multi-Physics
-- `coupling/cloth_on_rigid.py` - Cloth-rigid coupling
-- `coupling/sph_rigid.py` - Fluid-rigid coupling
-- `coupling/sand_wheel.py` - Granular-rigid coupling
+- `deformable/pbd_tablecloth.py` - Cloth-rigid coupling
+- `fluids/sph_pour.py` - Fluid-rigid coupling
+- `multiphysics/rigid_mpm_sand_wheel.py` - Granular-rigid coupling
 
 ### Training
-- `locomotion/go2_env.py` - Quadruped RL environment
-- `manipulation/grasp_env.py` - Grasping RL environment
+- `rl/go2_env.py` - Quadruped RL environment
+- `rl/grasp_env.py` - Grasping RL environment

@@ -1,57 +1,58 @@
+"""Multi-link inverse kinematics (IK) on a Shadow Hand, whose fingertips and wrist follow targets moving on circles.
+
+The index fingertip, the middle fingertip and the wrist each follow a target, and the IK solves for all of them at once.
+
+Keyboard controls (-v):
+Up/Down    - Move the circles along -x/+x
+Left/Right - Move the circles along -y/+y
+K/J        - Move the circles up/down
+"""
+
 import argparse
+import os
 
 import numpy as np
 
 import genesis as gs
+from genesis.vis.keybindings import Key, KeyAction, Keybind
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--vis", action="store_true", help="Show visualization GUI")
+    parser.add_argument(
+        "-r", "--record", action="store_true", help="Record a video of the run to 'out/ik_shadow_hand.mp4'"
+    )
     args = parser.parse_args()
+    n_steps = 100 if "PYTEST_VERSION" not in os.environ else 50
 
     gs.init(backend=gs.cpu, precision="32", logging_level="info")
 
+    camera_pos = (1.3, -0.3, 0.8)
+    camera_lookat = (0.5, 0.5, 0.2)
+
     scene = gs.Scene(
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(2.5, 0.0, 1.5),
-            camera_lookat=(0.0, 0.0, 0.5),
+            camera_pos=camera_pos,
+            camera_lookat=camera_lookat,
             camera_fov=40,
         ),
         show_viewer=args.vis,
     )
 
-    target_1 = scene.add_entity(
-        gs.morphs.Mesh(
-            file="meshes/axis.obj",
-            scale=0.05,
-        ),
-        material=gs.materials.Kinematic(),
-        surface=gs.surfaces.Default(
-            color=(1, 0.5, 0.5, 1),
-        ),
-    )
-
-    target_2 = scene.add_entity(
-        gs.morphs.Mesh(
-            file="meshes/axis.obj",
-            scale=0.05,
-        ),
-        material=gs.materials.Kinematic(),
-        surface=gs.surfaces.Default(
-            color=(0.5, 1.0, 0.5, 1),
-        ),
-    )
-    target_3 = scene.add_entity(
-        gs.morphs.Mesh(
-            file="meshes/axis.obj",
-            scale=0.05,
-        ),
-        material=gs.materials.Kinematic(),
-        surface=gs.surfaces.Default(
-            color=(0.5, 0.5, 1.0, 1),
-        ),
-    )
+    targets = [
+        scene.add_entity(
+            gs.morphs.Mesh(
+                file="meshes/axis.obj",
+                scale=0.05,
+            ),
+            material=gs.materials.Kinematic(),
+            surface=gs.surfaces.Default(
+                color=color,
+            ),
+        )
+        for color in ((1, 0.5, 0.5, 1), (0.5, 1.0, 0.5, 1), (0.5, 0.5, 1.0, 1))
+    ]
     robot = scene.add_entity(
         morph=gs.morphs.URDF(
             scale=1.0,
@@ -63,8 +64,19 @@ def main():
         ),
     )
 
+    camera = None
+    if args.record:
+        camera = scene.add_camera(
+            res=(1280, 720),
+            pos=camera_pos,
+            lookat=camera_lookat,
+            fov=40,
+        )
+
     scene.build()
     scene.reset()
+    if camera is not None:
+        camera.start_recording(save_to_filename="out/ik_shadow_hand.mp4", fps=round(1.0 / scene.dt))
 
     target_quat = np.array([1, 0, 0, 0])
     index_finger_distal = robot.get_link("index_finger_distal")
@@ -72,28 +84,51 @@ def main():
     wrist = robot.get_link("wrist")
 
     center = np.array([0.5, 0.5, 0.2])
-    r1 = 0.1
-    r2 = 0.13
 
-    # The poses follow the target along a continuous path, so they are shown at the pace of the simulation
-    rate = gs.tools.Rate(1.0 / scene.dt)
-    for i in range(100):
-        index_finger_pos = center + np.array([np.cos(i / 90 * np.pi), np.sin(i / 90 * np.pi), 0]) * r1
-        middle_finger_pos = center + np.array([np.cos(i / 90 * np.pi), np.sin(i / 90 * np.pi), 0]) * r2
-        wrist_pos = index_finger_pos - np.array([0, 0, 0.20])
+    if args.vis:
+        dpos = 0.002
 
-        target_1.set_qpos(np.concatenate([index_finger_pos, target_quat]))
-        target_2.set_qpos(np.concatenate([middle_finger_pos, target_quat]))
-        target_3.set_qpos(np.concatenate([wrist_pos, target_quat]))
+        def move(delta):
+            center[:] += delta
 
-        qpos = robot.inverse_kinematics_multilink(
-            links=[index_finger_distal, middle_finger_distal, wrist],
-            poss=[index_finger_pos, middle_finger_pos, wrist_pos],
+        scene.viewer.register_keybinds(
+            Keybind("move_forward", Key.UP, KeyAction.HOLD, callback=move, args=((-dpos, 0, 0),)),
+            Keybind("move_back", Key.DOWN, KeyAction.HOLD, callback=move, args=((dpos, 0, 0),)),
+            Keybind("move_left", Key.LEFT, KeyAction.HOLD, callback=move, args=((0, -dpos, 0),)),
+            Keybind("move_right", Key.RIGHT, KeyAction.HOLD, callback=move, args=((0, dpos, 0),)),
+            Keybind("move_up", Key.K, KeyAction.HOLD, callback=move, args=((0, 0, dpos),)),
+            Keybind("move_down", Key.J, KeyAction.HOLD, callback=move, args=((0, 0, -dpos),)),
         )
+        gs.logger.info("Keys: Up/Down/Left/Right move the circles in the ground plane, K/J move them up/down.")
+
+    def track_circles(i):
+        angle = i / 90 * np.pi
+        index_finger_pos = center + np.array([np.cos(angle), np.sin(angle), 0]) * 0.1
+        middle_finger_pos = center + np.array([np.cos(angle), np.sin(angle), 0]) * 0.13
+        links = [index_finger_distal, middle_finger_distal, wrist]
+        poss = [index_finger_pos, middle_finger_pos, index_finger_pos - np.array([0, 0, 0.20])]
+
+        for target, pos in zip(targets, poss):
+            target.set_qpos(np.concatenate([pos, target_quat]))
+
+        qpos = robot.inverse_kinematics_multilink(links=links, poss=poss)
 
         robot.set_qpos(qpos)
-        if args.vis:
+        scene.step()
+
+    if args.vis:
+        # The poses follow the targets along a continuous path, so they are shown at the pace of the simulation.
+        rate = gs.tools.Rate(1.0 / scene.dt)
+        i = 0
+        while scene.viewer.is_alive():
+            track_circles(i)
             rate.sleep()
+            i += 1
+    else:
+        for i in range(n_steps):
+            track_circles(i)
+    if camera is not None:
+        camera.stop_recording()
 
 
 if __name__ == "__main__":

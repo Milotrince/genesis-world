@@ -5,6 +5,8 @@ plane by a quarter turn and hold together by contact alone. The top link hangs t
 through an eye welded to a dense steel sphere. Every link is a non-convex mesh, so its collision geometry is
 convex-decomposed at build time. The whole chain starts pulled back as a straight line inclined from the vertical, so
 gravity alone swings the ball into the pile, whose cubes are free boxes stacked with a hairline gap.
+
+Mouse controls (-v): drag any cube or the ball, during the swing and after it.
 """
 
 import argparse
@@ -241,6 +243,11 @@ def main():
         ),
     )
 
+    if args.vis:
+        scene.viewer.add_plugin(
+            gs.vis.viewer_plugins.MouseInteractionPlugin(),
+        )
+
     scene.build()
 
     n_bodies = sum(1 for link in scene.rigid_solver.links if link.n_dofs > 0)
@@ -248,23 +255,31 @@ def main():
     if camera is not None:
         camera.start_recording(save_to_filename="out/wrecking_ball.mp4", fps=RECORDING_FPS)
     # The step rate of the physics alone, averaged over a window of steps and undefined until a full window has run
-    step_times = np.full(horizon, np.nan)
     physics_time = RunningMean(window=n_window)
-    for i_step in range(horizon):
+
+    def step():
         scene.step()
         physics_time.update(scene.timings["physics"])
-        step_times[i_step] = physics_time.value
-        plot_values["step_rate"][0] = 1.0 / step_times[i_step]
+        plot_values["step_rate"][0] = 1.0 / physics_time.value
         plot_values["awake_bodies"][0] = n_bodies - qd_to_numpy(scene.rigid_solver.dyn_state.links.is_hibernated).sum()
+
+    if args.vis:
+        while scene.viewer.is_alive():
+            step()
+    else:
+        step_times = np.full(horizon, np.nan)
+        for i_step in range(horizon):
+            step()
+            step_times[i_step] = physics_time.value
+        step_times = step_times[n_window - 1 :]
+        n_cubes = args.pile_width * args.pile_depth * args.pile_height
+        gs.logger.info(
+            f"{n_cubes} cubes: mean step {1e3 * step_times.mean():.2f} ms, slowest window "
+            f"{1e3 * step_times.max():.2f} ms, real-time factor {DT / step_times.mean():.2f} (mean), "
+            f"{DT / step_times.max():.2f} (slowest window)."
+        )
     if camera is not None:
         camera.stop_recording()
-
-    step_times = step_times[n_window - 1 :]
-    n_cubes = args.pile_width * args.pile_depth * args.pile_height
-    gs.logger.info(
-        f"{n_cubes} cubes: mean step {1e3 * step_times.mean():.2f} ms, slowest window {1e3 * step_times.max():.2f} ms, "
-        f"real-time factor {DT / step_times.mean():.2f} (mean), {DT / step_times.max():.2f} (slowest window)."
-    )
 
 
 if __name__ == "__main__":
