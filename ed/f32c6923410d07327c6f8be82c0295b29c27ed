@@ -4,6 +4,10 @@ genesis/engine/entities/fem_entity.py
   s_c34d43a6c0ec3d::t_2917f5bf6e16b0 37
 tests/deformable/test_fem.py
   s_8e3e09cbc07082::t_f64997c095efe1 22,89,94,119,122
+examples/coupling/cut_dragon.py
+  s_c34d43a6c0ec3d::t_7f8923179b644a 62-63
+genesis/__init__.py
+  s_c34d43a6c0ec3d::t_7f8923179b644a 557
 ---
 {
   "schema_version": "authorship/3.0.0",
