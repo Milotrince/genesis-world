@@ -1,0 +1,21 @@
+tests/conftest.py
+  s_4204579fe95dbe::t_207c0dcfc03ee0 175-212
+tests/integration/test_integration.py
+  s_4204579fe95dbe::t_207c0dcfc03ee0 187,197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dfa8b1cafbc90cd0a3511fc7e57a6ee7a07c76c2",
+  "prompts": {},
+  "sessions": {
+    "s_4204579fe95dbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ceb8235-f365-4a2d-95c4-23cf2b080907",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
