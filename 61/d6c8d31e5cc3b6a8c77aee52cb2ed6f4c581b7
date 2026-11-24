@@ -1,0 +1,22 @@
+tests/rigid/test_constraints.py
+  s_4204579fe95dbe::t_627cc2c1a1a23c 15,17-19,32-33,39-45,48-56,72-80,82
+  s_4204579fe95dbe::t_feaed3173ab26e 60,63-65
+  s_4204579fe95dbe::t_67758b4db1c3a4 66-69,83-84
+  s_4204579fe95dbe::t_c218b3a06b1c3b 61-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "61d6c8d31e5cc3b6a8c77aee52cb2ed6f4c581b7",
+  "prompts": {},
+  "sessions": {
+    "s_4204579fe95dbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ceb8235-f365-4a2d-95c4-23cf2b080907",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
