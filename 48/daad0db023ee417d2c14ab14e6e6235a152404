@@ -1,0 +1,47 @@
+genesis/engine/solvers/rigid/data.py
+  s_188aacf5c3ac06::t_10fa29ea964b24 231-233
+tests/grad/test_rigid_dynamics.py
+  s_188aacf5c3ac06::t_10fa29ea964b24 253
+genesis/engine/solvers/rigid/rigid_solver.py
+  s_188aacf5c3ac06::t_10fa29ea964b24 73,2553-2554,2561-2563,2565,2571-2572
+genesis/engine/solvers/rigid/abd/misc.py
+  s_188aacf5c3ac06::t_10fa29ea964b24 367
+genesis/engine/solvers/rigid/abd/forward_dynamics.py
+  s_89519fefaf9334::t_db24886c5994ee 1688
+  s_188aacf5c3ac06::t_15f43902f1fb2b 1801-1802,1805
+  s_188aacf5c3ac06::t_10fa29ea964b24 1677,1681,1687,1689-1696,1700,1702-1704,1709-1710,1803,1806-1807,1809-1810
+genesis/engine/entities/rigid_entity/rigid_entity.py
+  s_188aacf5c3ac06::t_10fa29ea964b24 2476-2478
+genesis/engine/solvers/rigid/abd/diff.py
+  s_188aacf5c3ac06::t_10fa29ea964b24 20,34,51
+  s_188aacf5c3ac06::t_67fcd41c54f3d2 33
+genesis/engine/solvers/rigid/abd/accessor.py
+  s_188aacf5c3ac06::t_10fa29ea964b24 715,720
+tests/rigid/test_control.py
+  s_188aacf5c3ac06::t_d4400d142be6b0 100-104
+  s_188aacf5c3ac06::t_10fa29ea964b24 98,111-112,116-117,177-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "48daad0db023ee417d2c14ab14e6e6235a152404",
+  "prompts": {},
+  "sessions": {
+    "s_188aacf5c3ac06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "35d99d92-38dc-4797-a798-957ac6c04da9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    },
+    "s_89519fefaf9334": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d2a1f18c-7a3c-4261-abbd-cb0686eb33c1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
