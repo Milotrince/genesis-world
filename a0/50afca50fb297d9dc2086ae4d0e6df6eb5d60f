@@ -11,6 +11,7 @@ genesis/engine/solvers/rigid/abd/forward_dynamics.py
   s_89519fefaf9334::t_8b677427d30b83 1771,1775,1778,1793,1806,1808
 genesis/engine/solvers/kinematic_solver.py
   s_89519fefaf9334::t_39df0030736718 919-920,922
+  s_2ca3e9d0fa0742::t_752d9500005534 926-927
 genesis/engine/solvers/rigid/abd/misc.py
   s_89519fefaf9334::t_39df0030736718 368
 genesis/engine/entities/rigid_entity/rigid_entity.py
@@ -28,6 +29,14 @@ genesis/engine/solvers/rigid/data.py
       "agent_id": {
         "tool": "claude",
         "id": "dab96431-8b64-412d-bd80-88a4370029ae",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    },
+    "s_2ca3e9d0fa0742": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cfc0f682-1d38-4af1-8450-7b5935f27dea",
         "model": "claude-opus-5-5"
       },
       "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
