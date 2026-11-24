@@ -1,0 +1,47 @@
+examples/coupling/cut_dragon.py
+  s_c34d43a6c0ec3d::t_05e47d1ee7700e 62-63
+genesis/__init__.py
+  s_c34d43a6c0ec3d::t_dbe9ad44d5b651 557
+genesis/constants.py
+  s_c34d43a6c0ec3d::t_1e8c4347b89dc6 98-106
+genesis/engine/entities/emitter.py
+  s_c34d43a6c0ec3d::t_d26fe78e7746c0 113-114,143
+genesis/engine/entities/particle_entity.py
+  s_c34d43a6c0ec3d::t_f273db11022e98 16,127,129-130,132,135-136,168,172
+genesis/engine/materials/MPM/base.py
+  s_c34d43a6c0ec3d::t_05868b0a872fea 10,17
+genesis/engine/materials/MPM/sand.py
+  s_c34d43a6c0ec3d::t_c4d3d028a6f092 28,36
+genesis/engine/materials/MPM/snow.py
+  s_c34d43a6c0ec3d::t_cbf4db339f562c 31,41
+genesis/engine/materials/PBD/liquid.py
+  s_c34d43a6c0ec3d::t_d6cd47ea410f25 6,13
+genesis/engine/materials/PBD/particle.py
+  s_c34d43a6c0ec3d::t_bae542f600ea56 6,13
+genesis/engine/materials/SPH/base.py
+  s_c34d43a6c0ec3d::t_9d5f18fb735a0f 5,11
+genesis/engine/materials/SPH/liquid.py
+  s_c34d43a6c0ec3d::t_d5975a92c28dfe 1,23,30
+genesis/engine/materials/base.py
+  s_c34d43a6c0ec3d::t_ca707427585132 1,3,8-9,39-73
+genesis/engine/mesh.py
+  s_c34d43a6c0ec3d::t_1a2668df85a73f 285,288-290,292-296
+genesis/utils/particle.py
+  s_c34d43a6c0ec3d::t_4fb38be887da25 1-2,16-32,70,74-75,77-78,92-93,95,286,290-291,296-300
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0e3abbb2cfe0b26e6ec6092f3635bb32b382f191",
+  "prompts": {},
+  "sessions": {
+    "s_c34d43a6c0ec3d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85865c8a-2aec-4623-a453-81a3917c1600",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
