@@ -1,0 +1,21 @@
+genesis/engine/entities/particle_entity.py
+  s_c34d43a6c0ec3d::t_eae7e96de654ca 113-114
+tests/particles/test_mpm.py
+  s_c34d43a6c0ec3d::t_10d7e01d4dc8a8 179-184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6b3c87529bc76f19eaa1e6c72e1ee370e80d8ccb",
+  "prompts": {},
+  "sessions": {
+    "s_c34d43a6c0ec3d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85865c8a-2aec-4623-a453-81a3917c1600",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
