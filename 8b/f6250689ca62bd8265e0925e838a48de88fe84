@@ -1,0 +1,50 @@
+genesis/engine/solvers/mpm_solver.py
+  s_c34d43a6c0ec3d::t_d2bc3984ab0e9a 406-408,436,441,500,519
+genesis/engine/materials/MPM/elasto_plastic.py
+  s_c34d43a6c0ec3d::t_2215f8463858da 6
+  s_c34d43a6c0ec3d::t_d4b9855096d598 40
+  s_c34d43a6c0ec3d::t_4c27a17e678290 1
+tests/particles/test_mpm.py
+  s_c34d43a6c0ec3d::t_ec685892551373 241-242
+genesis/engine/materials/MPM/muscle.py
+  s_c34d43a6c0ec3d::t_d4b9855096d598 1,5,34-36,38
+genesis/engine/entities/hybrid_entity.py
+  s_c34d43a6c0ec3d::t_6960969c83b6e7 73,149-150
+genesis/engine/materials/MPM/base.py
+  s_c34d43a6c0ec3d::t_45c29feabc73f7 75-79,84-87
+  s_c34d43a6c0ec3d::t_a799d1ed7f8a4e 3,62,64,66
+  s_c34d43a6c0ec3d::t_ff3c1162a475e7 6,45-47
+  s_c34d43a6c0ec3d::t_7dec05566c5ef2 10,48,51-52,68-71,74,83
+  s_c34d43a6c0ec3d::t_80729bbb250cdd 4
+  s_c34d43a6c0ec3d::t_f66c7eca6b5482 53
+genesis/engine/materials/MPM/elastic.py
+  s_c34d43a6c0ec3d::t_d4b9855096d598 1,31-34,37,44-45,48-57
+genesis/engine/materials/MPM/snow.py
+  s_c34d43a6c0ec3d::t_2215f8463858da 1
+  s_c34d43a6c0ec3d::t_80729bbb250cdd 5
+  s_c34d43a6c0ec3d::t_d4b9855096d598 54,64
+  s_c34d43a6c0ec3d::t_577609c1eead88 6
+genesis/engine/materials/MPM/sand.py
+  s_c34d43a6c0ec3d::t_2215f8463858da 2,8
+  s_c34d43a6c0ec3d::t_d4b9855096d598 34,39-41,43,68,74
+genesis/engine/materials/MPM/liquid.py
+  s_c34d43a6c0ec3d::t_80729bbb250cdd 5
+  s_c34d43a6c0ec3d::t_d4b9855096d598 37-42,45,52
+  s_c34d43a6c0ec3d::t_b3ae2957557dc8 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8bf6250689ca62bd8265e0925e838a48de88fe84",
+  "prompts": {},
+  "sessions": {
+    "s_c34d43a6c0ec3d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85865c8a-2aec-4623-a453-81a3917c1600",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
