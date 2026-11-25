@@ -1,0 +1,19 @@
+tests/utils/mujoco_parity.py
+  s_9ef5a555f7baec::t_e49501ceb79006 280,501
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5cc85beeda1936063954fdd3e213acb13bef728b",
+  "prompts": {},
+  "sessions": {
+    "s_9ef5a555f7baec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1021873c-59cd-45bf-ae97-177fe6e3b49b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
