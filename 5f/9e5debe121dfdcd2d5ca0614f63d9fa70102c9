@@ -1,0 +1,26 @@
+tests/utils/mujoco_parity.py
+  s_9ef5a555f7baec::t_0ee58601d2cf9f 402
+  s_9ef5a555f7baec::t_aaf89a22403ed4 221
+pyproject.toml
+  s_9ef5a555f7baec::t_f53083d4d1c3f2 103-105
+tests/rigid/test_mujoco_parity.py
+  s_9ef5a555f7baec::t_aaf89a22403ed4 119-122,127-128
+genesis/utils/mjcf.py
+  s_9ef5a555f7baec::t_992aaa61fa2c13 310
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5f9e5debe121dfdcd2d5ca0614f63d9fa70102c9",
+  "prompts": {},
+  "sessions": {
+    "s_9ef5a555f7baec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1021873c-59cd-45bf-ae97-177fe6e3b49b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
