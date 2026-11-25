@@ -5,6 +5,7 @@ genesis/engine/materials/hybrid.py
 genesis/engine/entities/hybrid_entity.py
   s_c34d43a6c0ec3d::t_c810c643cf7d57 1,28,78-80,83-84,97,106-109,118,127-130,178,181-184,187-189,192-193,487-503,539,546,551,580
   s_c34d43a6c0ec3d::t_6fc5b56c91f35c 3
+  s_c34d43a6c0ec3d::t_488f776b2e7b6e 85
 ---
 {
   "schema_version": "authorship/3.0.0",
