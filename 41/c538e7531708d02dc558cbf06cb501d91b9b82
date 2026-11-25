@@ -1,0 +1,29 @@
+genesis/engine/solvers/fem_solver.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 900
+genesis/engine/materials/base.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 40
+genesis/engine/solvers/mpm_solver.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 419
+genesis/engine/materials/MPM/elastic.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 51
+genesis/engine/materials/MPM/base.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 97-100
+genesis/engine/materials/MPM/liquid.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 27,38-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "41c538e7531708d02dc558cbf06cb501d91b9b82",
+  "prompts": {},
+  "sessions": {
+    "s_c34d43a6c0ec3d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85865c8a-2aec-4623-a453-81a3917c1600",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
