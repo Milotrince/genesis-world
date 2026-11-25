@@ -1,0 +1,25 @@
+genesis/engine/solvers/pbd_solver.py
+  s_c34d43a6c0ec3d::t_b6f6ea6447b8b7 14-19,365-366,369-371,382-384,396-400
+genesis/engine/entities/pbd_entity.py
+  s_c34d43a6c0ec3d::t_b6f6ea6447b8b7 2,133-142,144-147
+  s_c34d43a6c0ec3d::t_ffc561b81708a6 143,148
+  s_c34d43a6c0ec3d::t_c9965b60ec9640 149
+tests/rigid/test_serialization.py
+  s_c34d43a6c0ec3d::t_b6f6ea6447b8b7 769
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "53b4c67e16a3caf60181f1f0a8461675d069b793",
+  "prompts": {},
+  "sessions": {
+    "s_c34d43a6c0ec3d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85865c8a-2aec-4623-a453-81a3917c1600",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
