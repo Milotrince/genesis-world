@@ -1,0 +1,98 @@
+genesis/engine/solvers/mpm_solver.py
+  s_c34d43a6c0ec3d::t_8142cf48e45453 757-766,772
+  s_c34d43a6c0ec3d::t_20f27937234867 419-421,584-587
+  s_c34d43a6c0ec3d::t_d0537f6c121a64 801-802
+  s_c34d43a6c0ec3d::t_fa40673da53bd7 767-771
+  s_c34d43a6c0ec3d::t_d2bc3984ab0e9a 406-408,436,441,523
+  s_c34d43a6c0ec3d::t_ace77027fbdf95 446,448,450
+  s_c34d43a6c0ec3d::t_289e86ee39eae0 447,449,724
+  s_c34d43a6c0ec3d::t_c941496f63181b 15,496-504
+tests/particles/test_mpm.py
+  s_c34d43a6c0ec3d::t_ec14f6c1ad8dcd 216-227
+  s_c34d43a6c0ec3d::t_ec685892551373 241,243
+  s_c34d43a6c0ec3d::t_3a9ba8e5d8715a 242
+genesis/engine/entities/hybrid_entity.py
+  s_c34d43a6c0ec3d::t_6960969c83b6e7 73,149-150
+  s_c34d43a6c0ec3d::t_fd589aa9d05b65 158
+  s_c34d43a6c0ec3d::t_be45223973fa1f 157
+  s_c34d43a6c0ec3d::t_92470aaa94fd18 159
+  s_c34d43a6c0ec3d::t_30e35e0f495c69 72,82-83
+genesis/engine/materials/MPM/elasto_plastic.py
+  s_c34d43a6c0ec3d::t_4c27a17e678290 1
+  s_c34d43a6c0ec3d::t_2215f8463858da 6
+  s_c34d43a6c0ec3d::t_d4b9855096d598 40
+genesis/engine/materials/MPM/sand.py
+  s_c34d43a6c0ec3d::t_2215f8463858da 2,8
+  s_c34d43a6c0ec3d::t_d4b9855096d598 34,39-41,43,68,74
+genesis/engine/materials/MPM/liquid.py
+  s_c34d43a6c0ec3d::t_bf2fbd0be50aac 3-4,34-37,39
+  s_c34d43a6c0ec3d::t_d4b9855096d598 40-44,47,54
+  s_c34d43a6c0ec3d::t_b3ada29f0cae77 38
+genesis/engine/materials/MPM/muscle.py
+  s_c34d43a6c0ec3d::t_d4b9855096d598 1,5,34-36,38
+genesis/engine/materials/MPM/elastic.py
+  s_c34d43a6c0ec3d::t_d4b9855096d598 1,31-34,37,44-45,48-57
+genesis/engine/materials/MPM/base.py
+  s_c34d43a6c0ec3d::t_f66c7eca6b5482 52
+  s_c34d43a6c0ec3d::t_bf2fbd0be50aac 3,60-75
+  s_c34d43a6c0ec3d::t_ff3c1162a475e7 6
+  s_c34d43a6c0ec3d::t_45c29feabc73f7 84-88,93-96
+  s_c34d43a6c0ec3d::t_080c316884a536 1
+  s_c34d43a6c0ec3d::t_7dec05566c5ef2 10,47,50-51,77-80,83,92
+  s_c34d43a6c0ec3d::t_2542feb5255a24 2,76
+  s_c34d43a6c0ec3d::t_9e84b8adf398a1 45-46
+genesis/engine/materials/MPM/snow.py
+  s_c34d43a6c0ec3d::t_80729bbb250cdd 5
+  s_c34d43a6c0ec3d::t_2215f8463858da 1
+  s_c34d43a6c0ec3d::t_d4b9855096d598 54,64
+  s_c34d43a6c0ec3d::t_577609c1eead88 6
+genesis/engine/materials/FEM/base.py
+  s_c34d43a6c0ec3d::t_9e84b8adf398a1 1,48-51,53-56
+genesis/engine/materials/FEM/muscle.py
+  s_c34d43a6c0ec3d::t_9e84b8adf398a1 3,32-35
+genesis/engine/materials/base.py
+  s_c34d43a6c0ec3d::t_9e84b8adf398a1 4,40-42
+  s_c34d43a6c0ec3d::t_e2d3ebfa5ce368 43
+genesis/engine/entities/fem_entity.py
+  s_c34d43a6c0ec3d::t_0a88a9070b97f1 81
+  s_c34d43a6c0ec3d::t_0a28220655e00e 31,36,40,78,80,379,406
+genesis/engine/entities/pbd_entity.py
+  s_c34d43a6c0ec3d::t_09fccba5afc16d 381-383
+genesis/engine/simulator.py
+  s_c34d43a6c0ec3d::t_be45223973fa1f 182
+tests/coupling/test_hybrid.py
+  s_c34d43a6c0ec3d::t_c33e3f034dbc65 194-196,198-208,211-212
+  s_c34d43a6c0ec3d::t_31a28a2ba9556f 214
+  s_c34d43a6c0ec3d::t_30e35e0f495c69 213
+genesis/engine/entities/mpm_entity.py
+  s_c34d43a6c0ec3d::t_289e86ee39eae0 234
+  s_c34d43a6c0ec3d::t_c941496f63181b 12,40-41,54,59-60
+genesis/engine/solvers/fem_solver.py
+  s_c34d43a6c0ec3d::t_c20ee52d07a6b1 1328
+tests/deformable/test_fem.py
+  s_c34d43a6c0ec3d::t_df904f1316e044 22,89,94,119,122
+genesis/engine/entities/sph_entity.py
+  s_c34d43a6c0ec3d::t_c941496f63181b 5,23-24,37,42
+genesis/engine/entities/particle_entity.py
+  s_c34d43a6c0ec3d::t_c941496f63181b 3,5,21,51-64,75-171,183-184,199,205-208,215-219,221-226,231-234
+genesis/engine/solvers/sph_solver.py
+  s_c34d43a6c0ec3d::t_c941496f63181b 13,364-372,376
+genesis/utils/serialization.py
+  s_c34d43a6c0ec3d::t_c941496f63181b 402-409,413
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "00d59671d7eb7056456df1350d311cd4a7a699a2",
+  "prompts": {},
+  "sessions": {
+    "s_c34d43a6c0ec3d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85865c8a-2aec-4623-a453-81a3917c1600",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
