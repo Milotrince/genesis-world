@@ -1,0 +1,40 @@
+genesis/engine/simulator.py
+  s_c34d43a6c0ec3d::t_23cf9f4f762d0d 181-184
+tests/coupling/test_hybrid.py
+  s_c34d43a6c0ec3d::t_23cf9f4f762d0d 76-83,217-223,228-230
+genesis/engine/materials/MPM/base.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 97-100
+genesis/engine/materials/base.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 40
+tests/particles/test_mpm.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 244-247
+genesis/engine/entities/hybrid_entity.py
+  s_c34d43a6c0ec3d::t_23cf9f4f762d0d 82-90
+  s_c34d43a6c0ec3d::t_69e1fa61b5049f 91-92
+genesis/engine/materials/MPM/liquid.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 27,38-41
+genesis/engine/entities/mpm_entity.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 73-75,97-98,122,140
+genesis/engine/materials/MPM/elastic.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 51
+genesis/engine/solvers/fem_solver.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 900
+genesis/engine/solvers/mpm_solver.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 419
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "90e45575ee757168899d3175b61d94dfa10431ec",
+  "prompts": {},
+  "sessions": {
+    "s_c34d43a6c0ec3d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85865c8a-2aec-4623-a453-81a3917c1600",
+        "model": "unknown"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
