@@ -1,0 +1,40 @@
+genesis/options/morphs.py
+  s_48a213206e91f9::t_aedd279d30b049 11,1314-1315,1318-1320,1324,1330-1334,1340-1341,1343
+  s_48a213206e91f9::t_922a96b7c03c78 1321-1323
+genesis/engine/simulator.py
+  s_48a213206e91f9::t_93f730bc9b0584 341-342
+  s_48a213206e91f9::t_a338851648999d 30,122,147,179-188,303-304,593-594
+genesis/engine/entities/particle_entity.py
+  s_48a213206e91f9::t_f86403d9f5935c 83-84,97,100-101
+genesis/engine/couplers/mpm_link_binding.py
+  s_48a213206e91f9::t_9aafb6a646ef56 1-146
+genesis/typing.py
+  s_48a213206e91f9::t_e8e7403c8b7c69 70-71
+genesis/engine/entities/mpm_entity.py
+  s_48a213206e91f9::t_f86403d9f5935c 10,20-32,42-43,105,123-124,136,139-144
+tests/coupling/test_hybrid.py
+  s_48a213206e91f9::t_d09842ff05224b 17,133,137-141,144,146-148
+  s_48a213206e91f9::t_38acb569454b77 142-143,145
+genesis/engine/scene.py
+  s_48a213206e91f9::t_ba1a5837edd952 436-438
+genesis/engine/solvers/mpm_solver.py
+  s_48a213206e91f9::t_f86403d9f5935c 53,378,381-383,503-509,514-533
+  s_48a213206e91f9::t_922a96b7c03c78 8-9,17-18,510-513
+  s_48a213206e91f9::t_e1eb7cddba5322 534
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d63a588353f7e6568d946b41588939a21c109066",
+  "prompts": {},
+  "sessions": {
+    "s_48a213206e91f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88599325-179a-4b95-a0f1-05bac68cb731",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
