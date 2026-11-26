@@ -1,0 +1,19 @@
+genesis/recorders/recorder_manager.py
+  s_156eb4b34ffe39::t_b38ddb99a0b1f2 86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8e8b095bd00cd99741000f82a3e6224d95e9afa1",
+  "prompts": {},
+  "sessions": {
+    "s_156eb4b34ffe39": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d52489e6-6276-4026-b1c7-8a1be2dee274",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
