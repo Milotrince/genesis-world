@@ -2,6 +2,7 @@ tests/parsers/test_usd.py
   s_c639b397214f9a::t_59ba6b6845bd00 432
 genesis/engine/entities/rigid_entity/description.py
   s_c639b397214f9a::t_5708d146c2ff61 1612,1622
+  s_7d27fb45ef389a::t_49bf7aa61a8684 1607
 genesis/utils/usd/usd_geometry.py
   s_c639b397214f9a::t_3e791f9c2013b6 367,370-377,379-383
 genesis/utils/usd/usd_rigid_entity.py
@@ -17,6 +18,14 @@ tests/rigid/test_asset_loading.py
   "base_commit_sha": "dc280578855dc30e5c0a3e91cbe41097901de992",
   "prompts": {},
   "sessions": {
+    "s_7d27fb45ef389a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "87412626-9ad4-41f8-8880-3d839015928e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    },
     "s_c639b397214f9a": {
       "agent_id": {
         "tool": "claude",
