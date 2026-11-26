@@ -1,0 +1,115 @@
+genesis/engine/solvers/rigid/abd/misc.py
+  s_7ba5e6d6ac5cc4::t_4b9aaed4dab893 8-16,526-530,532-533,535,537,539-595
+tests/rendering/test_offscreen.py
+  s_7ba5e6d6ac5cc4::t_b304b88205bf2f 955,1069,1072-1074,1078-1086
+  s_7ba5e6d6ac5cc4::t_3218536f4dc8ed 1068
+  s_7ba5e6d6ac5cc4::t_4412046cf6b01f 1070-1071,1075-1077
+  s_7ba5e6d6ac5cc4::t_1b01d59bbe5c1a 1087
+genesis/engine/solvers/rigid/collider/collider.py
+  s_7ba5e6d6ac5cc4::t_73ff405bd92fcf 283-350,352,354,367,443
+  s_7ba5e6d6ac5cc4::t_b64c5c02c9bca3 593-597,616-622,625-629
+genesis/vis/rasterizer_context.py
+  s_7ba5e6d6ac5cc4::t_4de6c388508fe4 140-141,472-478,480-482,498
+genesis/engine/solvers/rigid/data.py
+  s_7ba5e6d6ac5cc4::t_454557bbfd1b7e 687-688,711-722,724-727,772
+  s_7ba5e6d6ac5cc4::t_89f9fbfd6f24ea 491-492,527-532,723
+  s_7ba5e6d6ac5cc4::t_dcfadf8e0f840f 263-266
+  s_7ba5e6d6ac5cc4::t_bd120882919f6b 486-490,493-526,533-553
+genesis/engine/solvers/rigid/rigid_solver.py
+  s_7ba5e6d6ac5cc4::t_cc34ce885024f1 71,3770,3772
+  s_7ba5e6d6ac5cc4::t_f6f3a3deaf1fd9 1807-1809
+  s_7ba5e6d6ac5cc4::t_f2af05bd40c5aa 1802,1879-1880,1917,1919
+  s_7ba5e6d6ac5cc4::t_1b71d6a30541e8 245-246,468-472,475,479,483,491,1155-1176,1179-1180
+  s_7ba5e6d6ac5cc4::t_1e22865269778a 53,1249
+  s_7ba5e6d6ac5cc4::t_141804ecafe9a1 909-910
+  s_7ba5e6d6ac5cc4::t_0d6144ae6c63cb 492-494,1934-1936
+  s_7ba5e6d6ac5cc4::t_95cafa2f6fee0c 18,151,271-273,414,1215-1221,1225,1232-1248,1793-1801,1803-1806,1810-1820,1822-1823,1877-1878,1882-1916,1918,1920-1933,1937-1996
+  s_7ba5e6d6ac5cc4::t_f73ad5f677207c 476,480
+genesis/engine/solvers/rigid/collider/data.py
+  s_7ba5e6d6ac5cc4::t_73ff405bd92fcf 103-107
+  s_7ba5e6d6ac5cc4::t_43117c6d7c8f6f 10-11,435
+tests/rigid/test_heterogeneous.py
+  s_7ba5e6d6ac5cc4::t_7735bbc750d1d6 651,677,679-681,683-684,688,692-693,703,705-706
+  s_7ba5e6d6ac5cc4::t_8a245e13f6b5e8 217-218
+  s_7ba5e6d6ac5cc4::t_b304b88205bf2f 7,10,200-201,203-204,208,219,222,224-227,229-231,546-650,652-676,678,682,685-687,689-691,694-702,704,707-757
+genesis/engine/solvers/rigid/abd/forward_kinematics.py
+  s_7ba5e6d6ac5cc4::t_ea7557ea349e86 23,554-565,583,954
+genesis/engine/sensors/surface_distance_probe.py
+  s_7ba5e6d6ac5cc4::t_555461e2e53643 300
+tests/rigid/conftest.py
+  s_7ba5e6d6ac5cc4::t_b304b88205bf2f 38,45-46,68,90-92
+  s_7ba5e6d6ac5cc4::t_26430bba0b2fa0 93-94
+genesis/engine/entities/rigid_entity/rigid_link.py
+  s_7ba5e6d6ac5cc4::t_fd18c1350bfb4a 262-265
+  s_7ba5e6d6ac5cc4::t_6df6fd3795b20f 261
+genesis/engine/entities/rigid_entity/rigid_geom.py
+  s_7ba5e6d6ac5cc4::t_7be552a8d8e437 50
+  s_7ba5e6d6ac5cc4::t_fd18c1350bfb4a 33-49,51-59,96-97,122-125,618,641-642,646-649
+genesis/engine/solvers/rigid/render.py
+  s_7ba5e6d6ac5cc4::t_2f21eaa42299bd 103
+genesis/engine/couplers/sap_coupler.py
+  s_7ba5e6d6ac5cc4::t_555461e2e53643 1333-1334
+genesis/engine/sensors/base_sensor.py
+  s_7ba5e6d6ac5cc4::t_555461e2e53643 736-746
+genesis/vis/batch_renderer.py
+  s_7ba5e6d6ac5cc4::t_555461e2e53643 307,309
+genesis/engine/couplers/legacy_coupler.py
+  s_7ba5e6d6ac5cc4::t_0368f2ac733321 18,892,894-895,897-898
+  s_7ba5e6d6ac5cc4::t_b4ead773f677f3 150,893,896
+  s_7ba5e6d6ac5cc4::t_ea7557ea349e86 29
+  s_7ba5e6d6ac5cc4::t_185cafb363fb7b 1013,1017,1034,1041,1072,1076,1099,1105,1192,1198,1209,1293,1300,1338,1344,1390,1394,1403,1430,1436,1458,1640,1644,1655
+genesis/engine/sensors/point_cloud_tactile.py
+  s_7ba5e6d6ac5cc4::t_555461e2e53643 607,1687,1706
+genesis/vis/raytracer.py
+  s_7ba5e6d6ac5cc4::t_555461e2e53643 238-239
+genesis/engine/entities/rigid_entity/rigid_entity.py
+  s_7ba5e6d6ac5cc4::t_bd0366fe7175cd 956-973,3362-3376,3378-3387
+  s_7ba5e6d6ac5cc4::t_eb62cde7ecadf3 1133-1136
+  s_156eb4b34ffe39::t_99c0bb0bc94fba 209-212
+  s_7ba5e6d6ac5cc4::t_ccbfc2fd7e693f 3377
+  s_7ba5e6d6ac5cc4::t_65701e3bcbd719 1132,3388
+tests/sensors/test_raycaster.py
+  s_7ba5e6d6ac5cc4::t_b304b88205bf2f 692-695
+  s_7ba5e6d6ac5cc4::t_c1ab07475d9e75 691
+examples/rigid/heterogeneous_simulation.py
+  s_7ba5e6d6ac5cc4::t_961caa90b1ddb1 27-29,46,94-107,109-131
+genesis/utils/raycast_qd.py
+  s_7ba5e6d6ac5cc4::t_ea8149473f6ff3 26
+  s_7ba5e6d6ac5cc4::t_180b1d1b677592 63,840-842,848,867-872
+tests/coupling/test_hybrid.py
+  s_7ba5e6d6ac5cc4::t_b304b88205bf2f 184-222,226,228-238
+  s_7ba5e6d6ac5cc4::t_8a245e13f6b5e8 223-225,227
+genesis/engine/solvers/kinematic_solver.py
+  s_7ba5e6d6ac5cc4::t_e9dd7b420424a3 348-354,399-402,404-408,411-419,482,763-764,768,770-792,794-796,833-834,836-843,845-863,865-866,868-883,886-887,899-909,912,914-924
+  s_7ba5e6d6ac5cc4::t_734902e004d62d 89,251-253,551-552,558,884-885,888-891,895-898,910-911
+  s_7ba5e6d6ac5cc4::t_b68679064c7336 179-181,185-192,197-214
+  s_7ba5e6d6ac5cc4::t_cc34ce885024f1 52,215-235,1634,1636
+  s_7ba5e6d6ac5cc4::t_2f21eaa42299bd 10-11
+  s_7ba5e6d6ac5cc4::t_7be552a8d8e437 809-810,812-825,827-832
+  s_7ba5e6d6ac5cc4::t_50a3dd5a2a070d 15-19,182-184
+  s_7ba5e6d6ac5cc4::t_0d6144ae6c63cb 193-196,892-894
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "72bf9b540d67a6ed83f6f9940d84101512c2e1c9",
+  "prompts": {},
+  "sessions": {
+    "s_156eb4b34ffe39": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d52489e6-6276-4026-b1c7-8a1be2dee274",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    },
+    "s_7ba5e6d6ac5cc4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "52a0c0a6-efcc-4b4b-b191-709f343c313f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
