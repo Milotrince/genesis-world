@@ -1,0 +1,19 @@
+genesis/engine/entities/rigid_entity/description.py
+  s_7d27fb45ef389a::t_f85248e2f53e55 1322
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "583512e18eac4c3d84d67a382a2e48b6c04932f1",
+  "prompts": {},
+  "sessions": {
+    "s_7d27fb45ef389a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "87412626-9ad4-41f8-8880-3d839015928e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
