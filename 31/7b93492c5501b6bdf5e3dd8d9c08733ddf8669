@@ -1,0 +1,21 @@
+genesis/engine/simulator.py
+  s_48a213206e91f9::t_096e0a745baa1d 30,147,302-303,340-341,592-593
+genesis/engine/couplers/rigid_mpm_coupler.py
+  s_48a213206e91f9::t_096e0a745baa1d 1-25,27-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "317b93492c5501b6bdf5e3dd8d9c08733ddf8669",
+  "prompts": {},
+  "sessions": {
+    "s_48a213206e91f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88599325-179a-4b95-a0f1-05bac68cb731",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
