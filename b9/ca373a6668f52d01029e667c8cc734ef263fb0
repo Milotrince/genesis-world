@@ -1,0 +1,27 @@
+genesis/engine/generators.py
+  s_48a213206e91f9::t_c9f3b6f1d2eb58 1-45
+genesis/engine/simulator.py
+  s_48a213206e91f9::t_bc928dab3c9f48 33,182-185
+genesis/options/entities.py
+  s_48a213206e91f9::t_5a440621bf4252 16,112-113,158-163,501
+genesis/options/morphs.py
+  s_48a213206e91f9::t_9f6f33fea7154b 1309-1319
+genesis/utils/terrain.py
+  s_48a213206e91f9::t_9286b833f759a4 20-21,23-24,40-41,157-171,173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b9ca373a6668f52d01029e667c8cc734ef263fb0",
+  "prompts": {},
+  "sessions": {
+    "s_48a213206e91f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88599325-179a-4b95-a0f1-05bac68cb731",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
