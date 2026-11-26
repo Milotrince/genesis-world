@@ -1,0 +1,35 @@
+examples/tutorials/advanced_hybrid_robot.py
+  s_48a213206e91f9::t_b63809233f55ae 62,76
+genesis/engine/couplers/rigid_mpm_coupler.py
+  s_48a213206e91f9::t_a735a4c48cfd72 26
+genesis/engine/entities/mpm_entity.py
+  s_48a213206e91f9::t_54a910ce246b87 142,144,380
+genesis/engine/solvers/mpm_solver.py
+  s_48a213206e91f9::t_853ef93efba8ef 507
+genesis/options/entities.py
+  s_48a213206e91f9::t_108dad56680a05 710
+genesis/options/indices.py
+  s_48a213206e91f9::t_00613efaf508ea 314,318-319,325,330,332
+genesis/options/morphs.py
+  s_48a213206e91f9::t_20e38b8382c12a 1339,1346
+genesis/options/patches.py
+  s_48a213206e91f9::t_d8e2e04c8d26e6 96,108
+tests/coupling/test_hybrid.py
+  s_48a213206e91f9::t_7e8029c77349b9 69,83,135,137,141,145,151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "843dcc2324563353f5f49a96fa1b356d9a73ef18",
+  "prompts": {},
+  "sessions": {
+    "s_48a213206e91f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88599325-179a-4b95-a0f1-05bac68cb731",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
