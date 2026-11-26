@@ -1,0 +1,79 @@
+AGENTS.md
+  s_c34d43a6c0ec3d::t_62ba478e688966 103
+examples/sensors/camera_as_sensor.py
+  s_48a213206e91f9::t_ea862fbcc59a5a 115,161
+examples/sensors/contact_force_go2.py
+  s_48a213206e91f9::t_5f38a390e2b529 55,64
+examples/sensors/depth_camera_custom_vverts.py
+  s_48a213206e91f9::t_8d2a1ea6c90fbe 111,125
+examples/sensors/imu_franka.py
+  s_48a213206e91f9::t_61ea5986edc004 48
+examples/sensors/joint_torque_franka.py
+  s_48a213206e91f9::t_ec79b5382766e1 76
+examples/sensors/lidar_teleop.py
+  s_48a213206e91f9::t_cb9f2ff38b4439 99
+examples/sensors/surface_distance_shadowhand.py
+  s_48a213206e91f9::t_6d8d9ba1523c05 99,102
+examples/sensors/tactile_franka.py
+  s_48a213206e91f9::t_695ea8e3ab220b 21,36,40,43,52,90,254,257,260
+examples/sensors/tactile_sandbox.py
+  s_48a213206e91f9::t_f353f01fa08504 24,45,49,54,71,132,363,367
+examples/sensors/temperature_grid.py
+  s_48a213206e91f9::t_396cf45e45d2b7 156
+genesis/engine/entities/rigid_entity/__init__.py
+  s_48a213206e91f9::t_fb58920b45447e 5
+genesis/options/sensors/camera.py
+  s_48a213206e91f9::t_9b9bb31e0f5b2e 50-54
+genesis/options/sensors/options.py
+  s_48a213206e91f9::t_1effdf75fa208b 6,33,40-41,52-54,62-68,106-107,109,111-112,139-143,150,154-171,176-177,223-225,230,346-347,617-618,622
+genesis/options/sensors/tactile.py
+  s_48a213206e91f9::t_3288be3d19d777 5,25,222-223,237,438-439
+genesis/typing.py
+  s_48a213206e91f9::t_6bbdec9a8d460f 66-78,90,99
+tests/core/test_recorders.py
+  s_48a213206e91f9::t_aa0f05b676bde6 226,234
+tests/rendering/test_debug_draw.py
+  s_48a213206e91f9::t_0dc05d8e33abb4 158,175,183,195,207
+tests/rigid/test_serialization.py
+  s_48a213206e91f9::t_dcdfe240e0d5c8 307
+tests/sensors/test_api.py
+  s_48a213206e91f9::t_ab280ae718e2f7 487,498,545,551,557,624,678,683,688,693,698,703,708
+tests/sensors/test_camera.py
+  s_48a213206e91f9::t_831d58ab2e3edd 115,127,139,316,424,548,680,777-778
+tests/sensors/test_contact.py
+  s_c34d43a6c0ec3d::t_5efd7a465952ea 82,87,92,97,102,115,123-124,206,211-212,217,222-223
+tests/sensors/test_imu.py
+  s_48a213206e91f9::t_8cead0b43066ac 45,51,58,67,229
+tests/sensors/test_joint_torque.py
+  s_48a213206e91f9::t_c6d55302fe2fe0 87,167
+tests/sensors/test_raycaster.py
+  s_48a213206e91f9::t_2d0567dc1faede 61,86,99,110,140,342,355,442,526,585,594,603,664,776,784,797,805
+tests/sensors/test_tactile.py
+  s_48a213206e91f9::t_2b2ffbdab3c15b 74,79,82,87,94,244,293,308,314,320,423,431,485,581,721,723,745,833,845,861,866,944,948,1008,1187,1191,1266,1270,1348,1353,1366,1377,1382,1456,1460,1571,1574,1797,1826,1836,1844
+tests/sensors/test_temperature.py
+  s_48a213206e91f9::t_35651cfffdf86e 48,146,163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "64cccfeb3566a41e678fdda8a9a8b599eec27c78",
+  "prompts": {},
+  "sessions": {
+    "s_48a213206e91f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88599325-179a-4b95-a0f1-05bac68cb731",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    },
+    "s_c34d43a6c0ec3d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85865c8a-2aec-4623-a453-81a3917c1600",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
