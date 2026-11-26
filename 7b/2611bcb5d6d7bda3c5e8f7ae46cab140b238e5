@@ -1,0 +1,25 @@
+genesis/typing.py
+  s_48a213206e91f9::t_0c0d72c14f83c3 99
+  s_48a213206e91f9::t_8dd7a243ee8eea 75-79
+genesis/options/sensors/camera.py
+  s_48a213206e91f9::t_0c0d72c14f83c3 56-58
+genesis/options/sensors/options.py
+  s_48a213206e91f9::t_0c0d72c14f83c3 144-146,153
+  s_48a213206e91f9::t_728083eda7f948 41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7b2611bcb5d6d7bda3c5e8f7ae46cab140b238e5",
+  "prompts": {},
+  "sessions": {
+    "s_48a213206e91f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88599325-179a-4b95-a0f1-05bac68cb731",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
