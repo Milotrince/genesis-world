@@ -1,0 +1,74 @@
+genesis/engine/solvers/kinematic_solver.py
+  s_48a213206e91f9::t_fca14727c912e2 231,244
+  s_48a213206e91f9::t_ab2e0bf246f5da 97,236-239
+genesis/engine/couplers/rigid_mpm_coupler.py
+  s_48a213206e91f9::t_c15f7548870792 1-146
+genesis/engine/scene.py
+  s_48a213206e91f9::t_c15f7548870792 436-438,460
+genesis/engine/solvers/mpm_solver.py
+  s_48a213206e91f9::t_fca14727c912e2 498,504
+  s_48a213206e91f9::t_ab2e0bf246f5da 48
+genesis/engine/simulator.py
+  s_48a213206e91f9::t_c15f7548870792 30,147-148,180-188,308-312,349-350,600-602
+  s_48a213206e91f9::t_52c81f3cd56421 31,189-197
+genesis/engine/solvers/pbd_solver.py
+  s_48a213206e91f9::t_ab2e0bf246f5da 42
+  s_48a213206e91f9::t_fca14727c912e2 362,373,386,400
+genesis/engine/solvers/sph_solver.py
+  s_48a213206e91f9::t_ab2e0bf246f5da 43
+  s_48a213206e91f9::t_fca14727c912e2 367,373
+genesis/options/entities.py
+  s_48a213206e91f9::t_52c81f3cd56421 16,689
+  s_48a213206e91f9::t_c15f7548870792 18,301-303,324,480-495,691,695-722,755
+tests/rigid/test_serialization.py
+  s_48a213206e91f9::t_c15f7548870792 484,541,548-568
+  s_48a213206e91f9::t_739a6f58b8c985 579,586
+examples/tutorials/advanced_hybrid_robot.py
+  s_48a213206e91f9::t_c15f7548870792 53-62,65-70,72-80
+genesis/options/__init__.py
+  s_48a213206e91f9::t_c15f7548870792 2,38
+tests/coupling/test_hybrid.py
+  s_48a213206e91f9::t_c15f7548870792 17,62-69,72-77,79-87,101,111-154
+genesis/engine/solvers/rigid/rigid_solver.py
+  s_48a213206e91f9::t_fca14727c912e2 344
+  s_48a213206e91f9::t_ab2e0bf246f5da 177
+  s_48a213206e91f9::t_dbd2416a03d894 347
+genesis/engine/generators.py
+  s_48a213206e91f9::t_557cc53f97fac4 6-9,11,13-14,29-41,43,45-47,49-84,87-88,93
+  s_48a213206e91f9::t_52c81f3cd56421 42,44
+genesis/engine/entities/base_entity.py
+  s_48a213206e91f9::t_c15f7548870792 42,50
+genesis/engine/solvers/fem_solver.py
+  s_48a213206e91f9::t_ab2e0bf246f5da 92
+  s_48a213206e91f9::t_fca14727c912e2 860,865
+genesis/options/morphs.py
+  s_48a213206e91f9::t_5d51140e3956af 1326-1328,1341-1348
+  s_48a213206e91f9::t_c15f7548870792 46,1319-1325,1329-1340,1349-1350
+.github/contributing/ARCHITECTURE.md
+  s_48a213206e91f9::t_c15f7548870792 98
+genesis/engine/entities/mpm_entity.py
+  s_48a213206e91f9::t_c15f7548870792 2,5,11,13,24-39,50,52-62,64-68,74,76,91-92,94-126,166,376-380
+  s_48a213206e91f9::t_7c157ec6ecf34a 3,77-83,87-90
+  s_48a213206e91f9::t_0f7ab79edc8c35 19,63,69-73,75,93
+  s_48a213206e91f9::t_9f1d6eeb58e3c2 84-86
+genesis/options/indices.py
+  s_48a213206e91f9::t_c15f7548870792 1,3,6,14,18-29,305-333
+genesis/options/patches.py
+  s_48a213206e91f9::t_c15f7548870792 13,91-112,118,121,126-127,129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4904258ab1953329177b6633938fbdad9ab5e0f9",
+  "prompts": {},
+  "sessions": {
+    "s_48a213206e91f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88599325-179a-4b95-a0f1-05bac68cb731",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
