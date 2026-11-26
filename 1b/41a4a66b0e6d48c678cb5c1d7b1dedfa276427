@@ -1,0 +1,19 @@
+genesis/engine/mesh.py
+  s_0ad35ed8e9a835::t_09affcdf992ef5 1198-1212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1b41a4a66b0e6d48c678cb5c1d7b1dedfa276427",
+  "prompts": {},
+  "sessions": {
+    "s_0ad35ed8e9a835": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "63313966-a999-4420-a5cc-36e8123cdaf7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
