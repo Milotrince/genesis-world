@@ -1,0 +1,14 @@
+genesis/options/sensors/options.py
+  h_6855cd90ab4e09 83-85,187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "150256c805fa6523b96b212b3ba4f79b2b4031a3",
+  "prompts": {},
+  "humans": {
+    "h_6855cd90ab4e09": {
+      "author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
