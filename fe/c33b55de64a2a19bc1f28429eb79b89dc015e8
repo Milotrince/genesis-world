@@ -1,0 +1,26 @@
+tests/sensors/test_contact.py
+  s_48a213206e91f9::t_5228d98fdb4336 127
+genesis/engine/sensors/kinematic_tactile.py
+  s_48a213206e91f9::t_0b8656fbae66eb 720
+genesis/engine/sensors/contact_force.py
+  s_48a213206e91f9::t_0b8656fbae66eb 173,275
+genesis/options/sensors/options.py
+  s_48a213206e91f9::t_0b8656fbae66eb 245,249-250,253-255
+  s_48a213206e91f9::t_5228d98fdb4336 259,261,263
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fec33b55de64a2a19bc1f28429eb79b89dc015e8",
+  "prompts": {},
+  "sessions": {
+    "s_48a213206e91f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88599325-179a-4b95-a0f1-05bac68cb731",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
