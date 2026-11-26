@@ -1,0 +1,33 @@
+genesis/engine/sensors/contact_force.py
+  s_48a213206e91f9::t_86652bcbeb8e0a 165
+genesis/engine/sensors/sensor_manager.py
+  s_48a213206e91f9::t_86652bcbeb8e0a 155,193,510
+genesis/options/sensors/options.py
+  s_48a213206e91f9::t_86652bcbeb8e0a 112,114,116,119,148,150-152,154-155,173,175,179-180,182,186,193-196,198,200,215-216,218,225,234-235,381-382,391,393
+tests/sensors/test_temperature.py
+  s_48a213206e91f9::t_8c3057c61bda05 76
+genesis/options/sensors/camera.py
+  s_48a213206e91f9::t_86652bcbeb8e0a 51,53-55,57-58
+genesis/engine/sensors/joint_torque.py
+  s_48a213206e91f9::t_86652bcbeb8e0a 50,68
+tests/sensors/test_contact.py
+  s_48a213206e91f9::t_86652bcbeb8e0a 119,121
+genesis/engine/sensors/base_sensor.py
+  s_48a213206e91f9::t_86652bcbeb8e0a 692-693,730
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "89ba01ec74a600a6f3b9a70de2a7525d968fc5f1",
+  "prompts": {},
+  "sessions": {
+    "s_48a213206e91f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88599325-179a-4b95-a0f1-05bac68cb731",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
