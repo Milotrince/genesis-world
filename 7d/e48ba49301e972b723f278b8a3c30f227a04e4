@@ -1,0 +1,25 @@
+AGENTS.md
+  s_48a213206e91f9::t_aee0014aac94d3 103
+genesis/engine/sensors/base_sensor.py
+  s_48a213206e91f9::t_c5ee739b74de35 617
+genesis/engine/sensors/raycaster.py
+  s_48a213206e91f9::t_2ce895dbd67418 214
+genesis/engine/sensors/sensor_manager.py
+  s_48a213206e91f9::t_5d0ab49149cbbe 151-152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7de48ba49301e972b723f278b8a3c30f227a04e4",
+  "prompts": {},
+  "sessions": {
+    "s_48a213206e91f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88599325-179a-4b95-a0f1-05bac68cb731",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
