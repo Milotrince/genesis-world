@@ -1,0 +1,45 @@
+genesis/options/sensors/camera.py
+  s_48a213206e91f9::t_f67caed40bf0c0 50-52
+examples/sensors/joint_torque_franka.py
+  s_48a213206e91f9::t_2a79183ec4d80d 76
+examples/sensors/imu_franka.py
+  s_48a213206e91f9::t_2a79183ec4d80d 48
+genesis/options/sensors/tactile.py
+  s_48a213206e91f9::t_f67caed40bf0c0 222-223,225,237,438-439,441
+examples/sensors/tactile_franka.py
+  s_48a213206e91f9::t_2a79183ec4d80d 21,36,40,43,52,90,254,256
+  s_48a213206e91f9::t_02aca9f53b4678 258
+examples/sensors/temperature_grid.py
+  s_48a213206e91f9::t_2a79183ec4d80d 138,145,156
+examples/sensors/contact_force_go2.py
+  s_48a213206e91f9::t_2a79183ec4d80d 55,64
+examples/sensors/surface_distance_shadowhand.py
+  s_48a213206e91f9::t_2a79183ec4d80d 99,102
+tests/sensors/test_tactile.py
+  s_48a213206e91f9::t_f67caed40bf0c0 74
+examples/sensors/lidar_teleop.py
+  s_48a213206e91f9::t_2a79183ec4d80d 99
+examples/sensors/tactile_sandbox.py
+  s_48a213206e91f9::t_2a79183ec4d80d 24,45,49,54,71,132,363,367
+genesis/options/sensors/options.py
+  s_48a213206e91f9::t_f67caed40bf0c0 62-63,120,155-157,177,186-187,189,229,239,250-254,384-385,498-499,656-657,661
+  s_48a213206e91f9::t_6f2a299de86881 390
+examples/sensors/depth_camera_custom_vverts.py
+  s_48a213206e91f9::t_2a79183ec4d80d 111,125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "07e6092f555ea8bc4d2b12141bad568a34a78cee",
+  "prompts": {},
+  "sessions": {
+    "s_48a213206e91f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88599325-179a-4b95-a0f1-05bac68cb731",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
