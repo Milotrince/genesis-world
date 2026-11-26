@@ -1,0 +1,123 @@
+tests/parsers/test_usd.py
+  s_c639b397214f9a::t_94704ed9f3e690 432
+  s_0ad35ed8e9a835::t_8096f2823cc3c1 433-439,442-445
+  s_c639b397214f9a::t_2985cc88ae0c2e 400,446-447
+genesis/utils/mjcf.py
+  s_0ad35ed8e9a835::t_8db895c309be0d 238
+genesis/engine/mesh.py
+  s_b64e5cb3dc9916::t_eb37174ae67c72 1196-1197
+  s_0ad35ed8e9a835::t_09affcdf992ef5 1198-1212
+genesis/engine/entities/rigid_entity/rigid_entity.py
+  s_0ad35ed8e9a835::t_8db895c309be0d 26
+  s_b64e5cb3dc9916::t_d6bfdfa5ff410b 1743-1745,1752,1754
+genesis/utils/usd/usd_geometry.py
+  s_c639b397214f9a::t_3e791f9c2013b6 367,370-377,379-383
+genesis/utils/mesh.py
+  s_0ad35ed8e9a835::t_a0b78a51ec1fad 148-163,1069
+tests/rigid/test_asset_loading.py
+  s_0ad35ed8e9a835::t_64b5591d92089b 509-510,543-547,560-564,585
+  s_0ad35ed8e9a835::t_445f043b0202f9 548-549
+  s_0ad35ed8e9a835::t_8096f2823cc3c1 624,645-646
+  s_b64e5cb3dc9916::t_8a62949bdb5671 232,511-513,516-526,528-537,539-542,550-551,565,586,644
+  s_0ad35ed8e9a835::t_637919864bbc8c 508,552,605,634
+  s_f8bb96e63e5f07::t_0369996b399a21 514-515,538
+  s_0ad35ed8e9a835::t_2420fbce90f086 566-573,576,579-584
+  s_0ad35ed8e9a835::t_f06a396f8a95a8 233,617-618,619-620,622,625,633,635-636,643
+  s_c639b397214f9a::t_8d0a0868b17ceb 600-601,606
+  s_0ad35ed8e9a835::t_95c2c10a776aba 574,577-578
+  s_0ad35ed8e9a835::t_85a02f71aae18f 8,527,553-554,575,587-597,599,602-604,607-613,616,623,627-632,638-641
+  s_0ad35ed8e9a835::t_36139b808f7475 598
+  s_f8bb96e63e5f07::t_b7af89e3fb82a8 621,626
+  s_0ad35ed8e9a835::t_ab10e69809e824 647
+  s_c639b397214f9a::t_ae7230a31f376d 614-615
+  s_f8bb96e63e5f07::t_6b976d97ff9a58 555-559,637
+  s_f8bb96e63e5f07::t_b9f78de705e8bc 642
+tests/rigid/conftest.py
+  s_0ad35ed8e9a835::t_637919864bbc8c 719-721,736,743
+  s_b64e5cb3dc9916::t_1efa7c91f8f22b 717,724-725,733-735,744-745
+  s_0ad35ed8e9a835::t_8096f2823cc3c1 718,722-723,731
+  s_0ad35ed8e9a835::t_85a02f71aae18f 726-730,732,737-742
+genesis/engine/entities/rigid_entity/inertial.py
+  s_b64e5cb3dc9916::t_601807bff402e0 189-190,196
+  s_f8bb96e63e5f07::t_7e73d4c12711e3 22-23
+  s_f8bb96e63e5f07::t_6745730a553c36 131-133,152
+genesis/utils/usd/usd_rigid_entity.py
+  s_c639b397214f9a::t_3e791f9c2013b6 733,741
+tests/parsers/conftest.py
+  s_c639b397214f9a::t_805b7f05c85359 1668
+  s_c639b397214f9a::t_2985cc88ae0c2e 1620-1622,1655-1667
+genesis/options/morphs.py
+  s_c639b397214f9a::t_2ac290b972e302 970-971
+  s_b64e5cb3dc9916::t_af4d34fd12a31e 562,1112
+  s_f8bb96e63e5f07::t_4529c40706ca68 563-567,606,771-776,968-969,1113-1117,1257-1262,1611-1616
+  s_c639b397214f9a::t_a88379791a58f1 972-974
+tests/rigid/test_dynamics.py
+  s_b64e5cb3dc9916::t_b75a44e6e9a441 262-263,271-272,280,705
+genesis/engine/entities/rigid_entity/description.py
+  s_b64e5cb3dc9916::t_ce45f43edeb227 687,689-696,1593,1595-1602,1656,1679
+  s_0ad35ed8e9a835::t_c1178f5a0c8f1d 1631-1632
+  s_c639b397214f9a::t_5708d146c2ff61 1634
+  s_f8bb96e63e5f07::t_34d95136947119 635,684-686,697,1698
+  s_0ad35ed8e9a835::t_fee55ed54347a0 1500-1508
+  s_c639b397214f9a::t_3fb81d35bcf324 1635-1636
+  s_f8bb96e63e5f07::t_5b7a33e4f3cbc8 1637-1644
+  s_0ad35ed8e9a835::t_8096f2823cc3c1 975-977
+  s_c639b397214f9a::t_3761ddd10f7896 1620,1628-1630
+  s_f8bb96e63e5f07::t_b1dbd73a7a72f6 1651-1652
+  s_b64e5cb3dc9916::t_ef7b1dda029374 1945-1948
+  s_b64e5cb3dc9916::t_24b2b166b21d8d 1953-1954
+  s_f8bb96e63e5f07::t_b3ee2dde683fcf 46,626,688,1594,1689
+  s_b64e5cb3dc9916::t_601807bff402e0 1615,1617-1619,1633,1645-1646,1654,1662,1665,1670-1672,1910-1920,1928-1937,1944
+  s_f8bb96e63e5f07::t_d3858fa53ece12 1621-1625,1647
+  s_0ad35ed8e9a835::t_5219c7e6042582 750,1455,1785,2124
+  s_0ad35ed8e9a835::t_8db895c309be0d 287,878,1519-1522,1528,2132
+  s_f8bb96e63e5f07::t_89e7d4726ea19c 698,1648-1650,1653
+  s_f8bb96e63e5f07::t_857a8d70def1ed 805-809
+  s_c639b397214f9a::t_33890f6fefd333 288-292
+  s_b64e5cb3dc9916::t_96549095866aff 1322
+  s_c639b397214f9a::t_f6133f36b5fb7b 1626-1627
+  s_b64e5cb3dc9916::t_eb37174ae67c72 1608-1612
+  s_0ad35ed8e9a835::t_618f5eebbd9cc1 1603
+  s_f8bb96e63e5f07::t_47f0f5a690cfdb 1614,1616
+  s_b64e5cb3dc9916::t_4470799e71e7ff 1607
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ed47839891e0f88aa07b0e25085f0b08084658ce",
+  "prompts": {},
+  "sessions": {
+    "s_0ad35ed8e9a835": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "63313966-a999-4420-a5cc-36e8123cdaf7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    },
+    "s_b64e5cb3dc9916": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5cbba10d-905e-4f49-aa41-fabedc688f1a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    },
+    "s_c639b397214f9a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a86bd693-4b69-441b-9a8a-c4806a223778",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    },
+    "s_f8bb96e63e5f07": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8476bcac-d5d8-4320-89aa-f4a4ff5f8a18",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
