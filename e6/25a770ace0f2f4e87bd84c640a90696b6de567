@@ -1,0 +1,24 @@
+genesis/typing.py
+  s_48a213206e91f9::t_e406b1a3dc9bb3 76-88,93,98,104,114,118
+genesis/options/sensors/options.py
+  s_48a213206e91f9::t_e406b1a3dc9bb3 72,80
+  s_48a213206e91f9::t_4c3b6a4f9152fb 61,73-78,502-503,529
+tests/sensors/test_temperature.py
+  s_48a213206e91f9::t_4c3b6a4f9152fb 58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e625a770ace0f2f4e87bd84c640a90696b6de567",
+  "prompts": {},
+  "sessions": {
+    "s_48a213206e91f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88599325-179a-4b95-a0f1-05bac68cb731",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
