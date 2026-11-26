@@ -1,0 +1,44 @@
+genesis/engine/generators.py
+  s_48a213206e91f9::t_f8abedfff62c6e 21-50,69-71
+genesis/options/morphs.py
+  s_48a213206e91f9::t_6c7c92d9daba6c 1316-1317
+  s_48a213206e91f9::t_096e2c46f953f1 15,46,1324,1330-1335,1370-1372,1397-1400,1404-1411,1419-1449,1457-1462
+  s_48a213206e91f9::t_d8dd6917d1aa5a 1394-1396
+genesis/options/terrain.py
+  s_48a213206e91f9::t_5638663d107504 7,93-94,100,116-117,126,172-173,180,201,203
+  s_48a213206e91f9::t_1cc2a41f3a68dc 1-6,8-92,95-99,101-115,118-125,127-171,174-179,181-200,202,204-220
+tests/rigid/test_terrain.py
+  s_48a213206e91f9::t_d8c10d74d52baa 268-270
+genesis/options/entities.py
+  s_48a213206e91f9::t_f8abedfff62c6e 16
+genesis/utils/terrain.py
+  s_48a213206e91f9::t_bb85c183a6efaf 144
+  s_48a213206e91f9::t_4759b247cd2c3f 3,13,15,23-132,175-181,192
+  s_48a213206e91f9::t_025ea03f61b254 241
+genesis/__init__.py
+  s_48a213206e91f9::t_92d8af56c8edb4 637
+  s_48a213206e91f9::t_f8abedfff62c6e 636
+genesis/utils/cache.py
+  s_48a213206e91f9::t_bb85c183a6efaf 292,294
+genesis/engine/entities/rigid_entity/description.py
+  s_48a213206e91f9::t_025ea03f61b254 2032
+  s_48a213206e91f9::t_a5cc239998fba6 2013,2015-2017,2020-2028,2031
+genesis/options/__init__.py
+  s_48a213206e91f9::t_80ea0eb8973d2e 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5d8db2fc745aff77b01e3d793ac22b48cd2e6e23",
+  "prompts": {},
+  "sessions": {
+    "s_48a213206e91f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88599325-179a-4b95-a0f1-05bac68cb731",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
