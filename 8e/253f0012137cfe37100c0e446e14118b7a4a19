@@ -1,0 +1,24 @@
+genesis/recorders/recorder_manager.py
+  s_156eb4b34ffe39::t_27e6c9e5b12791 89
+genesis/utils/video_encoder.py
+  s_156eb4b34ffe39::t_0a8c72930a4d69 246-255
+  s_156eb4b34ffe39::t_668ac277872499 6
+  s_156eb4b34ffe39::t_5a44482cc6ab37 8,257
+  s_156eb4b34ffe39::t_bd1a2448fe350f 256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8e253f0012137cfe37100c0e446e14118b7a4a19",
+  "prompts": {},
+  "sessions": {
+    "s_156eb4b34ffe39": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d52489e6-6276-4026-b1c7-8a1be2dee274",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
