@@ -1,0 +1,134 @@
+genesis/utils/serialization.py
+  s_c34d43a6c0ec3d::t_e014ce7b09014c 402-403,406-409,413
+genesis/engine/materials/hybrid.py
+  s_c34d43a6c0ec3d::t_1d543cfebe0e51 4,8,10,22,24,46-47,53-55
+  s_c34d43a6c0ec3d::t_0d20dfc67dfd8c 37,41
+  s_c34d43a6c0ec3d::t_024ffb50c90236 52
+genesis/engine/materials/base.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 40
+genesis/engine/solvers/mpm_solver.py
+  s_c34d43a6c0ec3d::t_e1c14a5e77558a 427
+  s_c34d43a6c0ec3d::t_189931eed50c0a 520
+genesis/engine/simulator.py
+  s_c34d43a6c0ec3d::t_5b8c94ae1cbb72 191
+  s_c34d43a6c0ec3d::t_0d20dfc67dfd8c 190
+genesis/engine/entities/hybrid_entity.py
+  s_c34d43a6c0ec3d::t_5b8c94ae1cbb72 172-173,179,183-184
+  s_c34d43a6c0ec3d::t_189931eed50c0a 176-177
+  s_c34d43a6c0ec3d::t_0d20dfc67dfd8c 76,80,101,107,120,127
+  s_48a213206e91f9::t_7321b9e69fe7bc 466-468,518,520-528
+genesis/engine/entities/sph_entity.py
+  s_c34d43a6c0ec3d::t_189931eed50c0a 37-38
+genesis/engine/entities/fem_entity.py
+  s_c34d43a6c0ec3d::t_189931eed50c0a 265-266
+tests/rigid/test_serialization.py
+  s_c34d43a6c0ec3d::t_5b8c94ae1cbb72 761-762,764-765
+  s_c34d43a6c0ec3d::t_76d5fdc24294bd 571,573,1176
+  s_c34d43a6c0ec3d::t_a0c3a90c9188aa 565-570
+genesis/engine/entities/mpm_entity.py
+  s_c34d43a6c0ec3d::t_189931eed50c0a 54-55
+genesis/engine/entities/base_entity.py
+  s_c34d43a6c0ec3d::t_189931eed50c0a 2,36-37,45-47
+genesis/engine/entities/particle_entity.py
+  s_c34d43a6c0ec3d::t_16c0f8b60f448f 220
+genesis/engine/materials/MPM/elastic.py
+  s_c34d43a6c0ec3d::t_16c0f8b60f448f 51-53
+genesis/engine/materials/MPM/liquid.py
+  s_c34d43a6c0ec3d::t_8c3cdbb08e20ed 27
+genesis/engine/materials/FEM/muscle.py
+  s_c34d43a6c0ec3d::t_c06e2cb6f1f008 32-36
+genesis/engine/solvers/fem_solver.py
+  s_c34d43a6c0ec3d::t_dec3d13f8408e1 901
+genesis/engine/generators.py
+  s_48a213206e91f9::t_f8abedfff62c6e 30-51,53-57,59,217-219
+  s_48a213206e91f9::t_1617f00fb80d98 58
+  h_6855cd90ab4e09 29,52
+  s_48a213206e91f9::t_4f40178b628d6b 108-109
+  s_48a213206e91f9::t_1d9296a67c6eb2 8-9,11,13-14,74-75,77-79,81-82,86,93-96,98-107
+  s_48a213206e91f9::t_0796f7540caa86 207-215
+  s_48a213206e91f9::t_0a4f27d1dda359 6-7,15,19,66-73,76,80,83-85,87-92,97,110-168,172-194
+  s_48a213206e91f9::t_8ea98d84f4afd8 169-171
+  s_48a213206e91f9::t_616ca68fdc7710 195-196
+genesis/options/morphs.py
+  s_48a213206e91f9::t_6c7c92d9daba6c 1319-1320
+  s_48a213206e91f9::t_096e2c46f953f1 16,49,1404,1410-1412,1450-1452,1477-1480,1484-1491,1499,1500-1505,1512,1514,1516-1522,1524-1526,1528-1535,1543-1548
+  s_48a213206e91f9::t_d8dd6917d1aa5a 1474-1476
+  s_48a213206e91f9::t_24c0137371e90d 1413-1415,1513,1515,1523,1527
+  s_48a213206e91f9::t_c13863a8dad1b4 10,1321-1324,1327-1339,1401
+  s_48a213206e91f9::t_1d9296a67c6eb2 45,1354-1373
+  s_48a213206e91f9::t_ce63937e79d5ed 1399-1400
+  s_48a213206e91f9::t_0796f7540caa86 1506-1511
+  s_48a213206e91f9::t_4375dfa6e35b61 42,1341-1353,1374-1378,1382-1398
+  s_48a213206e91f9::t_8ea98d84f4afd8 1379-1381
+genesis/options/terrain.py
+  s_48a213206e91f9::t_5638663d107504 8,99-100,104,120-121,128,174-175,180,199,201
+  s_48a213206e91f9::t_1cc2a41f3a68dc 1-2,4-6,9-16,20-24,28,33,34,37-38,40-49,50-53,55-68,69-71,77-79,81-88,89-91,93-98,101-102,103,105-106,108-119,122-123,124-127,129,134,136-145,146-149,151-160,161-164,166-173,176-177,178-179,181-182,184-197,198,200
+  s_48a213206e91f9::t_a9d0b380283d03 17,27,29-32,35-36,39,54,80,92,107,135,150,165,183
+  s_48a213206e91f9::t_9b8bed49d02eae 18-19,25-26
+  s_48a213206e91f9::t_0796f7540caa86 3,7,72-76,130-132
+  s_48a213206e91f9::t_95ec79fd393f3d 133
+tests/rigid/test_terrain.py
+  s_48a213206e91f9::t_d8c10d74d52baa 268-270
+  s_48a213206e91f9::t_0ba7762841d67a 279-280,287
+  s_48a213206e91f9::t_07a75132a9d6d1 281-286
+genesis/utils/terrain.py
+  s_48a213206e91f9::t_bb85c183a6efaf 144
+  s_48a213206e91f9::t_4759b247cd2c3f 3,13,15,24-42,44-132,175,185-189
+  s_48a213206e91f9::t_025ea03f61b254 251
+  h_6855cd90ab4e09 23,43
+  s_48a213206e91f9::t_0796f7540caa86 176-184,200-204
+genesis/__init__.py
+  s_48a213206e91f9::t_92d8af56c8edb4 637
+  s_48a213206e91f9::t_f8abedfff62c6e 636
+genesis/utils/cache.py
+  s_48a213206e91f9::t_bb85c183a6efaf 292,294
+genesis/engine/entities/rigid_entity/description.py
+  s_48a213206e91f9::t_025ea03f61b254 2032
+  s_48a213206e91f9::t_a5cc239998fba6 2013,2015-2017,2020-2028,2031
+genesis/options/__init__.py
+  s_48a213206e91f9::t_80ea0eb8973d2e 1
+genesis/options/entities.py
+  s_48a213206e91f9::t_3bbd072e458f76 16,179-184
+examples/coupling/morph_generators.py
+  s_48a213206e91f9::t_1a327a98fece04 65,67,90,98,101,104-105,150-151,156-167,171
+  s_48a213206e91f9::t_f22d6d7f581c6d 17,172-173,180-181,183
+  s_48a213206e91f9::t_f08bddaea7a1c1 1-96,98,100-197
+  s_48a213206e91f9::t_1254493282a8f8 97,99
+tests/particles/test_mpm.py
+  s_48a213206e91f9::t_30f2b23fd30bfd 354,356-357
+  s_48a213206e91f9::t_9e1d462e254c74 316,361
+  s_48a213206e91f9::t_a37b1bc72ea95e 320-321
+  s_48a213206e91f9::t_cd51001b244f5e 313-315,317-319,322-343,352-353,358-360,364
+  s_48a213206e91f9::t_00624d2d4eaaf4 344-351,355
+  s_48a213206e91f9::t_06cae26afb5afd 7,10
+  s_48a213206e91f9::t_7f589614e5472c 362-363,365-372
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cba19c17231f234b66aa22bc5151f04f475bd93d",
+  "prompts": {},
+  "humans": {
+    "h_6855cd90ab4e09": {
+      "author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  },
+  "sessions": {
+    "s_48a213206e91f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88599325-179a-4b95-a0f1-05bac68cb731",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    },
+    "s_c34d43a6c0ec3d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85865c8a-2aec-4623-a453-81a3917c1600",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
