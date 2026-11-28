@@ -1,0 +1,16 @@
+genesis/engine/generators.py
+  h_6855cd90ab4e09 21,44,68
+genesis/utils/terrain.py
+  h_6855cd90ab4e09 23,43,176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5eccce6ef5c2e3868de03b36c8b7d4d307a4e0fe",
+  "prompts": {},
+  "humans": {
+    "h_6855cd90ab4e09": {
+      "author": "Trinity Chung <trinity.chung@genesis-ai.company>"
+    }
+  }
+}
